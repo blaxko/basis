@@ -55,3 +55,9 @@ export class AuditLedger {
     return this.entries;
   }
 }
+
+// Shared singleton so lib/orchestration/agent-loop.ts,
+// lib/orchestration/handle-instruction.ts, and GET /api/ledger all
+// observe the same entries within one server process. Tests always
+// construct their own AuditLedger instance instead, for isolation.
+export const defaultLedger = new AuditLedger();
