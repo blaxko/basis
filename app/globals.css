@@ -1,0 +1,340 @@
+:root {
+  --color-bg: #f4f1ea;
+  --color-surface: #ffffff;
+  --color-ink: #0d0d0d;
+  --color-border: #0d0d0d;
+  --color-muted: #5c5850;
+  --color-accent: #ff5a1f;
+  --color-approved: #0a7d33;
+  --color-blocked: #c81e1e;
+  --color-warn: #b8860b;
+
+  --terminal-bg: #0a0e0a;
+  --terminal-fg: #39ff6a;
+  --terminal-fg-dim: #1f9c46;
+  --terminal-border: #1f9c46;
+
+  --border-width: 3px;
+  --border-width-thick: 5px;
+  --shadow-offset: 6px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: "Helvetica Neue", Arial, sans-serif;
+}
+
+body {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.mono {
+  font-family: "Courier New", Consolas, monospace;
+}
+
+/* --- Layout --- */
+
+.dashboard {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .bento-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Panels: the core neo-brutalist unit --- */
+
+.panel {
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--color-border);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 260px;
+}
+
+.panel--terminal {
+  background: var(--terminal-bg);
+  color: var(--terminal-fg);
+  border-color: var(--terminal-border);
+  box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--terminal-border);
+}
+
+.panel-title {
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  border-bottom: var(--border-width) solid currentColor;
+  padding-bottom: 8px;
+}
+
+/* --- Header --- */
+
+.header {
+  background: var(--color-ink);
+  color: var(--color-bg);
+  border: var(--border-width) solid var(--color-border);
+  box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--color-accent);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.header-title {
+  font-size: 1.6rem;
+  text-transform: uppercase;
+}
+
+.header-subtitle {
+  color: var(--color-bg);
+  opacity: 0.75;
+  margin-top: 4px;
+  font-size: 0.95rem;
+}
+
+.status-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 2px solid var(--color-bg);
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--color-blocked);
+  flex-shrink: 0;
+}
+
+.status-dot--ok {
+  background: var(--color-approved);
+}
+
+.wallet-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.wallet-card {
+  border: 2px solid var(--color-bg);
+  padding: 8px 12px;
+}
+
+.wallet-card-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.wallet-card-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  font-family: "Courier New", Consolas, monospace;
+}
+
+/* --- Killswitch --- */
+
+.killswitch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.killswitch-buttons {
+  display: flex;
+  border: 2px solid var(--color-bg);
+}
+
+.killswitch-button {
+  background: transparent;
+  color: var(--color-bg);
+  border: none;
+  padding: 8px 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  cursor: pointer;
+  border-right: 2px solid var(--color-bg);
+}
+
+.killswitch-button:last-child {
+  border-right: none;
+}
+
+.killswitch-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.killswitch-button--active {
+  background: var(--color-accent);
+  color: var(--color-ink);
+}
+
+.killswitch-button--active.killswitch-button--live {
+  background: var(--color-blocked);
+  color: var(--color-bg);
+}
+
+.killswitch-error {
+  color: var(--color-blocked);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+/* --- Badges --- */
+
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  border: 2px solid currentColor;
+}
+
+.badge--approved {
+  color: var(--color-approved);
+}
+
+.badge--blocked {
+  color: var(--color-blocked);
+}
+
+.badge--error {
+  color: var(--color-warn);
+}
+
+/* --- Guardrail checklist --- */
+
+.check-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.check-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: "Courier New", Consolas, monospace;
+  font-size: 0.9rem;
+}
+
+.check-mark {
+  font-weight: 800;
+}
+
+.check-mark--ok {
+  color: var(--color-approved);
+}
+
+.check-mark--fail {
+  color: var(--color-blocked);
+}
+
+.check-reason {
+  color: var(--color-muted);
+  font-size: 0.8rem;
+}
+
+/* --- Terminal feeds (Advisory Feed, Audit Ledger) --- */
+
+.terminal-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 420px;
+  overflow-y: auto;
+  font-family: "Courier New", Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+.terminal-line {
+  border-left: 3px solid var(--terminal-fg-dim);
+  padding-left: 10px;
+}
+
+.terminal-line-meta {
+  color: var(--terminal-fg-dim);
+  font-size: 0.75rem;
+}
+
+.terminal-empty {
+  color: var(--terminal-fg-dim);
+}
+
+/* --- States --- */
+
+.state-message {
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.state-message--error {
+  color: var(--color-blocked);
+  font-weight: 700;
+}
+
+.panel--terminal .state-message {
+  color: var(--terminal-fg-dim);
+}
+
+.panel--terminal .state-message--error {
+  color: #ff6161;
+}

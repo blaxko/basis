@@ -5,7 +5,7 @@ import { rawSpread, adjustedSpread as computeAdjustedSpread } from "../basis-mod
 import { runPipeline, type WalletClient } from "../execution/pipeline";
 import { AuditLedger, defaultLedger, type PipelineMode, type PipelineOutcome } from "../execution/audit-ledger";
 import { DEFAULT_GUARDRAIL_CONFIG, type GuardrailConfig } from "../guardrails/config";
-import type { ProposedOrder, GuardrailVerdict } from "../guardrails/check";
+import { check, type ProposedOrder, type GuardrailVerdict } from "../guardrails/check";
 import { narrateProposal as realNarrateProposal } from "../llm/proposal-narrator";
 import { defaultSpendTracker, type SpendTracker } from "./spend-tracker";
 import { getKillswitchMode } from "./killswitch";
@@ -122,6 +122,73 @@ function constructOrder(spread: UnderlyingSpread, config: AgentLoopConfig): Prop
     // authoritatively by pipeline.ts's own fresh dryRun() call afterward.
     simulatedOutputUsd: config.orderSizeUsd,
   };
+}
+
+export interface PreviewOpportunity {
+  ticker: string;
+  order: ProposedOrder;
+  narration: string;
+  verdict: GuardrailVerdict;
+}
+
+export interface PreviewOpportunitiesResult {
+  spreads: UnderlyingSpread[];
+  opportunities: PreviewOpportunity[];
+}
+
+export interface PreviewOpportunitiesDeps {
+  spendTracker?: SpendTracker;
+  guardrailConfig?: GuardrailConfig;
+  agentConfig?: AgentLoopConfig;
+  fetchQuotesFn?: typeof realFetchQuotes;
+  narrateProposalFn?: typeof realNarrateProposal;
+  now?: () => number;
+}
+
+// Phase 5a addition (originally this file only had computeSpreads() and
+// runAgentLoop()): GET /api/opportunities needs narrated, verdict-bearing
+// proposals for the Advisory Feed and Guardrail Gate panels, but a GET
+// must stay side-effect-free. check() (Phase 2) is pure — no wallet call,
+// no ledger write — so this builds the same deterministic order
+// runAgentLoop() would, runs it through check() for a live-accurate
+// verdict, and narrates it, WITHOUT ever calling runPipeline(). Nothing
+// here writes to the ledger or touches agentic-wallet.
+export async function previewOpportunities(deps: PreviewOpportunitiesDeps = {}): Promise<PreviewOpportunitiesResult> {
+  const spendTracker = deps.spendTracker ?? defaultSpendTracker;
+  const guardrailConfig = deps.guardrailConfig ?? DEFAULT_GUARDRAIL_CONFIG;
+  const agentConfig = deps.agentConfig ?? DEFAULT_AGENT_LOOP_CONFIG;
+  const narrateProposalFn = deps.narrateProposalFn ?? realNarrateProposal;
+
+  const spreads = await computeSpreads({
+    underlyings: agentConfig.underlyings,
+    fetchQuotesFn: deps.fetchQuotesFn,
+    now: deps.now,
+  });
+
+  const opportunities: PreviewOpportunity[] = [];
+
+  for (const spread of spreads) {
+    if (Math.abs(spread.adjustedSpread) < agentConfig.adjustedSpreadThreshold) {
+      continue;
+    }
+
+    const order = constructOrder(spread, agentConfig);
+    const verdict = check(order, { spentTodaySoFarUsd: spendTracker.getSpentToday(), config: guardrailConfig });
+
+    let narration: string;
+    try {
+      narration = narrateProposalFn(
+        { ticker: order.ticker, adjustedSpread: spread.adjustedSpread, proposedSizeUsd: order.sizeUsd },
+        verdict
+      );
+    } catch (err) {
+      narration = `(narration unavailable: ${err instanceof Error ? err.message : "unknown error"})`;
+    }
+
+    opportunities.push({ ticker: spread.ticker, order, narration, verdict });
+  }
+
+  return { spreads, opportunities };
 }
 
 export interface AgentLoopDeps {

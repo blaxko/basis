@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { runAgentLoop, computeSpreads, type AgentLoopConfig } from "./agent-loop";
+import { runAgentLoop, computeSpreads, previewOpportunities, type AgentLoopConfig } from "./agent-loop";
 import { DailySpendTracker } from "./spend-tracker";
 import { AuditLedger } from "../execution/audit-ledger";
 import { DEFAULT_GUARDRAIL_CONFIG } from "../guardrails/config";
@@ -135,6 +135,42 @@ describe("runAgentLoop — narrator failures never change the constructed order 
     expect(failingRun.triggered[0]!.verdict.approved).toBe(successfulRun.triggered[0]!.verdict.approved);
     expect(failingRun.triggered[0]!.outcome).toBe(successfulRun.triggered[0]!.outcome);
     expect(failingRun.triggered[0]!.narration).toContain("narrator exploded");
+  });
+});
+
+describe("previewOpportunities — narrated, verdict-bearing, but never calls the wallet", () => {
+  it("produces a verdict and narration without calling runPipeline/dryRun/send", async () => {
+    const fetchQuotesFn = vi.fn().mockResolvedValue(msftQuotes());
+    const walletClientSpy = mockWalletClient();
+
+    const result = await previewOpportunities({
+      spendTracker: new DailySpendTracker(() => EX_DIV_NOW),
+      agentConfig: ZERO_THRESHOLD_CONFIG,
+      fetchQuotesFn,
+      now: () => EX_DIV_NOW,
+    });
+
+    expect(result.opportunities).toHaveLength(1);
+    expect(result.opportunities[0]!.verdict.approved).toBe(true);
+    expect(result.opportunities[0]!.narration).toContain("MSFT");
+    // Nothing here should have touched a wallet client at all, since none
+    // was even passed through — confirming there's no hidden pipeline call.
+    expect(walletClientSpy.dryRun).not.toHaveBeenCalled();
+    expect(walletClientSpy.send).not.toHaveBeenCalled();
+  });
+
+  it("returns no opportunities, only spreads, when nothing clears the threshold", async () => {
+    const fetchQuotesFn = vi.fn().mockResolvedValue(msftQuotes());
+
+    const result = await previewOpportunities({
+      spendTracker: new DailySpendTracker(() => EX_DIV_NOW),
+      agentConfig: { underlyings: ["MSFT"], adjustedSpreadThreshold: 0.003, orderSizeUsd: 200 },
+      fetchQuotesFn,
+      now: () => EX_DIV_NOW,
+    });
+
+    expect(result.spreads).toHaveLength(1);
+    expect(result.opportunities).toHaveLength(0);
   });
 });
 
