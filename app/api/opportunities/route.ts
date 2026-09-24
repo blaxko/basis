@@ -48,9 +48,11 @@ export async function GET() {
 
 function liveSpreadAsHistoryPoint(spread: UnderlyingSpread): SpreadHistoryPoint {
   return {
-    date: new Date().toISOString().slice(0, 10),
-    priceReturnPrice: spread.priceReturnPrice,
-    totalReturnPrice: spread.totalReturnPrice,
+    timestamp: new Date().toISOString(),
+    cheapPoolPriceUsd: spread.cheapPool.priceUsd,
+    cheapPoolFeeUnits: spread.cheapPool.feeUnits,
+    expensivePoolPriceUsd: spread.expensivePool.priceUsd,
+    expensivePoolFeeUnits: spread.expensivePool.feeUnits,
     rawSpread: spread.rawSpread,
     adjustedSpread: spread.adjustedSpread,
   };

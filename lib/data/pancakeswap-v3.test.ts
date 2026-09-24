@@ -1,10 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { decodeFunctionData } from "viem";
 import {
   sqrtPriceX96ToToken1PerToken0,
   estimateLiquidityUsd,
   readPoolPrice,
   getPublicClient,
+  buildExactInputSingleTransaction,
+  checkAllowance,
+  ERC20_ALLOWANCE_ABI,
+  NATIVE_TOKEN_SENTINEL,
+  V3_SWAP_ROUTER_ABI,
   PANCAKESWAP_V3_QUOTER_V2_ADDRESS,
+  PANCAKESWAP_V3_SWAP_ROUTER_ADDRESS,
 } from "./pancakeswap-v3";
 
 // Real on-chain data captured this session (2026-09-24) from the live
@@ -197,6 +204,152 @@ describe("estimateLiquidityUsd — virtual-reserves-at-current-tick approximatio
 
   it("returns 0 for zero liquidity", () => {
     expect(estimateLiquidityUsd(0n, REAL_SQRT_PRICE_X96, 18, 18, true, 499.1)).toBe(0);
+  });
+});
+
+describe("buildExactInputSingleTransaction — real verified 8-field ISwapRouter.ExactInputSingleParams struct", () => {
+  const FIXED_NOW = () => Date.UTC(2026, 8, 24, 12, 0, 0);
+
+  it("targets the pure V3 SwapRouter, not the aggregating Smart Router", () => {
+    const tx = buildExactInputSingleTransaction({
+      tokenIn: "0x55d398326f99059fF775485246999027B3197955",
+      tokenOut: "0x80106cb3EAD06659A5ad19DF39D9b4733863B9b0",
+      feeUnits: 10000,
+      recipient: "0x5B281F6E028466CEEB8b8FB6685e35eC2B8f02f7",
+      amountIn: 200_000_000_000_000_000_000n,
+      amountOutMinimum: 195_000_000_000_000_000_000n,
+      now: FIXED_NOW,
+    });
+
+    expect(tx.to).toBe(PANCAKESWAP_V3_SWAP_ROUTER_ADDRESS);
+    expect(tx.to).not.toBe("0x13f4EA83D0bd40E75C8222255bc855a974568Dd4"); // Smart Router — never this one
+  });
+
+  it("decodes back to the exact real 8-field struct, including deadline, in the verified order", () => {
+    const tokenIn = "0x55d398326f99059fF775485246999027B3197955";
+    const tokenOut = "0x80106cb3EAD06659A5ad19DF39D9b4733863B9b0";
+    const recipient = "0x5B281F6E028466CEEB8b8FB6685e35eC2B8f02f7";
+
+    const tx = buildExactInputSingleTransaction({
+      tokenIn,
+      tokenOut,
+      feeUnits: 10000,
+      recipient,
+      amountIn: 200_000_000_000_000_000_000n,
+      amountOutMinimum: 195_000_000_000_000_000_000n,
+      deadlineSecondsFromNow: 600,
+      now: FIXED_NOW,
+    });
+
+    const decoded = decodeFunctionData({ abi: V3_SWAP_ROUTER_ABI, data: tx.data as `0x${string}` });
+    expect(decoded.functionName).toBe("exactInputSingle");
+    const params = decoded.args[0];
+
+    expect(params.tokenIn.toLowerCase()).toBe(tokenIn.toLowerCase());
+    expect(params.tokenOut.toLowerCase()).toBe(tokenOut.toLowerCase());
+    expect(params.fee).toBe(10000);
+    expect(params.recipient.toLowerCase()).toBe(recipient.toLowerCase());
+    expect(params.deadline).toBe(BigInt(Math.floor(FIXED_NOW() / 1000) + 600));
+    expect(params.amountIn).toBe(200_000_000_000_000_000_000n);
+    expect(params.amountOutMinimum).toBe(195_000_000_000_000_000_000n);
+    expect(params.sqrtPriceLimitX96).toBe(0n);
+  });
+
+  it("defaults to a 600-second (10-minute) deadline when not specified", () => {
+    const tx = buildExactInputSingleTransaction({
+      tokenIn: "0x55d398326f99059fF775485246999027B3197955",
+      tokenOut: "0x80106cb3EAD06659A5ad19DF39D9b4733863B9b0",
+      feeUnits: 2500,
+      recipient: "0x5B281F6E028466CEEB8b8FB6685e35eC2B8f02f7",
+      amountIn: 100n,
+      amountOutMinimum: 99n,
+      now: FIXED_NOW,
+    });
+
+    const decoded = decodeFunctionData({ abi: V3_SWAP_ROUTER_ABI, data: tx.data as `0x${string}` });
+    const params = decoded.args[0];
+    expect(params.deadline).toBe(BigInt(Math.floor(FIXED_NOW() / 1000) + 600));
+  });
+});
+
+describe("checkAllowance — ERC-20 allowance against the pure V3 SwapRouter", () => {
+  const originalRpcUrl = process.env.BSC_RPC_URL;
+  const USDT = "0x55d398326f99059fF775485246999027B3197955";
+  const OWNER = "0x5B281F6E028466CEEB8b8FB6685e35eC2B8f02f7";
+  const AMOUNT = 200_000_000_000_000_000_000n; // 200 USDT, 18 decimals
+
+  beforeEach(() => {
+    process.env.BSC_RPC_URL = "https://bsc-dataseed.example";
+  });
+
+  afterEach(() => {
+    process.env.BSC_RPC_URL = originalRpcUrl;
+    vi.restoreAllMocks();
+  });
+
+  it("reports sufficient and builds no transaction when the existing allowance covers the amount", async () => {
+    const readContract = vi.spyOn(getPublicClient(), "readContract").mockResolvedValue(AMOUNT * 10n as never);
+
+    const result = await checkAllowance({
+      tokenAddress: USDT,
+      ownerAddress: OWNER,
+      spenderAddress: PANCAKESWAP_V3_SWAP_ROUTER_ADDRESS,
+      amountRequired: AMOUNT,
+    });
+
+    expect(result.sufficient).toBe(true);
+    expect(result.approveTransaction).toBeUndefined();
+    expect(readContract).toHaveBeenCalledWith(
+      expect.objectContaining({ address: USDT, functionName: "allowance", args: [OWNER, PANCAKESWAP_V3_SWAP_ROUTER_ADDRESS] })
+    );
+  });
+
+  it("treats an allowance exactly equal to the amount as sufficient", async () => {
+    vi.spyOn(getPublicClient(), "readContract").mockResolvedValue(AMOUNT as never);
+
+    const result = await checkAllowance({
+      tokenAddress: USDT,
+      ownerAddress: OWNER,
+      spenderAddress: PANCAKESWAP_V3_SWAP_ROUTER_ADDRESS,
+      amountRequired: AMOUNT,
+    });
+
+    expect(result.sufficient).toBe(true);
+  });
+
+  it("builds an approve(SwapRouter, amount) transaction on the token contract when the allowance is short", async () => {
+    vi.spyOn(getPublicClient(), "readContract").mockResolvedValue(0n as never);
+
+    const result = await checkAllowance({
+      tokenAddress: USDT,
+      ownerAddress: OWNER,
+      spenderAddress: PANCAKESWAP_V3_SWAP_ROUTER_ADDRESS,
+      amountRequired: AMOUNT,
+    });
+
+    expect(result.sufficient).toBe(false);
+    expect(result.currentAllowance).toBe(0n);
+    expect(result.approveTransaction?.to).toBe(USDT);
+
+    const decoded = decodeFunctionData({ abi: ERC20_ALLOWANCE_ABI, data: result.approveTransaction!.data as `0x${string}` });
+    expect(decoded.functionName).toBe("approve");
+    expect((decoded.args[0] as string).toLowerCase()).toBe(PANCAKESWAP_V3_SWAP_ROUTER_ADDRESS.toLowerCase());
+    expect(decoded.args[1]).toBe(AMOUNT);
+  });
+
+  it("skips entirely for a native-BNB leg — no RPC call, no approval transaction", async () => {
+    const readContract = vi.spyOn(getPublicClient(), "readContract");
+
+    const result = await checkAllowance({
+      tokenAddress: NATIVE_TOKEN_SENTINEL,
+      ownerAddress: OWNER,
+      spenderAddress: PANCAKESWAP_V3_SWAP_ROUTER_ADDRESS,
+      amountRequired: AMOUNT,
+    });
+
+    expect(result.sufficient).toBe(true);
+    expect(result.approveTransaction).toBeUndefined();
+    expect(readContract).not.toHaveBeenCalled();
   });
 });
 

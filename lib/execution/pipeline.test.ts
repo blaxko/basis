@@ -1,82 +1,168 @@
 import { describe, it, expect, vi } from "vitest";
-import { runPipeline, type WalletClient, type SwapRequest } from "./pipeline";
+import { runPipeline, type WalletClient, type FreshPoolPrices } from "./pipeline";
 import { AuditLedger } from "./audit-ledger";
 import { DEFAULT_GUARDRAIL_CONFIG } from "../guardrails/config";
 import type { ProposedOrder } from "../guardrails/check";
-import { navEquivalent } from "../basis-model/nav-equivalent";
+import { feeAdjustedPrice } from "../basis-model/nav-equivalent";
 import { adjustedSpread } from "../basis-model/adjusted-spread";
-import { accruedDividend } from "../data/dividend-calendar";
 
 const config = DEFAULT_GUARDRAIL_CONFIG;
 
-function baseOrder(overrides: Partial<ProposedOrder> = {}): ProposedOrder {
+// Real MSFTB pool addresses/fee tiers (lib/data/pool-addresses.ts) and the
+// real stablecoin/target token addresses (lib/data/quotes.ts's
+// BSC_USDT_ADDRESS, the real MSFTB contract) — buildDirectSwapParams()
+// (the real, non-mocked function under indirect test here) resolves the
+// target token from fresh.cheapPoolToken0/1 against BSC_USDT_ADDRESS, so
+// these need to be the real addresses, not placeholders.
+const STABLECOIN = "0x55d398326f99059fF775485246999027B3197955";
+const TARGET_TOKEN = "0x80106cb3EAD06659A5ad19DF39D9b4733863B9b0";
+
+const POOL_PAIR = {
+  cheapPoolAddress: "0x5018b018ceb7645c927c5cf246786f89ebcbe7ea",
+  cheapPoolFeeUnits: 2500,
+  expensivePoolAddress: "0x58e44c2e5b17ef40915b4b3ae8451b6b87285b44",
+  expensivePoolFeeUnits: 10000,
+};
+
+// SYNTHETIC prices, not a live reading — chosen only to produce a clean
+// positive net edge so these tests can exercise the allowance/simulate/
+// send wiring, mode gating, and floor/retention math in isolation. The
+// real pool addresses/fee tiers above are still used (buildDirectSwapParams()
+// needs the real target-token address to resolve correctly), but the
+// PRICES here don't correspond to any real reading and shouldn't be
+// quoted as one. The genuinely live, currently-declining reading is
+// exercised separately below in "runPipeline — the real, live MSFTB
+// scenario as of 2026-09-24".
+function freshPrices(): FreshPoolPrices {
   return {
-    ticker: "NVDAon",
-    side: "buy",
-    sizeUsd: 200,
-    adjustedSpread: 0.008,
-    price: 101,
-    recentTicks: [98, 99, 100, 101, 102],
-    liquidityDepthUsd: 5000,
-    simulatedOutputUsd: 199,
-    ...overrides,
-  };
+    cheapPoolPriceUsd: 490,
+    cheapPoolToken0: STABLECOIN,
+    cheapPoolToken1: TARGET_TOKEN,
+    expensivePoolPriceUsd: 500,
+    expensivePoolToken0: STABLECOIN,
+    expensivePoolToken1: TARGET_TOKEN,
+  } as FreshPoolPrices;
 }
 
-// A stub swap-request builder: tests exercise guardrail/mode logic, not
-// the real token-address registry (empty) or trading-wallet credentials
-// (unset), so this bypasses both without needing either configured.
-function fakeBuildSwapRequest(): SwapRequest {
+function detectedAdjustedSpread(): number {
+  const effectiveBuyPriceUsd = feeAdjustedPrice(490, POOL_PAIR.cheapPoolFeeUnits, "buy");
+  const effectiveSellPriceUsd = feeAdjustedPrice(500, POOL_PAIR.expensivePoolFeeUnits, "sell");
+  return adjustedSpread({
+    effectiveBuyPriceUsd,
+    effectiveSellPriceUsd,
+    slippagePct: 0.0005,
+    gasCostUsd: 200_000 * 1.5e-9 * 700,
+    tradeSizeUsd: 200,
+  });
+}
+
+function baseOrder(overrides: Partial<ProposedOrder> = {}): ProposedOrder {
   return {
-    binanceChainId: "56",
-    fromTokenAddress: "0xFrom",
-    toTokenAddress: "0xTo",
-    amount: "200",
-    userWalletAddress: "0xWallet",
-    vendor: "LiquidMesh",
-    autoSlippage: true,
+    ticker: "MSFT",
+    side: "buy",
+    sizeUsd: 200,
+    adjustedSpread: detectedAdjustedSpread(),
+    price: 490,
+    recentTicks: [488, 489, 490],
+    liquidityDepthUsd: 5000,
+    simulatedOutputUsd: 199,
+    poolPair: POOL_PAIR,
+    ...overrides,
   };
 }
 
 function mockWalletClient(overrides: Partial<WalletClient> = {}): WalletClient {
   return {
-    approvalCheck: vi.fn().mockResolvedValue({ needsApproval: false, raw: {} }),
-    dryRun: vi.fn().mockResolvedValue({ outputUsd: 199, unsignedTransaction: { to: "0xRouter", data: "0xdead" }, raw: {} }),
+    checkAllowance: vi.fn().mockResolvedValue({ sufficient: true, currentAllowance: 10n ** 30n }),
+    simulateSwap: vi.fn().mockResolvedValue({ outputUsd: 199, amountOut: 199_000_000_000_000_000_000n, gasEstimate: 150_000n }),
     send: vi.fn().mockResolvedValue({ txId: "0xdeadbeef", raw: {} }),
     ...overrides,
   };
 }
 
-describe("runPipeline — blocked verdicts never reach the wallet", () => {
-  it("does not call approvalCheck/dryRun/send when the daily cap blocks the order", async () => {
+const fetchFreshPoolPrices = () => Promise.resolve(freshPrices());
+// Bypasses unset TRADING_WALLET_PRIVATE_KEY/BSC_RPC_URL credentials —
+// these tests exercise the pipeline's own control flow, not real wallet
+// derivation.
+const getWalletAddress = () => "0x1234567890123456789012345678901234567890";
+
+describe("runPipeline — blocked verdicts never reach the wallet or RPC", () => {
+  it("does not call checkAllowance/simulateSwap/send when the daily cap blocks the order", async () => {
     const walletClient = mockWalletClient();
     const ledger = new AuditLedger();
 
     const entry = await runPipeline(
       baseOrder(),
-      { spentTodaySoFarUsd: 1900, config, walletClient, buildSwapRequest: fakeBuildSwapRequest, ledger },
+      { spentTodaySoFarUsd: 1900, config, walletClient, fetchFreshPoolPrices, getWalletAddress, ledger },
       "live"
     );
 
     expect(entry.outcome).toBe("blocked");
-    expect(walletClient.approvalCheck).not.toHaveBeenCalled();
-    expect(walletClient.dryRun).not.toHaveBeenCalled();
+    expect(walletClient.checkAllowance).not.toHaveBeenCalled();
+    expect(walletClient.simulateSwap).not.toHaveBeenCalled();
     expect(walletClient.send).not.toHaveBeenCalled();
   });
 
-  it("does not call approvalCheck/dryRun/send when the order fails sanity/liquidity, even in live mode", async () => {
+  it("does not call checkAllowance/simulateSwap/send when the order fails sanity/liquidity, even in live mode", async () => {
     const walletClient = mockWalletClient();
     const ledger = new AuditLedger();
 
     const entry = await runPipeline(
       baseOrder({ liquidityDepthUsd: 1 }),
-      { spentTodaySoFarUsd: 0, config, walletClient, buildSwapRequest: fakeBuildSwapRequest, ledger },
+      { spentTodaySoFarUsd: 0, config, walletClient, fetchFreshPoolPrices, getWalletAddress, ledger },
       "live"
     );
 
     expect(entry.outcome).toBe("blocked");
-    expect(walletClient.approvalCheck).not.toHaveBeenCalled();
-    expect(walletClient.dryRun).not.toHaveBeenCalled();
+    expect(walletClient.checkAllowance).not.toHaveBeenCalled();
+    expect(walletClient.simulateSwap).not.toHaveBeenCalled();
+    expect(walletClient.send).not.toHaveBeenCalled();
+  });
+});
+
+describe("runPipeline — spreadFreshnessCheck (MEV/front-running mitigation)", () => {
+  it("blocks as spread_closed when the fresh re-read shows the edge decayed below the retention floor", async () => {
+    const walletClient = mockWalletClient();
+    const ledger = new AuditLedger();
+
+    // Detected spread is inflated to 3x the real fresh value below, so
+    // fresh-vs-detected retention is ~33%, under the default 50% floor.
+    const order = baseOrder({ adjustedSpread: detectedAdjustedSpread() * 3 });
+
+    const entry = await runPipeline(order, { spentTodaySoFarUsd: 0, config, walletClient, fetchFreshPoolPrices, getWalletAddress, ledger }, "live");
+
+    expect(entry.outcome).toBe("spread_closed");
+    expect(entry.freshness?.ok).toBe(false);
+    expect(walletClient.checkAllowance).not.toHaveBeenCalled();
+    expect(walletClient.simulateSwap).not.toHaveBeenCalled();
+    expect(walletClient.send).not.toHaveBeenCalled();
+  });
+
+  it("blocks as spread_closed when the fresh re-read shows the edge has inverted to negative", async () => {
+    const walletClient = mockWalletClient();
+    const ledger = new AuditLedger();
+
+    // Synthetic fresh prices (not a live reading) where the cheap pool is
+    // now MORE expensive than the "expensive" pool — the edge has fully
+    // inverted since detection.
+    const invertedFresh = () =>
+      Promise.resolve({
+        cheapPoolPriceUsd: 510,
+        cheapPoolToken0: STABLECOIN,
+        cheapPoolToken1: TARGET_TOKEN,
+        expensivePoolPriceUsd: 500,
+        expensivePoolToken0: STABLECOIN,
+        expensivePoolToken1: TARGET_TOKEN,
+      } as FreshPoolPrices);
+
+    const entry = await runPipeline(
+      baseOrder(),
+      { spentTodaySoFarUsd: 0, config, walletClient, fetchFreshPoolPrices: invertedFresh, ledger },
+      "live"
+    );
+
+    expect(entry.outcome).toBe("spread_closed");
+    expect(entry.freshness?.reason).toContain("no longer positive");
     expect(walletClient.send).not.toHaveBeenCalled();
   });
 });
@@ -90,43 +176,46 @@ describe("runPipeline — mode gating", () => {
       spentTodaySoFarUsd: 0,
       config,
       walletClient,
-      buildSwapRequest: fakeBuildSwapRequest,
+      fetchFreshPoolPrices,
+      getWalletAddress,
       ledger,
     });
 
     expect(entry.mode).toBe("dry-run");
     expect(entry.outcome).toBe("dry_run_only");
-    expect(walletClient.approvalCheck).toHaveBeenCalledTimes(1);
-    expect(walletClient.dryRun).toHaveBeenCalledTimes(1);
+    expect(walletClient.checkAllowance).toHaveBeenCalledTimes(1);
+    expect(walletClient.simulateSwap).toHaveBeenCalledTimes(1);
     expect(walletClient.send).not.toHaveBeenCalled();
   });
 
-  it("simulation mode never calls the wallet at all for an approved order", async () => {
+  it("simulation mode never calls the wallet or fetches fresh prices at all for an approved order", async () => {
     const walletClient = mockWalletClient();
+    const fetchFreshPoolPricesSpy = vi.fn().mockResolvedValue(freshPrices());
     const ledger = new AuditLedger();
 
     const entry = await runPipeline(
       baseOrder(),
-      { spentTodaySoFarUsd: 0, config, walletClient, buildSwapRequest: fakeBuildSwapRequest, ledger },
+      { spentTodaySoFarUsd: 0, config, walletClient, fetchFreshPoolPrices: fetchFreshPoolPricesSpy, ledger },
       "simulation"
     );
 
     expect(entry.outcome).toBe("simulated");
-    expect(walletClient.approvalCheck).not.toHaveBeenCalled();
-    expect(walletClient.dryRun).not.toHaveBeenCalled();
+    expect(fetchFreshPoolPricesSpy).not.toHaveBeenCalled();
+    expect(walletClient.checkAllowance).not.toHaveBeenCalled();
+    expect(walletClient.simulateSwap).not.toHaveBeenCalled();
     expect(walletClient.send).not.toHaveBeenCalled();
   });
 
-  it("live mode calls approvalCheck, then dryRun, then send, in order, when no approval is needed", async () => {
+  it("live mode calls checkAllowance, then simulateSwap, then send, in order, when no approval is needed", async () => {
     const calls: string[] = [];
     const walletClient: WalletClient = {
-      approvalCheck: vi.fn().mockImplementation(async () => {
-        calls.push("approvalCheck");
-        return { needsApproval: false, raw: {} };
+      checkAllowance: vi.fn().mockImplementation(async () => {
+        calls.push("checkAllowance");
+        return { sufficient: true, currentAllowance: 10n ** 30n };
       }),
-      dryRun: vi.fn().mockImplementation(async () => {
-        calls.push("dryRun");
-        return { outputUsd: 199, unsignedTransaction: { to: "0xRouter", data: "0xdead" }, raw: {} };
+      simulateSwap: vi.fn().mockImplementation(async () => {
+        calls.push("simulateSwap");
+        return { outputUsd: 199, amountOut: 199_000_000_000_000_000_000n, gasEstimate: 150_000n };
       }),
       send: vi.fn().mockImplementation(async () => {
         calls.push("send");
@@ -137,29 +226,33 @@ describe("runPipeline — mode gating", () => {
 
     const entry = await runPipeline(
       baseOrder(),
-      { spentTodaySoFarUsd: 0, config, walletClient, buildSwapRequest: fakeBuildSwapRequest, ledger },
+      { spentTodaySoFarUsd: 0, config, walletClient, fetchFreshPoolPrices, getWalletAddress, ledger },
       "live"
     );
 
-    expect(calls).toEqual(["approvalCheck", "dryRun", "send"]);
+    expect(calls).toEqual(["checkAllowance", "simulateSwap", "send"]);
     expect(entry.outcome).toBe("executed");
     expect(entry.approval).toEqual({ needed: false });
     expect(entry.send).toEqual({ txId: "0xdeadbeef" });
   });
 
-  it("live mode sends the approval transaction first when one is needed, before the swap's dryRun/send", async () => {
+  it("live mode sends the approval transaction first when one is needed, before simulateSwap/send", async () => {
     const calls: string[] = [];
     const walletClient: WalletClient = {
-      approvalCheck: vi.fn().mockImplementation(async () => {
-        calls.push("approvalCheck");
-        return { needsApproval: true, approvalTransaction: { to: "0xToken", data: "0xapprove" }, raw: {} };
+      checkAllowance: vi.fn().mockImplementation(async () => {
+        calls.push("checkAllowance");
+        return { sufficient: false, currentAllowance: 0n, approveTransaction: { to: "0xToken", data: "0xapprove" } };
       }),
-      dryRun: vi.fn().mockImplementation(async () => {
-        calls.push("dryRun");
-        return { outputUsd: 199, unsignedTransaction: { to: "0xRouter", data: "0xswap" }, raw: {} };
+      simulateSwap: vi.fn().mockImplementation(async () => {
+        calls.push("simulateSwap");
+        return { outputUsd: 199, amountOut: 199_000_000_000_000_000_000n, gasEstimate: 150_000n };
       }),
       send: vi.fn().mockImplementation(async (tx) => {
-        calls.push(`send:${tx.data}`);
+        // The approval tx is the fixed "0xapprove" stub above; the swap
+        // tx is real calldata from buildExactInputSingleTransaction() —
+        // distinguish by that, not by asserting its exact bytes (which
+        // depend on amountIn/deadline/etc., not what this test is about).
+        calls.push(tx.data === "0xapprove" ? "send:approve" : "send:swap");
         return { txId: tx.data === "0xapprove" ? "0xapprovaltx" : "0xswaptx" };
       }),
     };
@@ -167,45 +260,45 @@ describe("runPipeline — mode gating", () => {
 
     const entry = await runPipeline(
       baseOrder(),
-      { spentTodaySoFarUsd: 0, config, walletClient, buildSwapRequest: fakeBuildSwapRequest, ledger },
+      { spentTodaySoFarUsd: 0, config, walletClient, fetchFreshPoolPrices, getWalletAddress, ledger },
       "live"
     );
 
-    expect(calls).toEqual(["approvalCheck", "send:0xapprove", "dryRun", "send:0xswap"]);
+    expect(calls).toEqual(["checkAllowance", "send:approve", "simulateSwap", "send:swap"]);
     expect(entry.outcome).toBe("executed");
     expect(entry.approval).toEqual({ needed: true, txId: "0xapprovaltx" });
     expect(entry.send).toEqual({ txId: "0xswaptx" });
   });
 
-  it("live mode stops with approval_failed if the approval transaction can't be sent, and never reaches dryRun/the swap send", async () => {
+  it("live mode stops with approval_failed if the approval transaction can't be sent, and never reaches simulateSwap/the swap send", async () => {
     const walletClient: WalletClient = {
-      approvalCheck: vi.fn().mockResolvedValue({
-        needsApproval: true,
-        approvalTransaction: { to: "0xToken", data: "0xapprove" },
-        raw: {},
+      checkAllowance: vi.fn().mockResolvedValue({
+        sufficient: false,
+        currentAllowance: 0n,
+        approveTransaction: { to: "0xToken", data: "0xapprove" },
       }),
-      dryRun: vi.fn(),
+      simulateSwap: vi.fn(),
       send: vi.fn().mockRejectedValue(new Error("insufficient gas")),
     };
     const ledger = new AuditLedger();
 
     const entry = await runPipeline(
       baseOrder(),
-      { spentTodaySoFarUsd: 0, config, walletClient, buildSwapRequest: fakeBuildSwapRequest, ledger },
+      { spentTodaySoFarUsd: 0, config, walletClient, fetchFreshPoolPrices, getWalletAddress, ledger },
       "live"
     );
 
     expect(entry.outcome).toBe("approval_failed");
     expect(entry.approval).toEqual({ needed: true, error: "insufficient gas" });
-    expect(walletClient.dryRun).not.toHaveBeenCalled();
+    expect(walletClient.simulateSwap).not.toHaveBeenCalled();
   });
 
   it("dry-run mode never sends even when an approval is needed", async () => {
     const walletClient = mockWalletClient({
-      approvalCheck: vi.fn().mockResolvedValue({
-        needsApproval: true,
-        approvalTransaction: { to: "0xToken", data: "0xapprove" },
-        raw: {},
+      checkAllowance: vi.fn().mockResolvedValue({
+        sufficient: false,
+        currentAllowance: 0n,
+        approveTransaction: { to: "0xToken", data: "0xapprove" },
       }),
     });
     const ledger = new AuditLedger();
@@ -214,7 +307,8 @@ describe("runPipeline — mode gating", () => {
       spentTodaySoFarUsd: 0,
       config,
       walletClient,
-      buildSwapRequest: fakeBuildSwapRequest,
+      fetchFreshPoolPrices,
+      getWalletAddress,
       ledger,
     });
 
@@ -224,15 +318,15 @@ describe("runPipeline — mode gating", () => {
     expect(walletClient.send).not.toHaveBeenCalled();
   });
 
-  it("live mode never calls send for the swap when the fresh dry-run output falls below the floor", async () => {
+  it("live mode never calls send for the swap when the fresh simulation output falls below the floor", async () => {
     const walletClient = mockWalletClient({
-      dryRun: vi.fn().mockResolvedValue({ outputUsd: 50, unsignedTransaction: { to: "0xRouter", data: "0xdead" }, raw: {} }),
+      simulateSwap: vi.fn().mockResolvedValue({ outputUsd: 50, amountOut: 50_000_000_000_000_000_000n, gasEstimate: 150_000n }),
     });
     const ledger = new AuditLedger();
 
     const entry = await runPipeline(
       baseOrder(),
-      { spentTodaySoFarUsd: 0, config, walletClient, buildSwapRequest: fakeBuildSwapRequest, ledger },
+      { spentTodaySoFarUsd: 0, config, walletClient, fetchFreshPoolPrices, getWalletAddress, ledger },
       "live"
     );
 
@@ -246,21 +340,32 @@ describe("runPipeline — every outcome produces exactly one ledger entry", () =
     const ledger = new AuditLedger();
     await runPipeline(
       baseOrder(),
-      { spentTodaySoFarUsd: 1900, config, walletClient: mockWalletClient(), buildSwapRequest: fakeBuildSwapRequest, ledger },
+      { spentTodaySoFarUsd: 1900, config, walletClient: mockWalletClient(), fetchFreshPoolPrices, getWalletAddress, ledger },
       "live"
     );
     expect(ledger.readAll()).toHaveLength(1);
     expect(ledger.readAll()[0]?.outcome).toBe("blocked");
   });
 
+  it("spread_closed: exactly one entry", async () => {
+    const ledger = new AuditLedger();
+    await runPipeline(
+      baseOrder({ adjustedSpread: detectedAdjustedSpread() * 3 }),
+      { spentTodaySoFarUsd: 0, config, walletClient: mockWalletClient(), fetchFreshPoolPrices, getWalletAddress, ledger },
+      "live"
+    );
+    expect(ledger.readAll()).toHaveLength(1);
+    expect(ledger.readAll()[0]?.outcome).toBe("spread_closed");
+  });
+
   it("approved + dry-run-failed: exactly one entry", async () => {
     const ledger = new AuditLedger();
     const walletClient = mockWalletClient({
-      dryRun: vi.fn().mockResolvedValue({ outputUsd: 1, unsignedTransaction: { to: "0xRouter", data: "0xdead" }, raw: {} }),
+      simulateSwap: vi.fn().mockResolvedValue({ outputUsd: 1, amountOut: 1_000_000_000_000_000_000n, gasEstimate: 150_000n }),
     });
     await runPipeline(
       baseOrder(),
-      { spentTodaySoFarUsd: 0, config, walletClient, buildSwapRequest: fakeBuildSwapRequest, ledger },
+      { spentTodaySoFarUsd: 0, config, walletClient, fetchFreshPoolPrices, getWalletAddress, ledger },
       "live"
     );
     expect(ledger.readAll()).toHaveLength(1);
@@ -271,7 +376,7 @@ describe("runPipeline — every outcome produces exactly one ledger entry", () =
     const ledger = new AuditLedger();
     await runPipeline(
       baseOrder(),
-      { spentTodaySoFarUsd: 0, config, walletClient: mockWalletClient(), buildSwapRequest: fakeBuildSwapRequest, ledger },
+      { spentTodaySoFarUsd: 0, config, walletClient: mockWalletClient(), fetchFreshPoolPrices, getWalletAddress, ledger },
       "live"
     );
     expect(ledger.readAll()).toHaveLength(1);
@@ -279,44 +384,56 @@ describe("runPipeline — every outcome produces exactly one ledger entry", () =
   });
 });
 
-describe("runPipeline — MSFT ex-div scenario end-to-end in dry-run mode", () => {
-  it("composes Phases 1–3 without modification to earlier phases' code", async () => {
-    const symbol = "MSFT";
-    const preExDivPrice = 420.0;
-    const dividendPerShare = 0.83;
-    const exDivDate = "2025-08-21";
+describe("runPipeline — the real, live MSFTB scenario as of 2026-09-24", () => {
+  it("correctly declines via spreadFreshnessCheck for the current live reading, never reaching allowance/simulation/send", async () => {
+    // Both real, registered MSFTB pools (lib/data/pool-addresses.ts),
+    // read live via a public BSC RPC on 2026-09-24: 0.25% pool $496.3821,
+    // 1% pool $496.9976. Re-reading these two addresses now will very
+    // likely give a different number — real BSC pool prices move (see
+    // lib/data/demo-history.ts's note on 0.3-1.6% intrahour volatility
+    // for this exact pool set) — but as of this reading, net of real
+    // fees+slippage+gas, this pairing is about -1.28%: NOT a clearing
+    // edge. This is the current demo baseline: the only pairing in this
+    // codebase with a live-reproducible number, and it correctly declines.
+    const liveCheapPriceUsd = 496.3821;
+    const liveExpensivePriceUsd = 496.9976;
+    const liveFreshPoolPrices = () =>
+      Promise.resolve({
+        cheapPoolPriceUsd: liveCheapPriceUsd,
+        cheapPoolToken0: STABLECOIN,
+        cheapPoolToken1: TARGET_TOKEN,
+        expensivePoolPriceUsd: liveExpensivePriceUsd,
+        expensivePoolToken0: STABLECOIN,
+        expensivePoolToken1: TARGET_TOKEN,
+      } as FreshPoolPrices);
 
-    const priceReturnPrice = preExDivPrice - dividendPerShare;
-    const ondoPrice = preExDivPrice;
+    const liveAdjustedSpread = adjustedSpread({
+      effectiveBuyPriceUsd: feeAdjustedPrice(liveCheapPriceUsd, POOL_PAIR.cheapPoolFeeUnits, "buy"),
+      effectiveSellPriceUsd: feeAdjustedPrice(liveExpensivePriceUsd, POOL_PAIR.expensivePoolFeeUnits, "sell"),
+      slippagePct: 0.0005,
+      gasCostUsd: 200_000 * 1.5e-9 * 700,
+      tradeSizeUsd: 200,
+    });
+    expect(liveAdjustedSpread).toBeCloseTo(-0.0128, 3);
 
-    const accrued = accruedDividend(symbol, exDivDate);
-    const navEq = navEquivalent(ondoPrice, accrued);
-    const spread = adjustedSpread(navEq, priceReturnPrice);
-    expect(Math.abs(spread)).toBeLessThan(0.0005);
-
-    const order: ProposedOrder = {
-      ticker: symbol,
-      side: "buy",
-      sizeUsd: 200,
-      adjustedSpread: spread,
-      price: priceReturnPrice,
-      recentTicks: [preExDivPrice - dividendPerShare - 1, preExDivPrice - dividendPerShare, priceReturnPrice],
-      liquidityDepthUsd: 5000,
-      simulatedOutputUsd: 199,
-    };
-
+    const order = baseOrder({ adjustedSpread: liveAdjustedSpread, price: liveCheapPriceUsd });
     const walletClient = mockWalletClient();
     const ledger = new AuditLedger();
 
     const entry = await runPipeline(
       order,
-      { spentTodaySoFarUsd: 0, config, walletClient, buildSwapRequest: fakeBuildSwapRequest, ledger },
+      { spentTodaySoFarUsd: 0, config, walletClient, fetchFreshPoolPrices: liveFreshPoolPrices, getWalletAddress, ledger },
       "dry-run"
     );
 
+    // check() itself doesn't gate on spread sign, so the guardrail verdict
+    // is still approved — the freshness re-check is what correctly
+    // declines this trade before it ever reaches the wallet.
     expect(entry.verdict.approved).toBe(true);
-    expect(entry.outcome).toBe("dry_run_only");
-    expect(walletClient.dryRun).toHaveBeenCalledTimes(1);
+    expect(entry.outcome).toBe("spread_closed");
+    expect(entry.freshness?.ok).toBe(false);
+    expect(walletClient.checkAllowance).not.toHaveBeenCalled();
+    expect(walletClient.simulateSwap).not.toHaveBeenCalled();
     expect(walletClient.send).not.toHaveBeenCalled();
     expect(ledger.readAll()).toHaveLength(1);
   });

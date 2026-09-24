@@ -121,7 +121,7 @@ export const MVP_UNDERLYINGS = ["NVDA", "AAPL", "MSFT", "TSLA"] as const;
 // on-chain token0()/token1() reads this session). If a future pool pairs
 // against a different stablecoin, PoolDescriptor would need its own
 // stablecoin field rather than assuming this one constant.
-const BSC_USDT_ADDRESS: Address = "0x55d398326f99059fF775485246999027B3197955";
+export const BSC_USDT_ADDRESS: Address = "0x55d398326f99059fF775485246999027B3197955";
 
 // Reads live prices for every known PancakeSwap V3 pool of a ticker's
 // token — the new detection unit, replacing the single aggregated quote

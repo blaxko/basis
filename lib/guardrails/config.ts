@@ -9,6 +9,17 @@ export interface GuardrailConfig {
   minDryRunOutputRatio: number;
   maxPriceDeviationPct: number;
   minLiquidityDepthUsd: number;
+  // The fresh, immediately-pre-send cross-pool spread must retain at
+  // least this fraction of the originally detected spread — the MEV/
+  // front-running mitigation for bypassing Binance's aggregator (which
+  // would otherwise absorb this risk). A ratio, not an absolute bps
+  // threshold, matching minDryRunOutputRatio's pattern: real edges here
+  // are small fractions of a percent, so an absolute cutoff would need
+  // constant re-tuning per pairing, while a retention ratio generalizes.
+  // 0.5 is a starting point (fresh edge must still be at least half the
+  // detected edge), not empirically tuned — review once live spread
+  // volatility over a real detection-to-send window is observed.
+  minSpreadRetentionRatio: number;
 }
 
 export const DEFAULT_GUARDRAIL_CONFIG: GuardrailConfig = {
@@ -17,4 +28,5 @@ export const DEFAULT_GUARDRAIL_CONFIG: GuardrailConfig = {
   minDryRunOutputRatio: 0.98,
   maxPriceDeviationPct: 0.05,
   minLiquidityDepthUsd: 1000,
+  minSpreadRetentionRatio: 0.5,
 };

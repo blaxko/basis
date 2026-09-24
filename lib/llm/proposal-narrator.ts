@@ -10,15 +10,21 @@ export interface BasisOpportunity {
   proposedSizeUsd: number;
 }
 
-const DRIFT_SUPPRESSION_EPSILON = 0.0005;
+const NO_EDGE_EPSILON = 0.0005;
 
-function describeLeg(adjustedSpread: number): string {
-  if (Math.abs(adjustedSpread) < DRIFT_SUPPRESSION_EPSILON) {
-    return "no meaningful spread after dividend-adjustment (structural drift correctly suppressed)";
+// adjustedSpread here is the net edge (after both pools' fees, slippage,
+// and gas) — not a raw price diff. Positive means the gap genuinely
+// survives real costs; this function doesn't know which pool is cheap,
+// only whether the net number is worth anything, which is the caller's
+// (agent-loop.ts's) job to have already decided before constructing
+// this opportunity in the first place.
+function describeEdge(adjustedSpread: number): string {
+  if (Math.abs(adjustedSpread) < NO_EDGE_EPSILON) {
+    return "no meaningful net edge after fees, slippage, and gas";
   }
   return adjustedSpread > 0
-    ? "price-return leg (xStocks/bStocks) cheap"
-    : "total-return leg (Ondo) cheap";
+    ? "a real net edge survives costs"
+    : "the raw gap does not survive costs";
 }
 
 function describeDecision(verdict: GuardrailVerdict, proposedSizeUsd: number): string {
@@ -34,8 +40,8 @@ function describeDecision(verdict: GuardrailVerdict, proposedSizeUsd: number): s
 // order back out of this function.
 export function narrateProposal(opportunity: BasisOpportunity, verdict: GuardrailVerdict): string {
   const spreadPct = (opportunity.adjustedSpread * 100).toFixed(2);
-  const legDescription = describeLeg(opportunity.adjustedSpread);
+  const edgeDescription = describeEdge(opportunity.adjustedSpread);
   const decision = describeDecision(verdict, opportunity.proposedSizeUsd);
 
-  return `${opportunity.ticker}: ${spreadPct}% adjusted spread after dividend accrual, ${legDescription}, proposed size $${opportunity.proposedSizeUsd} — ${decision}.`;
+  return `${opportunity.ticker}: ${spreadPct}% net spread after fees/slippage/gas, ${edgeDescription}, proposed size $${opportunity.proposedSizeUsd} — ${decision}.`;
 }

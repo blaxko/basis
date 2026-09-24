@@ -1,4 +1,4 @@
-import { createPublicClient, http, type Address } from "viem";
+import { createPublicClient, http, encodeFunctionData, type Address } from "viem";
 import { bsc } from "viem/chains";
 
 // Addresses and ABIs below are sourced from PancakeSwap's own developer
@@ -12,6 +12,18 @@ import { bsc } from "viem/chains";
 //     fork of Uniswap V3's periphery contracts), cross-checked via
 //     public BscScan verified source at the address above.
 export const PANCAKESWAP_V3_QUOTER_V2_ADDRESS: Address = "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997";
+
+// PancakeSwap V3's pure single-pool SwapRouter — deliberately NOT the
+// "Smart Router" (0x13f4EA83D0bd40E75C8222255bc855a974568Dd4), which does
+// its own routing across v2/v3/stable pools and would reintroduce
+// exactly the auto-routing-erases-the-gap problem this whole direct-pool
+// path exists to bypass. Confirmed two ways: (1) developer.pancakeswap.finance/
+// contracts/v3/addresses labels this address "SwapRouter (v3)", separate
+// from "Smart Router"; (2) the verified ABI (below) was pulled directly
+// from Sourcify (sourcify.dev), chain 56, this exact address — not a
+// docs paraphrase — confirming `internalType: "struct ISwapRouter.ExactInputSingleParams"`,
+// a pure-V3 interface with no aggregation logic.
+export const PANCAKESWAP_V3_SWAP_ROUTER_ADDRESS: Address = "0x1b81D678ffb9C0263b24A97847620C99d213eB14";
 
 export const PANCAKE_V3_POOL_ABI = [
   {
@@ -38,6 +50,94 @@ export const PANCAKE_V3_POOL_ABI = [
 const ERC20_DECIMALS_ABI = [
   { type: "function", name: "decimals", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
 ] as const;
+
+// Standard ERC-20 allowance()/approve() — not PancakeSwap-specific, the
+// same two functions on every compliant token contract. No research risk
+// here the way the SwapRouter struct had: this is the most conventional
+// possible ABI shape.
+export const ERC20_ALLOWANCE_ABI = [
+  {
+    type: "function",
+    name: "allowance",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "approve",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "spender", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ type: "bool" }],
+  },
+] as const;
+
+// Conventional sentinel address (used by several DEX routers/aggregators,
+// e.g. 1inch/Paraswap) to mean "native BNB" in a tokenIn/tokenOut slot —
+// it is not itself an ERC-20 contract, so allowance()/approve() are
+// meaningless against it. Nothing in this codebase currently produces a
+// native-BNB leg (both registered MSFTB pools are ERC-20/ERC-20), but
+// checkAllowance() below guards for it explicitly rather than letting a
+// future native leg silently attempt a contract call against a
+// non-contract address.
+export const NATIVE_TOKEN_SENTINEL: Address = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+
+export async function getErc20Decimals(tokenAddress: Address): Promise<number> {
+  const client = getPublicClient();
+  return client.readContract({ address: tokenAddress, abi: ERC20_DECIMALS_ABI, functionName: "decimals" });
+}
+
+export interface AllowanceCheckResult {
+  sufficient: boolean;
+  currentAllowance: bigint;
+  // Present only when sufficient is false — an unsigned approve() tx to
+  // sign and send before the swap itself.
+  approveTransaction?: UnsignedTransaction;
+}
+
+// Replaces the old Binance-aggregator-based approvalCheck() for the
+// direct-pool execution path: reads the real on-chain allowance the
+// trading wallet has granted to spenderAddress (PancakeSwap V3's
+// SwapRouter, in practice) and builds a real approve() transaction if
+// it's insufficient. No guessed response shape — this is a plain
+// eth_call read plus locally-encoded calldata, not a third-party API
+// response format.
+export async function checkAllowance(params: {
+  tokenAddress: Address;
+  ownerAddress: Address;
+  spenderAddress: Address;
+  amountRequired: bigint;
+}): Promise<AllowanceCheckResult> {
+  if (params.tokenAddress.toLowerCase() === NATIVE_TOKEN_SENTINEL.toLowerCase()) {
+    return { sufficient: true, currentAllowance: 0n };
+  }
+
+  const client = getPublicClient();
+  const currentAllowance = await client.readContract({
+    address: params.tokenAddress,
+    abi: ERC20_ALLOWANCE_ABI,
+    functionName: "allowance",
+    args: [params.ownerAddress, params.spenderAddress],
+  });
+
+  if (currentAllowance >= params.amountRequired) {
+    return { sufficient: true, currentAllowance };
+  }
+
+  const data = encodeFunctionData({
+    abi: ERC20_ALLOWANCE_ABI,
+    functionName: "approve",
+    args: [params.spenderAddress, params.amountRequired],
+  });
+
+  return { sufficient: false, currentAllowance, approveTransaction: { to: params.tokenAddress, data } };
+}
 
 export const QUOTER_V2_ABI = [
   {
@@ -69,6 +169,36 @@ export const QUOTER_V2_ABI = [
       { name: "initializedTicksCrossed", type: "uint32" },
       { name: "gasEstimate", type: "uint256" },
     ],
+  },
+] as const;
+
+// Verified directly from Sourcify (sourcify.dev/server/v2/contract/56/0x1b81D678ffb9C0263b24A97847620C99d213eB14),
+// NOT from a docs page (an earlier version of this plan cited a docs
+// summary that omitted `deadline` entirely — an 8-field struct read as
+// 7 fields, which would have encoded "successfully" and only failed at
+// broadcast time). This is the literal verified ABI entry.
+export const V3_SWAP_ROUTER_ABI = [
+  {
+    type: "function",
+    name: "exactInputSingle",
+    stateMutability: "payable",
+    inputs: [
+      {
+        name: "params",
+        type: "tuple",
+        components: [
+          { name: "tokenIn", type: "address" },
+          { name: "tokenOut", type: "address" },
+          { name: "fee", type: "uint24" },
+          { name: "recipient", type: "address" },
+          { name: "deadline", type: "uint256" },
+          { name: "amountIn", type: "uint256" },
+          { name: "amountOutMinimum", type: "uint256" },
+          { name: "sqrtPriceLimitX96", type: "uint160" },
+        ],
+      },
+    ],
+    outputs: [{ name: "amountOut", type: "uint256" }],
   },
 ] as const;
 
@@ -234,4 +364,61 @@ export async function simulateSwapOutput(params: {
   });
 
   return { amountOut, gasEstimate };
+}
+
+// Deliberately structurally identical to lib/execution/agentic-wallet.ts's
+// own UnsignedTransaction, not imported from it — this is the data
+// layer, agentic-wallet.ts is the execution layer that depends on it, so
+// importing agentic-wallet.ts's type here would invert that dependency
+// (and risk a real circular import, since agentic-wallet.ts is the one
+// that will import buildExactInputSingleTransaction from this file).
+// TypeScript's structural typing makes the two interchangeable without
+// any explicit conversion.
+export interface UnsignedTransaction {
+  to: string;
+  data: string;
+  value?: string;
+}
+
+// Encodes a direct, single-pool PancakeSwap V3 swap via the pure
+// SwapRouter (PANCAKESWAP_V3_SWAP_ROUTER_ADDRESS above) — never the
+// aggregating Smart Router. Read-only encoding, no network call: the
+// resulting UnsignedTransaction plugs into lib/execution/agentic-wallet.ts's
+// existing send() (sign locally via viem, broadcast via BSC_RPC_URL)
+// unchanged — this function only builds calldata.
+//
+// `deadlineSecondsFromNow` is injectable (defaults to 600s / 10 minutes,
+// a conventional DEX default) so tests can assert against a fixed
+// deadline rather than a moving `Date.now()`.
+export function buildExactInputSingleTransaction(params: {
+  tokenIn: Address;
+  tokenOut: Address;
+  feeUnits: number;
+  recipient: Address;
+  amountIn: bigint;
+  amountOutMinimum: bigint;
+  deadlineSecondsFromNow?: number;
+  now?: () => number;
+}): UnsignedTransaction {
+  const now = params.now ?? Date.now;
+  const deadline = BigInt(Math.floor(now() / 1000) + (params.deadlineSecondsFromNow ?? 600));
+
+  const data = encodeFunctionData({
+    abi: V3_SWAP_ROUTER_ABI,
+    functionName: "exactInputSingle",
+    args: [
+      {
+        tokenIn: params.tokenIn,
+        tokenOut: params.tokenOut,
+        fee: params.feeUnits,
+        recipient: params.recipient,
+        deadline,
+        amountIn: params.amountIn,
+        amountOutMinimum: params.amountOutMinimum,
+        sqrtPriceLimitX96: 0n,
+      },
+    ],
+  });
+
+  return { to: PANCAKESWAP_V3_SWAP_ROUTER_ADDRESS, data };
 }

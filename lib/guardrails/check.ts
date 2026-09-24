@@ -3,6 +3,21 @@ import { DEFAULT_GUARDRAIL_CONFIG, type GuardrailConfig } from "./config";
 
 export type Side = "buy" | "sell";
 
+// The cross-pool arbitrage is inherently two-legged (buy cheap, sell
+// expensive) — required, not optional, so every downstream consumer
+// (check(), spreadFreshnessCheck's pipeline wiring, buildSwapRequest())
+// can rely on it existing rather than handling a missing case. Both
+// construction sites (lib/orchestration/agent-loop.ts's automatic
+// detection, lib/orchestration/handle-instruction.ts's manual resolution
+// step) are responsible for populating this correctly before a
+// ProposedOrder can exist at all — there is no partially-built order.
+export interface PoolPair {
+  cheapPoolAddress: string;
+  cheapPoolFeeUnits: number;
+  expensivePoolAddress: string;
+  expensivePoolFeeUnits: number;
+}
+
 // A structured order the LLM/opportunity layer proposes. The gate never
 // sees a wallet, a signer, or a transaction — only this plain data.
 export interface ProposedOrder {
@@ -16,6 +31,7 @@ export interface ProposedOrder {
   // Modeled input, standing in for a real dry-run/simulation API call
   // (PRD rule 3) — this phase never calls one.
   simulatedOutputUsd: number;
+  poolPair: PoolPair;
 }
 
 // Caller-supplied context the gate needs but must not compute itself,
@@ -119,6 +135,40 @@ export function dryRunFloorCheck(order: ProposedOrder, config: GuardrailConfig):
     };
   }
   return { name: "dryRunFloor", ok: true };
+}
+
+// Named check 5: NOT part of check()'s own array below, on purpose —
+// unlike the other four, this one needs a value (freshSpread) that only
+// exists after a live re-read, which check() itself must never perform
+// (it has to stay pure). Same pattern as dryRunFloorCheck's reuse in
+// lib/execution/pipeline.ts as a belt-and-suspenders re-check against
+// freshly-observed data: pipeline.ts re-reads both pools immediately
+// before send() and calls this directly. The MEV/front-running
+// mitigation for bypassing Binance's aggregator — fails closed if the
+// edge has decayed past the retention floor or inverted outright.
+export function spreadFreshnessCheck(
+  detectedSpread: number,
+  freshSpread: number,
+  config: GuardrailConfig
+): GuardrailCheckResult {
+  if (freshSpread <= 0) {
+    return {
+      name: "spreadFreshness",
+      ok: false,
+      reason: `fresh spread ${(freshSpread * 100).toFixed(4)}% is no longer positive — the edge has closed or inverted since detection`,
+    };
+  }
+
+  const retention = detectedSpread > 0 ? freshSpread / detectedSpread : 0;
+  if (retention < config.minSpreadRetentionRatio) {
+    return {
+      name: "spreadFreshness",
+      ok: false,
+      reason: `fresh spread ${(freshSpread * 100).toFixed(4)}% retains only ${(retention * 100).toFixed(1)}% of the detected spread ${(detectedSpread * 100).toFixed(4)}%, below the required ${(config.minSpreadRetentionRatio * 100).toFixed(0)}% retention floor`,
+    };
+  }
+
+  return { name: "spreadFreshness", ok: true };
 }
 
 // The gate. Pure and side-effect-free: no wallet calls, no network calls,
