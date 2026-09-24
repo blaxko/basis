@@ -12,18 +12,29 @@ export type PipelineOutcome =
   | "blocked"
   | "error"
   | "simulated"
+  | "no_edge"
+  | "spread_closed"
+  | "approval_failed"
   | "dry_run_failed"
   | "dry_run_only"
   | "executed"
   | "send_failed";
 
+export type LedgerOutcome = PipelineOutcome | "no_opportunity";
+
 export interface StatusResponse {
-  binanceWeb3Api: { configured: boolean };
   groq: { configured: boolean };
   bscRpc: { configured: boolean };
-  agenticWallet: { configured: boolean };
+  tradingWallet: { configured: boolean };
   wallet: { tradingCapitalUsd: number | null; operatingBudgetUsd: number | null; reason?: string };
   killswitch: PipelineMode;
+}
+
+export interface PoolPair {
+  cheapPoolAddress: string;
+  cheapPoolFeeUnits: number;
+  expensivePoolAddress: string;
+  expensivePoolFeeUnits: number;
 }
 
 export interface ProposedOrder {
@@ -35,6 +46,7 @@ export interface ProposedOrder {
   recentTicks: number[];
   liquidityDepthUsd: number;
   simulatedOutputUsd: number;
+  poolPair: PoolPair;
 }
 
 export interface GuardrailCheckResult {
@@ -54,22 +66,37 @@ export interface GuardrailVerdict {
   input: ProposedOrder;
 }
 
+export interface PoolLeg {
+  address: string;
+  priceUsd: number;
+  feeUnits: number;
+  liquidityUsdEstimate: number;
+}
+
 export interface UnderlyingSpread {
   ticker: string;
-  priceReturnPrice: number;
-  totalReturnPrice: number;
-  navEquivalentPrice: number;
-  liquidityDepthUsd: number;
+  cheapPool: PoolLeg;
+  expensivePool: PoolLeg;
   rawSpread: number;
   adjustedSpread: number;
 }
 
 export interface SpreadHistoryPoint {
-  date: string;
-  priceReturnPrice: number;
-  totalReturnPrice: number;
+  timestamp: string;
+  cheapPoolPriceUsd: number;
+  cheapPoolFeeUnits: number;
+  expensivePoolPriceUsd: number;
+  expensivePoolFeeUnits: number;
   rawSpread: number;
   adjustedSpread: number;
+}
+
+// "live": every automatic evaluation the scheduler recorded in the audit
+// ledger this server session. "historical": the seeded fixture
+// (lib/data/demo-history.ts), shown only when no live evaluation exists.
+export interface SpreadSeries {
+  source: "live" | "historical";
+  points: SpreadHistoryPoint[];
 }
 
 export interface PreviewOpportunity {
@@ -82,19 +109,50 @@ export interface PreviewOpportunity {
 export interface OpportunitiesResponse {
   spreads: UnderlyingSpread[];
   opportunities: PreviewOpportunity[];
-  history: Record<string, SpreadHistoryPoint[]>;
+  history: Record<string, SpreadSeries>;
+  threshold: number;
   error?: string;
 }
 
-export interface AuditLedgerEntry {
+export interface PoolReading {
+  address: string;
+  feeUnits: number;
+  priceUsd: number;
+}
+
+export interface DetectionSnapshot {
+  ticker: string;
+  cheapPool: PoolReading;
+  expensivePool: PoolReading;
+  grossGap: number;
+  netEdge: number;
+  threshold: number;
+}
+
+export interface PipelineLedgerEntry {
+  kind: "pipeline";
   id: string;
   timestamp: number;
   mode: PipelineMode;
   outcome: PipelineOutcome;
   verdict: GuardrailVerdict;
+  detection?: DetectionSnapshot;
+  freshness?: { freshSpread: number; ok: boolean; reason?: string };
+  approval?: { needed: boolean; txId?: string; error?: string };
   dryRun?: { outputUsd: number; ok: boolean; reason?: string };
   send?: { txId: string } | { error: string };
 }
+
+export interface NoOpportunityLedgerEntry {
+  kind: "detection";
+  id: string;
+  timestamp: number;
+  mode: PipelineMode;
+  outcome: "no_opportunity";
+  detection: DetectionSnapshot;
+}
+
+export type AuditLedgerEntry = PipelineLedgerEntry | NoOpportunityLedgerEntry;
 
 export interface LedgerResponse {
   entries: AuditLedgerEntry[];

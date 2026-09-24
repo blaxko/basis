@@ -1,59 +1,88 @@
 import { NextResponse } from "next/server";
-import { previewOpportunities, DEFAULT_AGENT_LOOP_CONFIG, type UnderlyingSpread } from "../../../lib/orchestration/agent-loop";
+import { previewOpportunities, DEFAULT_AGENT_LOOP_CONFIG } from "../../../lib/orchestration/agent-loop";
 import { getDemoHistory, type SpreadHistoryPoint } from "../../../lib/data/demo-history";
+import { defaultLedger, type AuditLedgerEntry } from "../../../lib/execution/audit-ledger";
+
+// About an hour of scheduler ticks at the default 30s interval.
+const MAX_LIVE_POINTS = 120;
+
+// Three dashboard panels poll this route every 10–15s, and each live
+// preview is ~12 RPC reads. Without sharing, a public RPC starts timing
+// out (observed in testing) and every panel stalls. Concurrent polls
+// share one in-flight read, and a result is reused for 10s. Failures are
+// never cached.
+const PREVIEW_TTL_MS = 10_000;
+type Preview = Awaited<ReturnType<typeof previewOpportunities>>;
+let cachedPreview: { at: number; value: Preview } | null = null;
+let inflightPreview: Promise<Preview> | null = null;
+
+function getPreview(): Promise<Preview> {
+  if (cachedPreview && Date.now() - cachedPreview.at < PREVIEW_TTL_MS) {
+    return Promise.resolve(cachedPreview.value);
+  }
+  inflightPreview ??= previewOpportunities()
+    .then((value) => {
+      cachedPreview = { at: Date.now(), value };
+      return value;
+    })
+    .finally(() => {
+      inflightPreview = null;
+    });
+  return inflightPreview;
+}
 
 // Read-only by construction: previewOpportunities() calls check() (pure)
-// for a live-accurate verdict, but never runPipeline() — a GET must
-// never be able to trigger a guardrail/pipeline run or move money.
+// for a live-accurate verdict, but never runPipeline(), and reading the
+// ledger never writes to it — a GET must never trigger a pipeline run.
 //
-// `history` is separate from `spreads`/`opportunities`: it's seeded demo
-// data (lib/data/demo-history.ts) for underlyings we have it for (MSFT),
-// run through the real Basis Model functions, not live-fetched — so it's
-// available even when BINANCE_WEB3_API_* credentials aren't configured,
-// specifically so the NAV Spread Monitor's ex-div contrast is still
-// demonstrable without live credentials.
+// `history` per ticker is either:
+//   - "live": every automatic evaluation the scheduler recorded in the
+//     audit ledger this server session, so each chart point matches a
+//     ledger row; or
+//   - "historical": the seeded fixture in lib/data/demo-history.ts
+//     (dated 2026-09-18 → 09-21), used only when no live evaluation
+//     exists yet, e.g. BSC_RPC_URL isn't configured.
 export async function GET() {
-  const history: Record<string, SpreadHistoryPoint[]> = {};
+  const history: Record<string, { source: "live" | "historical"; points: SpreadHistoryPoint[] }> = {};
+  const entries = defaultLedger.readAll();
+
   for (const ticker of DEFAULT_AGENT_LOOP_CONFIG.underlyings) {
-    history[ticker] = getDemoHistory(ticker);
+    const live = entries
+      .filter((entry) => entry.detection?.ticker === ticker)
+      .slice(-MAX_LIVE_POINTS)
+      .map(toHistoryPoint);
+    history[ticker] = live.length > 0 ? { source: "live", points: live } : { source: "historical", points: getDemoHistory(ticker) };
   }
 
+  const threshold = DEFAULT_AGENT_LOOP_CONFIG.adjustedSpreadThreshold;
+
   try {
-    const { spreads, opportunities } = await previewOpportunities();
-
-    // Underlyings with no seeded series (everything but MSFT, currently)
-    // fall back to their single live point, so the chart still has
-    // something to plot per ticker.
-    for (const spread of spreads) {
-      if (history[spread.ticker]!.length === 0) {
-        history[spread.ticker] = [liveSpreadAsHistoryPoint(spread)];
-      }
-    }
-
-    return NextResponse.json({ spreads, opportunities, history });
+    const { spreads, opportunities } = await getPreview();
+    return NextResponse.json({ spreads, opportunities, history, threshold });
   } catch (err) {
-    // Live quote fetch failed (e.g. NotImplemented — no credentials
-    // configured yet). The seeded history is still real and still
-    // returned; spreads/opportunities come back empty with an error
-    // message, never a fabricated live value. Message text only — never
-    // the raw error object, which could carry env var names.
+    // Live pool read failed (e.g. BSC_RPC_URL not configured). History is
+    // still returned; spreads/opportunities come back empty with the
+    // error message, never a fabricated live value. Message text only —
+    // never the raw error object, which could carry env var names.
     return NextResponse.json({
       spreads: [],
       opportunities: [],
       history,
+      threshold,
       error: err instanceof Error ? err.message : "failed to compute live spreads",
     });
   }
 }
 
-function liveSpreadAsHistoryPoint(spread: UnderlyingSpread): SpreadHistoryPoint {
+function toHistoryPoint(entry: AuditLedgerEntry): SpreadHistoryPoint {
+  const detection = entry.detection!;
   return {
-    timestamp: new Date().toISOString(),
-    cheapPoolPriceUsd: spread.cheapPool.priceUsd,
-    cheapPoolFeeUnits: spread.cheapPool.feeUnits,
-    expensivePoolPriceUsd: spread.expensivePool.priceUsd,
-    expensivePoolFeeUnits: spread.expensivePool.feeUnits,
-    rawSpread: spread.rawSpread,
-    adjustedSpread: spread.adjustedSpread,
+    timestamp: new Date(entry.timestamp).toISOString(),
+    cheapPoolPriceUsd: detection.cheapPool.priceUsd,
+    cheapPoolFeeUnits: detection.cheapPool.feeUnits,
+    expensivePoolPriceUsd: detection.expensivePool.priceUsd,
+    expensivePoolFeeUnits: detection.expensivePool.feeUnits,
+    rawSpread: detection.grossGap,
+    adjustedSpread: detection.netEdge,
   };
 }

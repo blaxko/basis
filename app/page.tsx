@@ -1,5 +1,5 @@
 import { Header } from "../components/header";
-import { NavSpreadMonitor } from "../components/nav-spread-monitor";
+import { PoolSpreadMonitor } from "../components/pool-spread-monitor";
 import { AdvisoryFeed } from "../components/advisory-feed";
 import { GuardrailChecklist } from "../components/guardrail-checklist";
 import { AuditLedger } from "../components/audit-ledger";
@@ -9,7 +9,7 @@ export default function Home() {
     <main className="dashboard">
       <Header />
       <div className="bento-grid">
-        <NavSpreadMonitor />
+        <PoolSpreadMonitor />
         <AdvisoryFeed />
         <GuardrailChecklist />
         <AuditLedger />

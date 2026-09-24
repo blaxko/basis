@@ -16,12 +16,11 @@ export function GuardrailChecklist() {
 
   // Primary source: the freshest live preview verdict, paired with
   // whatever the Advisory Feed is currently showing. Falls back to the
-  // most recent actual ledger entry when nothing is currently triggered
-  // (the automatic loop isn't wired to any route yet, so the ledger can
-  // otherwise sit empty for the whole session unless a manual
-  // instruction was submitted).
+  // most recent ledger entry that actually went through the gate —
+  // detection ("no_opportunity") entries have no verdict, because no
+  // order was built.
   const previewVerdict = opportunities.data?.opportunities?.[0]?.verdict ?? null;
-  const latestLedgerVerdict = ledger.data?.entries?.[0]?.verdict ?? null;
+  const latestLedgerVerdict = ledger.data?.entries?.find((e) => e.kind === "pipeline")?.verdict ?? null;
   const verdict: GuardrailVerdict | null = previewVerdict ?? latestLedgerVerdict;
 
   const loading = opportunities.loading && ledger.loading && !verdict;

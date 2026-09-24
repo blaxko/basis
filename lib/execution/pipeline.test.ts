@@ -385,7 +385,7 @@ describe("runPipeline — every outcome produces exactly one ledger entry", () =
 });
 
 describe("runPipeline — the real, live MSFTB scenario as of 2026-09-24", () => {
-  it("correctly declines via spreadFreshnessCheck for the current live reading, never reaching allowance/simulation/send", async () => {
+  it("an order built from the current live reading stops as no_edge, never reaching the re-read, allowance, simulation, or send", async () => {
     // Both real, registered MSFTB pools (lib/data/pool-addresses.ts),
     // read live via a public BSC RPC on 2026-09-24: 0.25% pool $496.3821,
     // 1% pool $496.9976. Re-reading these two addresses now will very
@@ -418,23 +418,74 @@ describe("runPipeline — the real, live MSFTB scenario as of 2026-09-24", () =>
 
     const order = baseOrder({ adjustedSpread: liveAdjustedSpread, price: liveCheapPriceUsd });
     const walletClient = mockWalletClient();
+    const fetchFreshPoolPricesSpy = vi.fn(liveFreshPoolPrices);
     const ledger = new AuditLedger();
 
     const entry = await runPipeline(
       order,
-      { spentTodaySoFarUsd: 0, config, walletClient, fetchFreshPoolPrices: liveFreshPoolPrices, getWalletAddress, ledger },
+      { spentTodaySoFarUsd: 0, config, walletClient, fetchFreshPoolPrices: fetchFreshPoolPricesSpy, getWalletAddress, ledger },
       "dry-run"
     );
 
-    // check() itself doesn't gate on spread sign, so the guardrail verdict
-    // is still approved — the freshness re-check is what correctly
-    // declines this trade before it ever reaches the wallet.
+    // check() doesn't gate on spread sign, so the verdict is approved; the
+    // no_edge gate right after it declines. The automatic loop would never
+    // have built this order (see agent-loop.test.ts); this is what a manual
+    // instruction against the live reading gets.
     expect(entry.verdict.approved).toBe(true);
-    expect(entry.outcome).toBe("spread_closed");
-    expect(entry.freshness?.ok).toBe(false);
+    expect(entry.outcome).toBe("no_edge");
+    expect(entry.freshness).toBeUndefined();
+    expect(fetchFreshPoolPricesSpy).not.toHaveBeenCalled();
     expect(walletClient.checkAllowance).not.toHaveBeenCalled();
     expect(walletClient.simulateSwap).not.toHaveBeenCalled();
     expect(walletClient.send).not.toHaveBeenCalled();
     expect(ledger.readAll()).toHaveLength(1);
+  });
+});
+
+describe("runPipeline — no_edge gate", () => {
+  it("a zero net edge is not an edge", async () => {
+    const entry = await runPipeline(
+      baseOrder({ adjustedSpread: 0 }),
+      { spentTodaySoFarUsd: 0, config, walletClient: mockWalletClient(), fetchFreshPoolPrices, getWalletAddress, ledger: new AuditLedger() },
+      "live"
+    );
+    expect(entry.outcome).toBe("no_edge");
+  });
+
+  it("applies in simulation mode too, so a non-positive edge is never reported as simulated", async () => {
+    const entry = await runPipeline(
+      baseOrder({ adjustedSpread: -0.01 }),
+      { spentTodaySoFarUsd: 0, config, walletClient: mockWalletClient(), fetchFreshPoolPrices, getWalletAddress, ledger: new AuditLedger() },
+      "simulation"
+    );
+    expect(entry.outcome).toBe("no_edge");
+  });
+
+  it("runs after the guardrails: an oversized non-positive-edge order is still a guardrail block", async () => {
+    const entry = await runPipeline(
+      baseOrder({ adjustedSpread: -0.01, sizeUsd: 5000, simulatedOutputUsd: 5000 }),
+      { spentTodaySoFarUsd: 0, config, walletClient: mockWalletClient(), fetchFreshPoolPrices, getWalletAddress, ledger: new AuditLedger() },
+      "live"
+    );
+    expect(entry.outcome).toBe("blocked");
+    expect(entry.verdict.blockedBy).toBe("perTradeCap");
+  });
+
+  it("carries a detection snapshot onto the entry when one is supplied", async () => {
+    const detection = {
+      ticker: "MSFT",
+      cheapPool: { address: POOL_PAIR.cheapPoolAddress, feeUnits: 2500, priceUsd: 490 },
+      expensivePool: { address: POOL_PAIR.expensivePoolAddress, feeUnits: 10000, priceUsd: 500 },
+      grossGap: (500 - 490) / 490,
+      netEdge: detectedAdjustedSpread(),
+      threshold: 0.0001,
+    };
+    const entry = await runPipeline(
+      baseOrder(),
+      { spentTodaySoFarUsd: 0, config, walletClient: mockWalletClient(), fetchFreshPoolPrices, getWalletAddress, detection, ledger: new AuditLedger() },
+      "dry-run"
+    );
+    expect(entry.kind).toBe("pipeline");
+    expect(entry.detection).toEqual(detection);
   });
 });

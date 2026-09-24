@@ -33,6 +33,11 @@ export class DailySpendTracker implements SpendTracker {
 }
 
 // Shared singleton for the real API routes / agent loop within one
-// server process. Tests always construct their own DailySpendTracker
-// instance instead, for isolation.
-export const defaultSpendTracker: SpendTracker = new DailySpendTracker();
+// server process. On globalThis for the same reason as defaultLedger:
+// instrumentation.ts and the API routes are separate bundles, and two
+// trackers would mean the scheduler and manual instructions each got
+// their own daily cap. Tests always construct their own instance.
+const DEFAULT_SPEND_TRACKER_KEY = Symbol.for("basis.spendTracker.default");
+export const defaultSpendTracker: SpendTracker = ((globalThis as unknown as Record<symbol, SpendTracker | undefined>)[
+  DEFAULT_SPEND_TRACKER_KEY
+] ??= new DailySpendTracker());

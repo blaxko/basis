@@ -1,5 +1,19 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { DailySpendTracker } from "./spend-tracker";
+
+describe("defaultSpendTracker — one daily cap per process, not one per bundle", () => {
+  it("spend recorded through one module instance counts against the other", async () => {
+    vi.resetModules();
+    const schedulerBundle = await import("./spend-tracker");
+    vi.resetModules();
+    const routeBundle = await import("./spend-tracker");
+    expect(routeBundle).not.toBe(schedulerBundle);
+
+    const before = routeBundle.defaultSpendTracker.getSpentToday();
+    schedulerBundle.defaultSpendTracker.recordSpend(200);
+    expect(routeBundle.defaultSpendTracker.getSpentToday()).toBe(before + 200);
+  });
+});
 
 describe("DailySpendTracker", () => {
   it("accumulates spend across multiple calls within the same UTC day", () => {

@@ -5,7 +5,7 @@ import type { PipelineMode } from "../execution/audit-ledger";
 const silent = () => {};
 
 function okResult(mode: PipelineMode): AgentLoopResult {
-  return { timestamp: 0, mode, spreads: [], triggered: [] };
+  return { timestamp: 0, mode, spreads: [], triggered: [], noOpportunities: [] };
 }
 
 afterEach(async () => {

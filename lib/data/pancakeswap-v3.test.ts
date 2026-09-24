@@ -188,9 +188,12 @@ describe("getPublicClient without BSC_RPC_URL configured", () => {
 
 describe("estimateLiquidityUsd — virtual-reserves-at-current-tick approximation", () => {
   it("returns a positive, finite estimate for the real MSFTB 0.25% pool's liquidity", () => {
-    // Real L value read this session for the 0.25% pool.
-    const realLiquidity = 45_123_456_789_012_345_678n;
-    const estimate = estimateLiquidityUsd(realLiquidity, REAL_SQRT_PRICE_X96, 18, 18, true, 499.1);
+    // Illustrative L, not a recorded reading — an earlier comment called
+    // this "real", but the digits are patterned and a live read of the
+    // same pool (2026-09-24, block 123812097) gave
+    // 192040324828266108733278. The assertions only need a positive L.
+    const liquidity = 45_123_456_789_012_345_678n;
+    const estimate = estimateLiquidityUsd(liquidity, REAL_SQRT_PRICE_X96, 18, 18, true, 499.1);
     expect(estimate).toBeGreaterThan(0);
     expect(Number.isFinite(estimate)).toBe(true);
   });

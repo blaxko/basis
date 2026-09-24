@@ -14,7 +14,7 @@ import {
   type AllowanceCheckResult,
 } from "../data/pancakeswap-v3";
 import { BSC_USDT_ADDRESS } from "../data/quotes";
-import { AuditLedger, type AuditLedgerEntry, type PipelineMode } from "./audit-ledger";
+import { AuditLedger, type PipelineLedgerEntry, type DetectionSnapshot, type PipelineMode } from "./audit-ledger";
 
 export type { PipelineMode } from "./audit-ledger";
 
@@ -181,6 +181,9 @@ export interface PipelineDeps {
   // control flow past the freshness check — same DI pattern as
   // walletClient. Defaults to the real trading wallet's address.
   getWalletAddress?: () => string;
+  // Attached to every ledger entry this run writes, so an automatic
+  // order's row shows the pool readings it was built from.
+  detection?: DetectionSnapshot;
 }
 
 // ---------------------------------------------------------------------
@@ -203,6 +206,8 @@ export interface PipelineDeps {
 // its decision. `mode` gates how far an approved order is allowed to
 // go, standing in for the killswitch until Phase 5 wires a UI to it:
 //
+//   (all modes)  — an approved order whose detected net edge is not
+//                  positive stops as "no_edge"; nothing is sent.
 //   "simulation" — stops after the guardrail verdict; no wallet/RPC call at all.
 //   "dry-run"    — re-reads both pools fresh and runs spreadFreshnessCheck
 //                  (fails closed as "spread_closed" if the edge decayed
@@ -226,10 +231,12 @@ export async function runPipeline(
   order: ProposedOrder,
   deps: PipelineDeps,
   mode: PipelineMode = "dry-run"
-): Promise<AuditLedgerEntry> {
+): Promise<PipelineLedgerEntry> {
   const config = deps.config ?? DEFAULT_GUARDRAIL_CONFIG;
   const walletClient = deps.walletClient ?? defaultWalletClient;
   const ledger = deps.ledger ?? new AuditLedger();
+  const record = (entry: Parameters<AuditLedger["append"]>[0]) =>
+    ledger.append(deps.detection ? { ...entry, detection: deps.detection } : entry);
   const fetchFreshPoolPricesFn = deps.fetchFreshPoolPrices ?? defaultFetchFreshPoolPrices;
   const buildDirectSwapParamsFn = deps.buildDirectSwapParams ?? buildDirectSwapParams;
   const getWalletAddressFn = deps.getWalletAddress ?? getTradingWalletAddress;
@@ -239,15 +246,22 @@ export async function runPipeline(
   const verdict = check(order, { spentTodaySoFarUsd: deps.spentTodaySoFarUsd, config });
 
   if (!verdict.approved) {
-    return ledger.append({
+    return record({
       mode,
       outcome: verdict.status === "error" ? "error" : "blocked",
       verdict,
     });
   }
 
+  // Runs after the guardrails on purpose, so an oversized manual request
+  // is still reported as a guardrail block. Keeps spread_closed meaning
+  // strictly "a positive edge decayed before send".
+  if (order.adjustedSpread <= 0) {
+    return record({ mode, outcome: "no_edge", verdict });
+  }
+
   if (mode === "simulation") {
-    return ledger.append({ mode, outcome: "simulated", verdict });
+    return record({ mode, outcome: "simulated", verdict });
   }
 
   const fresh = await fetchFreshPoolPricesFn(order.poolPair);
@@ -264,7 +278,7 @@ export async function runPipeline(
 
   const freshnessResult = spreadFreshnessCheck(order.adjustedSpread, freshSpread, config);
   if (!freshnessResult.ok) {
-    return ledger.append({
+    return record({
       mode,
       outcome: "spread_closed",
       verdict,
@@ -290,7 +304,7 @@ export async function runPipeline(
       // below, carrying its txId into whichever entry gets appended.
       approvalInfo = { needed: true, txId: approvalSendResult.txId };
     } catch (err) {
-      return ledger.append({
+      return record({
         mode,
         outcome: "approval_failed",
         verdict,
@@ -308,7 +322,7 @@ export async function runPipeline(
   const floorCheck = dryRunFloorCheck({ ...order, simulatedOutputUsd: simulated.outputUsd }, config);
 
   if (!floorCheck.ok) {
-    return ledger.append({
+    return record({
       mode,
       outcome: "dry_run_failed",
       verdict,
@@ -319,7 +333,7 @@ export async function runPipeline(
   }
 
   if (mode === "dry-run") {
-    return ledger.append({
+    return record({
       mode,
       outcome: "dry_run_only",
       verdict,
@@ -340,7 +354,7 @@ export async function runPipeline(
 
   try {
     const sendResult = await walletClient.send(unsignedTransaction);
-    return ledger.append({
+    return record({
       mode,
       outcome: "executed",
       verdict,
@@ -350,7 +364,7 @@ export async function runPipeline(
       send: { txId: sendResult.txId },
     });
   } catch (err) {
-    return ledger.append({
+    return record({
       mode,
       outcome: "send_failed",
       verdict,

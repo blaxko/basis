@@ -7,7 +7,9 @@ import "server-only";
 // import stays in place.
 
 const GROQ_CHAT_COMPLETIONS_URL = "https://api.groq.com/openai/v1/chat/completions";
-const DEFAULT_MODEL = "llama-3.3-70b-versatile";
+// llama-3.3-70b-versatile stopped being served to this key (404); this
+// id is from GET /openai/v1/models on 2026-09-24.
+const DEFAULT_MODEL = "openai/gpt-oss-120b";
 const DEFAULT_TIMEOUT_MS = 15_000;
 
 export interface GroqChatMessage {

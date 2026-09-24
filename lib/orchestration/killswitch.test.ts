@@ -1,22 +1,26 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
+const STATE_KEY = Symbol.for("basis.killswitch.state");
+
+// Simulates a brand-new server process: the mode lives on globalThis, so
+// a fresh process is one where that key has never been set.
+function freshProcess() {
+  delete (globalThis as unknown as Record<symbol, unknown>)[STATE_KEY];
+  vi.resetModules();
+}
+
 describe("killswitch", () => {
   beforeEach(() => {
-    // Every scenario below needs a genuinely fresh module instance —
-    // vitest caches modules per file otherwise, which would let a
-    // setKillswitchMode() call in one test leak into the next.
-    vi.resetModules();
+    freshProcess();
   });
 
-  it("defaults to simulation on a fresh module load, regardless of what a prior instance was set to", async () => {
+  it("defaults to simulation in a fresh process, regardless of what a previous process was set to", async () => {
     const first = await import("./killswitch");
     first.setKillswitchMode("live");
     expect(first.getKillswitchMode()).toBe("live");
 
-    vi.resetModules();
+    freshProcess();
     const second = await import("./killswitch");
-    // A brand-new module instance — proves the default is "simulation"
-    // baked into module initialization, not merely "we never changed it".
     expect(second.getKillswitchMode()).toBe("simulation");
   });
 
@@ -29,5 +33,15 @@ describe("killswitch", () => {
 
     killswitch.setKillswitchMode("live");
     expect(killswitch.getKillswitchMode()).toBe("live");
+  });
+
+  it("a second module instance in the same process sees the same mode (scheduler and API routes are separate bundles)", async () => {
+    const routeBundle = await import("./killswitch");
+    vi.resetModules();
+    const schedulerBundle = await import("./killswitch");
+    expect(schedulerBundle).not.toBe(routeBundle);
+
+    routeBundle.setKillswitchMode("dry-run");
+    expect(schedulerBundle.getKillswitchMode()).toBe("dry-run");
   });
 });

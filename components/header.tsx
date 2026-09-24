@@ -46,7 +46,7 @@ export function Header() {
       <div className="header-top">
         <div>
           <h1 className="header-title">Basis</h1>
-          <p className="header-subtitle">Trading the real spread, not the total-return noise.</p>
+          <p className="header-subtitle">Cross-pool gaps, counted only after every cost.</p>
         </div>
 
         <div className="killswitch">
@@ -77,10 +77,9 @@ export function Header() {
       {status.data && (
         <>
           <div className="status-row">
-            <StatusChip label="Binance Web3 API" ok={status.data.binanceWeb3Api.configured} />
             <StatusChip label="Groq" ok={status.data.groq.configured} />
             <StatusChip label="BSC RPC" ok={status.data.bscRpc.configured} />
-            <StatusChip label="Agentic Wallet" ok={status.data.agenticWallet.configured} />
+            <StatusChip label="Trading wallet key" ok={status.data.tradingWallet.configured} />
           </div>
 
           <div className="wallet-split">

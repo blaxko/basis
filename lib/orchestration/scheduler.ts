@@ -41,7 +41,7 @@ export async function runTick(options: SchedulerOptions = {}): Promise<TickResul
         agentConfig: { ...DEFAULT_AGENT_LOOP_CONFIG, underlyings: [ticker] },
       });
       results.push({ ticker, ok: true });
-      log(`  ${ticker}: ok, ${result.triggered.length} triggered`);
+      log(`  ${ticker}: ok, ${result.triggered.length} triggered, ${result.noOpportunities.length} no_opportunity`);
     } catch (err) {
       const error = err instanceof Error ? err.message : "unknown error";
       results.push({ ticker, ok: false, error });

@@ -338,3 +338,56 @@ h3 {
 .panel--terminal .state-message--error {
   color: #ff6161;
 }
+
+/* --- Pool Spread Monitor --- */
+
+.monitor-ticker-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.monitor-ticker-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.monitor-ticker {
+  font-size: 0.95rem;
+}
+
+.source-tag {
+  font-family: "Courier New", Consolas, monospace;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border: 2px solid var(--color-border);
+}
+
+.source-tag--live {
+  background: var(--color-approved);
+  color: var(--color-surface);
+}
+
+.source-tag--historical {
+  background: var(--color-bg);
+  color: var(--color-muted);
+  border-style: dashed;
+}
+
+.reading-line {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.reading-clears {
+  color: var(--color-approved);
+}
+
+.reading-declines {
+  color: var(--color-blocked);
+}

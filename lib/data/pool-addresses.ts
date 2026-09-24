@@ -20,6 +20,10 @@ const POOL_ADDRESSES: Record<string, PoolDescriptor[]> = {
   ],
 };
 
+export function getRegisteredTickers(): string[] {
+  return Object.keys(POOL_ADDRESSES).filter((ticker) => POOL_ADDRESSES[ticker]!.length >= 2);
+}
+
 export function getPoolsForTicker(ticker: string): PoolDescriptor[] {
   const pools = POOL_ADDRESSES[ticker];
   if (!pools || pools.length === 0) {

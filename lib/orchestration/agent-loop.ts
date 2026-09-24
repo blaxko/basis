@@ -1,8 +1,15 @@
-import { fetchPoolQuotes as realFetchPoolQuotes, MVP_UNDERLYINGS } from "../data/quotes";
+import { fetchPoolQuotes as realFetchPoolQuotes } from "../data/quotes";
+import { getRegisteredTickers } from "../data/pool-addresses";
 import { feeAdjustedPrice } from "../basis-model/nav-equivalent";
 import { rawSpread, adjustedSpread as computeAdjustedSpread } from "../basis-model/adjusted-spread";
 import { runPipeline, type WalletClient, type PipelineDeps } from "../execution/pipeline";
-import { AuditLedger, defaultLedger, type PipelineMode, type PipelineOutcome } from "../execution/audit-ledger";
+import {
+  AuditLedger,
+  defaultLedger,
+  type DetectionSnapshot,
+  type PipelineMode,
+  type PipelineOutcome,
+} from "../execution/audit-ledger";
 import { DEFAULT_GUARDRAIL_CONFIG, type GuardrailConfig } from "../guardrails/config";
 import { check, type ProposedOrder, type GuardrailVerdict, type PoolPair } from "../guardrails/check";
 import { narrateProposal as realNarrateProposal } from "../llm/proposal-narrator";
@@ -47,22 +54,26 @@ export interface TriggeredOpportunity {
   ledgerEntryId: string;
 }
 
+export interface NoOpportunityRecord {
+  ticker: string;
+  netEdge: number;
+  ledgerEntryId: string;
+}
+
 export interface AgentLoopResult {
   timestamp: number;
   mode: PipelineMode;
   spreads: UnderlyingSpread[];
   triggered: TriggeredOpportunity[];
+  noOpportunities: NoOpportunityRecord[];
 }
 
 export interface AgentLoopConfig {
   underlyings: readonly string[];
-  // Old mechanism used 0.3% to filter dividend-accrual noise out of a
-  // RAW diff. adjustedSpread is now already net of fees+slippage+gas —
-  // real edges found this session were near-zero even in the closest
-  // case (+0.0099% before slippage/gas, net negative after), so
-  // carrying over 0.3% would mean the system could never trigger on any
-  // real edge found so far. Lowered to a small epsilon that filters
-  // floating-point dust, not genuine (if tiny) positive edges.
+  // An order is built only when the net edge (after fees, slippage, and
+  // gas) is positive AND strictly above this. Kept as a small epsilon so
+  // floating-point dust never becomes an order; see
+  // docs/config-rationale.md for why it isn't larger.
   adjustedSpreadThreshold: number;
   orderSizeUsd: number;
   // Same assumptions used throughout this session's basis-model tests
@@ -73,8 +84,11 @@ export interface AgentLoopConfig {
   slippagePctEstimate: number;
 }
 
+// Only tickers with at least two registered pools — a ticker without
+// them can't have a cross-pool spread, and evaluating it alongside
+// others would fail the whole batch.
 export const DEFAULT_AGENT_LOOP_CONFIG: AgentLoopConfig = {
-  underlyings: MVP_UNDERLYINGS,
+  underlyings: getRegisteredTickers(),
   adjustedSpreadThreshold: 0.0001,
   orderSizeUsd: 200,
   gasCostUsdEstimate: 200_000 * 1.5e-9 * 700,
@@ -92,7 +106,7 @@ export async function computeSpreads(deps: {
   slippagePctEstimate?: number;
   tradeSizeUsd?: number;
 } = {}): Promise<UnderlyingSpread[]> {
-  const underlyings = deps.underlyings ?? MVP_UNDERLYINGS;
+  const underlyings = deps.underlyings ?? DEFAULT_AGENT_LOOP_CONFIG.underlyings;
   const fetchPoolQuotesFn = deps.fetchPoolQuotesFn ?? realFetchPoolQuotes;
   const gasCostUsdEstimate = deps.gasCostUsdEstimate ?? DEFAULT_AGENT_LOOP_CONFIG.gasCostUsdEstimate;
   const slippagePctEstimate = deps.slippagePctEstimate ?? DEFAULT_AGENT_LOOP_CONFIG.slippagePctEstimate;
@@ -168,9 +182,30 @@ function constructOrder(spread: UnderlyingSpread, config: AgentLoopConfig): Prop
     liquidityDepthUsd: Math.min(spread.cheapPool.liquidityUsdEstimate, spread.expensivePool.liquidityUsdEstimate),
     // No live dry-run estimate exists before check() runs, so this is an
     // optimistic placeholder (100% of size). The real floor is enforced
-    // authoritatively by pipeline.ts's own fresh dryRun() call afterward.
+    // authoritatively by pipeline.ts's own fresh simulateSwap() call afterward.
     simulatedOutputUsd: config.orderSizeUsd,
     poolPair,
+  };
+}
+
+// Strictly positive and strictly above the threshold — a negative edge
+// of any size is never an opportunity, whatever the threshold is set to.
+export function clearsThreshold(spread: UnderlyingSpread, threshold: number): boolean {
+  return spread.adjustedSpread > Math.max(0, threshold);
+}
+
+function toDetectionSnapshot(spread: UnderlyingSpread, threshold: number): DetectionSnapshot {
+  return {
+    ticker: spread.ticker,
+    cheapPool: { address: spread.cheapPool.address, feeUnits: spread.cheapPool.feeUnits, priceUsd: spread.cheapPool.priceUsd },
+    expensivePool: {
+      address: spread.expensivePool.address,
+      feeUnits: spread.expensivePool.feeUnits,
+      priceUsd: spread.expensivePool.priceUsd,
+    },
+    grossGap: spread.rawSpread,
+    netEdge: spread.adjustedSpread,
+    threshold,
   };
 }
 
@@ -219,7 +254,7 @@ export async function previewOpportunities(deps: PreviewOpportunitiesDeps = {}):
   const opportunities: PreviewOpportunity[] = [];
 
   for (const spread of spreads) {
-    if (Math.abs(spread.adjustedSpread) < agentConfig.adjustedSpreadThreshold) {
+    if (!clearsThreshold(spread, agentConfig.adjustedSpreadThreshold)) {
       continue;
     }
 
@@ -268,15 +303,14 @@ export interface AgentLoopDeps {
 // touched again, so a narrator failure (caught below, PRD rule 1) cannot
 // retroactively change what was already sent to the guardrail gate.
 //
-// Not wired to any API route in this phase — GET routes must stay
-// side-effect-free, and this function writes to the audit ledger and
-// can execute real trades in live mode. Triggering it is a later
-// integration point.
+// Triggered by lib/orchestration/scheduler.ts, never by a GET route —
+// this writes to the audit ledger and can execute real trades in live
+// mode.
 //
-// A correctly DECLINED trade (edge doesn't clear net, or the freshness
-// check fails closed) is exactly as valid and complete an outcome here
-// as an executed one — both write a full ledger entry, both narrate,
-// neither is a lesser code path.
+// Every evaluated ticker writes exactly one ledger entry: a
+// "no_opportunity" detection entry when the net edge doesn't clear, or
+// a pipeline entry when it does. A declined evaluation is as complete an
+// outcome as an executed trade, not a lesser code path.
 export async function runAgentLoop(deps: AgentLoopDeps = {}): Promise<AgentLoopResult> {
   const spendTracker = deps.spendTracker ?? defaultSpendTracker;
   const getMode = deps.getMode ?? getKillswitchMode;
@@ -295,9 +329,14 @@ export async function runAgentLoop(deps: AgentLoopDeps = {}): Promise<AgentLoopR
   });
 
   const triggered: TriggeredOpportunity[] = [];
+  const noOpportunities: NoOpportunityRecord[] = [];
 
   for (const spread of spreads) {
-    if (Math.abs(spread.adjustedSpread) < agentConfig.adjustedSpreadThreshold) {
+    const detection = toDetectionSnapshot(spread, agentConfig.adjustedSpreadThreshold);
+
+    if (!clearsThreshold(spread, agentConfig.adjustedSpreadThreshold)) {
+      const entry = ledger.appendNoOpportunity({ mode, detection });
+      noOpportunities.push({ ticker: spread.ticker, netEdge: spread.adjustedSpread, ledgerEntryId: entry.id });
       continue;
     }
 
@@ -314,6 +353,7 @@ export async function runAgentLoop(deps: AgentLoopDeps = {}): Promise<AgentLoopR
         getWalletAddress: deps.getWalletAddress,
         gasCostUsdEstimate: agentConfig.gasCostUsdEstimate,
         slippagePctEstimate: agentConfig.slippagePctEstimate,
+        detection,
         ledger,
       },
       mode
@@ -343,5 +383,5 @@ export async function runAgentLoop(deps: AgentLoopDeps = {}): Promise<AgentLoopR
     });
   }
 
-  return { timestamp: Date.now(), mode, spreads, triggered };
+  return { timestamp: Date.now(), mode, spreads, triggered, noOpportunities };
 }

@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Basis",
-  description: "Trading the real spread, not the total-return noise.",
+  description: "Cross-pool gaps, counted only after every cost.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

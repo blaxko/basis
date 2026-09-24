@@ -7,14 +7,16 @@ import { getKillswitchMode } from "../../../lib/orchestration/killswitch";
 // credentials a network ping would just be a guaranteed failure, and we
 // don't want this route accidentally making an authenticated call with
 // a dummy key.
+//
+// Only what the current execution path depends on: Groq (intent
+// parsing), the BSC RPC (pool reads, QuoterV2 simulation, broadcast),
+// and the trading wallet key (local signing). The Binance aggregator
+// and Agentic Wallet are no longer on any live path.
 export async function GET() {
   return NextResponse.json({
-    binanceWeb3Api: { configured: Boolean(process.env.BINANCE_WEB3_API_BASE_URL && process.env.BINANCE_WEB3_API_KEY) },
     groq: { configured: Boolean(process.env.GROQ_API_KEY) },
     bscRpc: { configured: Boolean(process.env.BSC_RPC_URL) },
-    agenticWallet: {
-      configured: Boolean(process.env.AGENTIC_WALLET_API_BASE_URL && process.env.AGENTIC_WALLET_API_KEY),
-    },
+    tradingWallet: { configured: Boolean(process.env.TRADING_WALLET_PRIVATE_KEY) },
     wallet: {
       tradingCapitalUsd: null,
       operatingBudgetUsd: null,

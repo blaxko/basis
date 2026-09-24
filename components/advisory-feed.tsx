@@ -35,7 +35,7 @@ export function AdvisoryFeed() {
         {opportunities.map((opportunity, i) => (
           <div className="terminal-line" key={`${opportunity.ticker}-${i}`}>
             <div className="terminal-line-meta">
-              [{opportunity.ticker}] adjusted spread {(opportunity.order.adjustedSpread * 100).toFixed(2)}%
+              [{opportunity.ticker}] net edge {(opportunity.order.adjustedSpread * 100).toFixed(2)}%
             </div>
             <div>{opportunity.narration}</div>
           </div>

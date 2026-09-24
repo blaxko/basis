@@ -158,14 +158,41 @@ describe("handleInstruction — valid instruction composes to a correctly-declin
       expect(result.order.sizeUsd).toBe(200);
       expect(result.order.poolPair.cheapPoolAddress).toBe("0x5018b018ceb7645c927c5cf246786f89ebcbe7ea");
       expect(result.order.poolPair.expensivePoolAddress).toBe("0x58e44c2e5b17ef40915b4b3ae8451b6b87285b44");
-      // check() itself doesn't gate on spread sign — it's the freshness
-      // re-check (real, live, currently -1.28%) that correctly declines
-      // this trade before it ever reaches the wallet.
-      expect(result.outcome).toBe("spread_closed");
+      // Guardrails approve the request; the live net edge (-1.28%) isn't
+      // positive, so the pipeline stops as no_edge before any re-read or
+      // wallet call. Not spread_closed — nothing decayed; it was never positive.
+      expect(result.outcome).toBe("no_edge");
       expect(result.verdict.approved).toBe(true);
     }
     expect(walletClient.checkAllowance).not.toHaveBeenCalled();
     expect(walletClient.simulateSwap).not.toHaveBeenCalled();
+    expect(walletClient.send).not.toHaveBeenCalled();
+    expect(ledger.readAll()).toHaveLength(1);
+  });
+
+  it("an oversized request is reported as a per-trade-cap guardrail block, even when there's no edge", async () => {
+    // The real default per-trade cap is $500 (lib/guardrails/config.ts).
+    const chatCompletionFn = mockChat({ ok: true, content: '{"ticker":"MSFT","side":"buy","sizeUsd":5000}' });
+    const walletClient = mockWalletClient();
+    const ledger = new AuditLedger();
+
+    const result = await handleInstruction("buy 5000 dollars of msft", {
+      chatCompletionFn,
+      fetchPoolQuotesFn: vi.fn().mockResolvedValue(msftPoolQuotes()),
+      walletClient,
+      fetchFreshPoolPrices: fakeFetchFreshPoolPrices,
+      getWalletAddress: () => "0x1234567890123456789012345678901234567890",
+      ledger,
+      getMode: () => "live",
+      spendTracker: new DailySpendTracker(),
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.outcome).toBe("blocked");
+      expect(result.verdict.blockedBy).toBe("perTradeCap");
+      expect(result.verdict.reason).toContain("exceeds per-trade cap $500");
+    }
     expect(walletClient.send).not.toHaveBeenCalled();
     expect(ledger.readAll()).toHaveLength(1);
   });
