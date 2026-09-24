@@ -13,6 +13,8 @@ export type PipelineOutcome =
   | "error"
   | "simulated"
   | "no_edge"
+  | "tolerance_exceeds_edge"
+  | "two_leg_execution_not_implemented"
   | "spread_closed"
   | "approval_failed"
   | "dry_run_failed"
@@ -20,7 +22,7 @@ export type PipelineOutcome =
   | "executed"
   | "send_failed";
 
-export type LedgerOutcome = PipelineOutcome | "no_opportunity";
+export type LedgerOutcome = PipelineOutcome | "no_opportunity" | "warming_up";
 
 export interface StatusResponse {
   groq: { configured: boolean };
@@ -44,8 +46,10 @@ export interface ProposedOrder {
   adjustedSpread: number;
   price: number;
   recentTicks: number[];
+  expensivePrice: number;
+  expensiveRecentTicks: number[];
   liquidityDepthUsd: number;
-  simulatedOutputUsd: number;
+  simulatedOutputUsd: number | null;
   poolPair: PoolPair;
 }
 
@@ -53,6 +57,10 @@ export interface GuardrailCheckResult {
   name: string;
   ok: boolean;
   reason?: string;
+  // Failed for lack of price history. Never shown as a pass.
+  warmingUp?: boolean;
+  // Had no data to run on yet. Never shown as a pass.
+  pending?: boolean;
 }
 
 export interface GuardrailVerdict {
@@ -79,6 +87,13 @@ export interface UnderlyingSpread {
   expensivePool: PoolLeg;
   rawSpread: number;
   adjustedSpread: number;
+  gas: { costUsd: number; source: "live" | "fallback" };
+}
+
+export interface WarmUpStatus {
+  readings: number;
+  required: number;
+  complete: boolean;
 }
 
 export interface SpreadHistoryPoint {
@@ -109,6 +124,7 @@ export interface PreviewOpportunity {
 export interface OpportunitiesResponse {
   spreads: UnderlyingSpread[];
   opportunities: PreviewOpportunity[];
+  warmUp: Record<string, WarmUpStatus>;
   history: Record<string, SpreadSeries>;
   threshold: number;
   error?: string;
@@ -127,6 +143,7 @@ export interface DetectionSnapshot {
   grossGap: number;
   netEdge: number;
   threshold: number;
+  gas: { costUsd: number; source: "live" | "fallback" };
 }
 
 export interface PipelineLedgerEntry {
@@ -143,16 +160,17 @@ export interface PipelineLedgerEntry {
   send?: { txId: string } | { error: string };
 }
 
-export interface NoOpportunityLedgerEntry {
+export interface DetectionLedgerEntry {
   kind: "detection";
   id: string;
   timestamp: number;
   mode: PipelineMode;
-  outcome: "no_opportunity";
+  outcome: "no_opportunity" | "warming_up";
   detection: DetectionSnapshot;
+  warmUp?: { readings: number; required: number };
 }
 
-export type AuditLedgerEntry = PipelineLedgerEntry | NoOpportunityLedgerEntry;
+export type AuditLedgerEntry = PipelineLedgerEntry | DetectionLedgerEntry;
 
 export interface LedgerResponse {
   entries: AuditLedgerEntry[];

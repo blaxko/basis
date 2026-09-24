@@ -40,6 +40,31 @@ function isRouteFile(relPath: string): boolean {
   return parts[0] === "app" && parts[1] === "api" && relPath.endsWith(`${sep}route.ts`);
 }
 
+function listAllSourceFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) return listAllSourceFiles(full);
+    return entry.name.endsWith(".ts") || entry.name.endsWith(".tsx") ? [full] : [];
+  });
+}
+
+describe("architecture: live single-leg execution stays unwired", () => {
+  // executeDirectSwap is the only path that can send a swap. Until
+  // two-leg execution exists it may be referenced only by its own module
+  // and that module's tests — never by the scheduler, a route, or the UI.
+  const allowed = new Set([join("lib", "execution", "pipeline.ts"), join("lib", "execution", "pipeline.test.ts")]);
+
+  it("no file other than lib/execution/pipeline.ts and its test references executeDirectSwap", () => {
+    const files = ["app", "components", "lib", "test"].flatMap((d) => listAllSourceFiles(join(ROOT, d)));
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const relPath = relative(ROOT, file);
+      if (allowed.has(relPath) || relPath === join("test", "architecture.test.ts")) continue;
+      expect(readFileSync(file, "utf8").includes("executeDirectSwap"), `${relPath} references executeDirectSwap`).toBe(false);
+    }
+  });
+});
+
 describe("architecture: the dashboard (app/, components/) only consumes API routes", () => {
   const appDir = join(ROOT, "app");
   const componentsDir = join(ROOT, "components");

@@ -20,6 +20,15 @@ export interface GuardrailConfig {
   // detected edge), not empirically tuned — review once live spread
   // volatility over a real detection-to-send window is observed.
   minSpreadRetentionRatio: number;
+  // Price readings required per pool before priceSanityCheck can pass
+  // and before any order is proposed. Below this, the system is warming
+  // up after a server start. 10 readings = 5 minutes at the 30s tick.
+  minPriceHistoryReadings: number;
+  // amountOutMinimum on the swap = simulated output × (1 − this). A
+  // fraction, e.g. 0.0005 = 0.05%. An order is refused when this is not
+  // strictly below its expected net edge: an on-chain floor looser than
+  // the edge can't protect it. See docs/config-rationale.md.
+  sendSlippageTolerance: number;
 }
 
 export const DEFAULT_GUARDRAIL_CONFIG: GuardrailConfig = {
@@ -29,4 +38,6 @@ export const DEFAULT_GUARDRAIL_CONFIG: GuardrailConfig = {
   maxPriceDeviationPct: 0.05,
   minLiquidityDepthUsd: 1000,
   minSpreadRetentionRatio: 0.5,
+  minPriceHistoryReadings: 10,
+  sendSlippageTolerance: 0.0005,
 };

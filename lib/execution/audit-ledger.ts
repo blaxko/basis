@@ -12,6 +12,13 @@ export type PipelineOutcome =
   // instruction: the automatic loop never builds an order without a
   // positive edge.
   | "no_edge"
+  // The on-chain slippage tolerance is not below the net edge (detected,
+  // or fresh at the pre-send re-read), so the swap's minimum-output floor
+  // couldn't protect it.
+  | "tolerance_exceeds_edge"
+  // Live mode refuses: only one leg (the buy) is built, and a single leg
+  // alone doesn't capture the spread. Nothing is approved or sent.
+  | "two_leg_execution_not_implemented"
   // A positive detected edge decayed or inverted between detection and
   // the pre-send re-read.
   | "spread_closed"
@@ -36,6 +43,9 @@ export interface DetectionSnapshot {
   // After both pools' fees, estimated slippage, and gas.
   netEdge: number;
   threshold: number;
+  // The round-trip gas figure used in netEdge, and whether it came from
+  // a live estimate or the flat fallback.
+  gas: { costUsd: number; source: "live" | "fallback" };
 }
 
 // One row per pipeline run (PRD rule 8: every decision — approved,
@@ -64,20 +74,23 @@ export interface PipelineLedgerEntry {
   send?: { txId: string } | { error: string };
 }
 
-// A detection decision, not a guardrail decision: the net edge did not
-// clear the threshold, so no order was ever built and check() never ran.
-// Deliberately a different `kind` with no `verdict` field, so it can't
-// be mistaken for a guardrail block.
-export interface NoOpportunityLedgerEntry {
+// A detection decision, not a guardrail decision: no order was built and
+// check() never ran. Deliberately a different `kind` with no `verdict`
+// field, so it can't be mistaken for a guardrail block.
+//   "no_opportunity" — the net edge did not clear the threshold.
+//   "warming_up"     — it did, but a pool has fewer price readings than
+//                      minPriceHistoryReadings, so no order is proposed.
+export interface DetectionLedgerEntry {
   kind: "detection";
   id: string;
   timestamp: number;
   mode: PipelineMode;
-  outcome: "no_opportunity";
+  outcome: "no_opportunity" | "warming_up";
   detection: DetectionSnapshot;
+  warmUp?: { readings: number; required: number };
 }
 
-export type AuditLedgerEntry = PipelineLedgerEntry | NoOpportunityLedgerEntry;
+export type AuditLedgerEntry = PipelineLedgerEntry | DetectionLedgerEntry;
 export type LedgerOutcome = AuditLedgerEntry["outcome"];
 
 // Append-only writer. No update/delete is exposed on purpose — the only
@@ -95,8 +108,16 @@ export class AuditLedger {
     return this.write({ kind: "pipeline", id: this.nextId(), timestamp: Date.now(), ...entry });
   }
 
-  appendNoOpportunity(entry: { mode: PipelineMode; detection: DetectionSnapshot }): NoOpportunityLedgerEntry {
+  appendNoOpportunity(entry: { mode: PipelineMode; detection: DetectionSnapshot }): DetectionLedgerEntry {
     return this.write({ kind: "detection", id: this.nextId(), timestamp: Date.now(), outcome: "no_opportunity", ...entry });
+  }
+
+  appendWarmingUp(entry: {
+    mode: PipelineMode;
+    detection: DetectionSnapshot;
+    warmUp: { readings: number; required: number };
+  }): DetectionLedgerEntry {
+    return this.write({ kind: "detection", id: this.nextId(), timestamp: Date.now(), outcome: "warming_up", ...entry });
   }
 
   private nextId(): string {

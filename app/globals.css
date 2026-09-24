@@ -391,3 +391,14 @@ h3 {
 .reading-declines {
   color: var(--color-blocked);
 }
+
+/* --- Warm-up / pending: never styled as a pass --- */
+
+.badge--warming {
+  color: var(--color-warn);
+  border-style: dashed;
+}
+
+.check-mark--pending {
+  color: var(--color-warn);
+}

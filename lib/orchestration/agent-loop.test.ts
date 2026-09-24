@@ -5,10 +5,14 @@ import {
   previewOpportunities,
   DEFAULT_AGENT_LOOP_CONFIG,
   type AgentLoopConfig,
+  type EstimateGasFn,
 } from "./agent-loop";
 import { DailySpendTracker } from "./spend-tracker";
 import { AuditLedger, defaultLedger } from "../execution/audit-ledger";
+import { BoundedPriceHistory } from "../data/price-history";
 import { DEFAULT_GUARDRAIL_CONFIG } from "../guardrails/config";
+import { feeAdjustedPrice } from "../basis-model/nav-equivalent";
+import { adjustedSpread } from "../basis-model/adjusted-spread";
 import type { PoolQuote } from "../data/types";
 import type { WalletClient, FreshPoolPrices } from "../execution/pipeline";
 
@@ -19,8 +23,8 @@ const POOL_1 = "0x58e44c2e5b17ef40915b4b3ae8451b6b87285b44";
 
 // LIVE: both real registered MSFTB pools, read via a public BSC RPC on
 // 2026-09-24 — 0.25% pool $496.3821, 1% pool $496.9976. Net of fees,
-// slippage, and gas this is about -1.28%. Re-reading the pools now will
-// give a different number.
+// slippage, and the old flat $0.21 gas, this is about -1.28%. Re-reading
+// the pools now will give a different number.
 const LIVE_CHEAP = 496.3821;
 const LIVE_EXPENSIVE = 496.9976;
 
@@ -29,6 +33,10 @@ const LIVE_EXPENSIVE = 496.9976;
 // Not a reading of anything.
 const SYNTHETIC_CHEAP = 490;
 const SYNTHETIC_EXPENSIVE = 500;
+
+// Gas pinned to the old flat $0.21 so the documented figures above stay
+// reproducible; the live estimator has its own tests.
+const pinnedGas: EstimateGasFn = async () => ({ gasCostUsd: 200_000 * 1.5e-9 * 700, source: "fallback" });
 
 function poolQuotes(cheapPriceUsd: number, expensivePriceUsd: number): PoolQuote[] {
   const timestamp = Date.now();
@@ -50,6 +58,18 @@ function freshPrices(cheapPriceUsd: number, expensivePriceUsd: number): () => Pr
     });
 }
 
+// A history with `count` readings per pool at the given prices.
+function historyWith(count: number, cheap: number, expensive: number): BoundedPriceHistory {
+  const history = new BoundedPriceHistory();
+  for (let i = 0; i < count; i++) {
+    history.record(POOL_025, cheap);
+    history.record(POOL_1, expensive);
+  }
+  return history;
+}
+
+const warmHistory = () => historyWith(10, SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE);
+
 // Bypasses unset TRADING_WALLET_PRIVATE_KEY/BSC_RPC_URL credentials.
 const getWalletAddress = () => "0x1234567890123456789012345678901234567890";
 
@@ -65,26 +85,36 @@ const CONFIG: AgentLoopConfig = {
   underlyings: ["MSFT"],
   adjustedSpreadThreshold: 0.0001,
   orderSizeUsd: 200,
-  gasCostUsdEstimate: 200_000 * 1.5e-9 * 700,
+  gasSafetyMultiplier: 2,
+  fallbackGasCostUsd: 200_000 * 1.5e-9 * 700,
   slippagePctEstimate: 0.0005,
 };
 
+function loopDeps(cheap: number, expensive: number, overrides: Record<string, unknown> = {}) {
+  return {
+    spendTracker: new DailySpendTracker(),
+    getMode: () => "dry-run" as const,
+    ledger: new AuditLedger(),
+    walletClient: mockWalletClient(),
+    agentConfig: CONFIG,
+    fetchPoolQuotesFn: vi.fn().mockResolvedValue(poolQuotes(cheap, expensive)),
+    estimateGasFn: pinnedGas,
+    priceHistory: warmHistory(),
+    fetchFreshPoolPrices: freshPrices(cheap, expensive),
+    getWalletAddress,
+    ...overrides,
+  };
+}
+
 describe("runAgentLoop — a negative net edge is a detection decision, not an order", () => {
-  it("live -1.28% edge: zero orders, exactly one no_opportunity entry carrying both pool prices, gross gap, and net edge", async () => {
+  it("live -1.28% edge: zero orders, exactly one no_opportunity entry carrying both pool prices, gross gap, net edge, and gas", async () => {
     const ledger = new AuditLedger();
     const walletClient = mockWalletClient();
     const fetchFreshPoolPrices = vi.fn(freshPrices(LIVE_CHEAP, LIVE_EXPENSIVE));
 
-    const result = await runAgentLoop({
-      spendTracker: new DailySpendTracker(),
-      getMode: () => "live",
-      ledger,
-      walletClient,
-      agentConfig: CONFIG,
-      fetchPoolQuotesFn: vi.fn().mockResolvedValue(poolQuotes(LIVE_CHEAP, LIVE_EXPENSIVE)),
-      fetchFreshPoolPrices,
-      getWalletAddress,
-    });
+    const result = await runAgentLoop(
+      loopDeps(LIVE_CHEAP, LIVE_EXPENSIVE, { getMode: () => "live", ledger, walletClient, fetchFreshPoolPrices })
+    );
 
     expect(result.triggered).toHaveLength(0);
     expect(result.noOpportunities).toHaveLength(1);
@@ -96,33 +126,22 @@ describe("runAgentLoop — a negative net edge is a detection decision, not an o
     expect(entry.outcome).toBe("no_opportunity");
     expect("verdict" in entry).toBe(false); // check() never ran — not a guardrail decision
     if (entry.kind !== "detection") throw new Error("unreachable");
-    expect(entry.mode).toBe("live");
-    expect(entry.detection.ticker).toBe("MSFT");
     expect(entry.detection.cheapPool).toEqual({ address: POOL_025, feeUnits: 2500, priceUsd: LIVE_CHEAP });
     expect(entry.detection.expensivePool).toEqual({ address: POOL_1, feeUnits: 10000, priceUsd: LIVE_EXPENSIVE });
     expect(entry.detection.grossGap).toBeCloseTo(0.00124, 5);
     expect(entry.detection.netEdge).toBeCloseTo(-0.0128, 3);
-    expect(entry.detection.threshold).toBe(0.0001);
+    expect(entry.detection.gas).toEqual({ costUsd: 0.21, source: "fallback" });
 
     expect(fetchFreshPoolPrices).not.toHaveBeenCalled();
     expect(walletClient.checkAllowance).not.toHaveBeenCalled();
-    expect(walletClient.simulateSwap).not.toHaveBeenCalled();
     expect(walletClient.send).not.toHaveBeenCalled();
   });
 
   it("a negative threshold can't turn a negative edge into an order", async () => {
     const ledger = new AuditLedger();
-
-    const result = await runAgentLoop({
-      spendTracker: new DailySpendTracker(),
-      getMode: () => "dry-run",
-      ledger,
-      walletClient: mockWalletClient(),
-      agentConfig: { ...CONFIG, adjustedSpreadThreshold: -1 },
-      fetchPoolQuotesFn: vi.fn().mockResolvedValue(poolQuotes(LIVE_CHEAP, LIVE_EXPENSIVE)),
-      fetchFreshPoolPrices: freshPrices(LIVE_CHEAP, LIVE_EXPENSIVE),
-      getWalletAddress,
-    });
+    const result = await runAgentLoop(
+      loopDeps(LIVE_CHEAP, LIVE_EXPENSIVE, { ledger, agentConfig: { ...CONFIG, adjustedSpreadThreshold: -1 } })
+    );
 
     expect(result.triggered).toHaveLength(0);
     expect(ledger.readAll().map((e) => e.outcome)).toEqual(["no_opportunity"]);
@@ -130,17 +149,9 @@ describe("runAgentLoop — a negative net edge is a detection decision, not an o
 
   it("a positive edge that doesn't exceed the threshold is also no_opportunity", async () => {
     const ledger = new AuditLedger();
-
-    const result = await runAgentLoop({
-      spendTracker: new DailySpendTracker(),
-      getMode: () => "dry-run",
-      ledger,
-      walletClient: mockWalletClient(),
-      agentConfig: { ...CONFIG, adjustedSpreadThreshold: 0.01 }, // synthetic edge is ~+0.61%
-      fetchPoolQuotesFn: vi.fn().mockResolvedValue(poolQuotes(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE)),
-      fetchFreshPoolPrices: freshPrices(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE),
-      getWalletAddress,
-    });
+    const result = await runAgentLoop(
+      loopDeps(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE, { ledger, agentConfig: { ...CONFIG, adjustedSpreadThreshold: 0.01 } })
+    );
 
     expect(result.triggered).toHaveLength(0);
     expect(result.noOpportunities[0]!.netEdge).toBeGreaterThan(0);
@@ -148,42 +159,129 @@ describe("runAgentLoop — a negative net edge is a detection decision, not an o
   });
 });
 
-describe("runAgentLoop — a positive net edge above threshold produces an order", () => {
-  it("builds an order, runs it through the pipeline, and the pipeline entry carries the detection snapshot", async () => {
+describe("runAgentLoop — price-history warm-up", () => {
+  it("a clearing edge during warm-up proposes no order: one warming_up detection entry, pipeline untouched", async () => {
+    const ledger = new AuditLedger();
+    const walletClient = mockWalletClient();
+    const fetchFreshPoolPrices = vi.fn(freshPrices(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE));
+
+    const result = await runAgentLoop(
+      loopDeps(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE, {
+        ledger,
+        walletClient,
+        fetchFreshPoolPrices,
+        priceHistory: historyWith(4, SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE),
+      })
+    );
+
+    expect(result.triggered).toHaveLength(0);
+    expect(result.warmingUp).toEqual([expect.objectContaining({ ticker: "MSFT", readings: 4, required: 10, complete: false })]);
+    const entry = ledger.readAll()[0]!;
+    expect(entry.kind).toBe("detection");
+    expect(entry.outcome).toBe("warming_up");
+    if (entry.kind !== "detection") throw new Error("unreachable");
+    expect(entry.warmUp).toEqual({ readings: 4, required: 10 });
+    expect(fetchFreshPoolPrices).not.toHaveBeenCalled();
+    expect(walletClient.checkAllowance).not.toHaveBeenCalled();
+  });
+
+  it("counts the shorter of the two pools' histories", async () => {
+    const lopsided = new BoundedPriceHistory();
+    for (let i = 0; i < 10; i++) lopsided.record(POOL_025, SYNTHETIC_CHEAP);
+    for (let i = 0; i < 3; i++) lopsided.record(POOL_1, SYNTHETIC_EXPENSIVE);
+
+    const result = await runAgentLoop(loopDeps(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE, { priceHistory: lopsided }));
+    expect(result.warmingUp[0]).toEqual(expect.objectContaining({ readings: 3 }));
+  });
+
+  it("records each pool's reading after evaluating it — a price is never judged against itself", async () => {
+    const history = historyWith(9, SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE);
+
+    const first = await runAgentLoop(loopDeps(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE, { priceHistory: history }));
+    expect(first.warmingUp).toHaveLength(1); // 9 readings before this tick
+    expect(history.recent(POOL_025)).toHaveLength(10);
+
+    const second = await runAgentLoop(loopDeps(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE, { priceHistory: history }));
+    expect(second.warmingUp).toHaveLength(0);
+    expect(second.triggered).toHaveLength(1); // warm-up complete on the 11th tick
+  });
+
+  it("records readings even when the evaluation is a no_opportunity", async () => {
+    const history = new BoundedPriceHistory();
+    await runAgentLoop(loopDeps(LIVE_CHEAP, LIVE_EXPENSIVE, { priceHistory: history }));
+    expect(history.recent(POOL_025)).toEqual([LIVE_CHEAP]);
+    expect(history.recent(POOL_1)).toEqual([LIVE_EXPENSIVE]);
+  });
+
+  it("a price spike on a warmed-up pool is blocked by the guardrail, not traded", async () => {
+    const ledger = new AuditLedger();
+    const walletClient = mockWalletClient();
+    // History says the expensive pool sits at $500; this tick reads $560.
+    const result = await runAgentLoop(
+      loopDeps(SYNTHETIC_CHEAP, 560, { ledger, walletClient, priceHistory: warmHistory() })
+    );
+
+    expect(result.triggered).toHaveLength(1);
+    expect(result.triggered[0]!.outcome).toBe("blocked");
+    expect(result.triggered[0]!.verdict.reason).toContain("expensive pool");
+    expect(walletClient.checkAllowance).not.toHaveBeenCalled();
+  });
+});
+
+describe("runAgentLoop — a positive net edge above threshold, after warm-up, produces an order", () => {
+  it("builds an order with both pools' history, runs it through the pipeline, and the entry carries the detection snapshot", async () => {
     const ledger = new AuditLedger();
     const walletClient = mockWalletClient();
 
-    const result = await runAgentLoop({
-      spendTracker: new DailySpendTracker(),
-      getMode: () => "dry-run",
-      ledger,
-      walletClient,
-      guardrailConfig: DEFAULT_GUARDRAIL_CONFIG,
-      agentConfig: CONFIG,
-      fetchPoolQuotesFn: vi.fn().mockResolvedValue(poolQuotes(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE)),
-      fetchFreshPoolPrices: freshPrices(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE),
-      getWalletAddress,
-    });
+    const result = await runAgentLoop(
+      loopDeps(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE, { ledger, walletClient, guardrailConfig: DEFAULT_GUARDRAIL_CONFIG })
+    );
 
     expect(result.noOpportunities).toHaveLength(0);
     expect(result.triggered).toHaveLength(1);
     const opportunity = result.triggered[0]!;
-    expect(opportunity.order.adjustedSpread).toBeGreaterThan(0.0001);
-    expect(opportunity.order.poolPair).toEqual({
-      cheapPoolAddress: POOL_025,
-      cheapPoolFeeUnits: 2500,
-      expensivePoolAddress: POOL_1,
-      expensivePoolFeeUnits: 10000,
-    });
+    expect(opportunity.order.recentTicks).toHaveLength(10);
+    expect(opportunity.order.expensiveRecentTicks).toHaveLength(10);
+    expect(opportunity.order.expensivePrice).toBe(SYNTHETIC_EXPENSIVE);
+    expect(opportunity.order.simulatedOutputUsd).toBeNull();
     expect(opportunity.outcome).toBe("dry_run_only");
     expect(walletClient.simulateSwap).toHaveBeenCalledTimes(1);
     expect(walletClient.send).not.toHaveBeenCalled();
 
-    const entries = ledger.readAll();
-    expect(entries).toHaveLength(1);
-    const entry = entries[0]!;
+    const entry = ledger.readAll()[0]!;
     expect(entry.kind).toBe("pipeline");
     expect(entry.detection?.netEdge).toBeCloseTo(opportunity.order.adjustedSpread, 10);
+  });
+
+  it("in live mode the same order is refused as two_leg_execution_not_implemented — nothing is sent", async () => {
+    const walletClient = mockWalletClient();
+    const result = await runAgentLoop(loopDeps(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE, { getMode: () => "live", walletClient }));
+
+    expect(result.triggered[0]!.outcome).toBe("two_leg_execution_not_implemented");
+    expect(walletClient.checkAllowance).not.toHaveBeenCalled();
+    expect(walletClient.send).not.toHaveBeenCalled();
+  });
+
+  it("the pipeline's freshness re-check uses the same gas figure detection used", async () => {
+    // A small edge priced with the live gas figure. If the re-check fell
+    // back to the pipeline's flat $0.21 instead, the fresh edge would
+    // keep under half the detected one and the trade would close.
+    const expensive = 497.18;
+    const liveGas: EstimateGasFn = async () => ({ gasCostUsd: 0.027, source: "live" });
+    const edgeWith = (gasCostUsd: number) =>
+      adjustedSpread({
+        effectiveBuyPriceUsd: feeAdjustedPrice(SYNTHETIC_CHEAP, 2500, "buy"),
+        effectiveSellPriceUsd: feeAdjustedPrice(expensive, 10000, "sell"),
+        slippagePct: 0.0005,
+        gasCostUsd,
+        tradeSizeUsd: 200,
+      });
+    expect(edgeWith(0.21) / edgeWith(0.027)).toBeLessThan(DEFAULT_GUARDRAIL_CONFIG.minSpreadRetentionRatio);
+
+    const result = await runAgentLoop(
+      loopDeps(SYNTHETIC_CHEAP, expensive, { estimateGasFn: liveGas, priceHistory: historyWith(10, SYNTHETIC_CHEAP, expensive) })
+    );
+    expect(result.triggered[0]!.outcome).toBe("dry_run_only");
   });
 });
 
@@ -192,39 +290,23 @@ describe("runAgentLoop — spread_closed only comes from a real proposed order's
     const ledger = new AuditLedger();
     const walletClient = mockWalletClient();
 
-    const result = await runAgentLoop({
-      spendTracker: new DailySpendTracker(),
-      getMode: () => "live",
-      ledger,
-      walletClient,
-      agentConfig: CONFIG,
-      fetchPoolQuotesFn: vi.fn().mockResolvedValue(poolQuotes(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE)),
-      // Between detection and send, the pools move to the live reading.
-      fetchFreshPoolPrices: freshPrices(LIVE_CHEAP, LIVE_EXPENSIVE),
-      getWalletAddress,
-    });
+    const result = await runAgentLoop(
+      loopDeps(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE, {
+        ledger,
+        walletClient,
+        // Between detection and send, the pools move to the live reading.
+        fetchFreshPoolPrices: freshPrices(LIVE_CHEAP, LIVE_EXPENSIVE),
+      })
+    );
 
-    expect(result.triggered).toHaveLength(1);
     expect(result.triggered[0]!.outcome).toBe("spread_closed");
     expect(walletClient.checkAllowance).not.toHaveBeenCalled();
-    expect(walletClient.send).not.toHaveBeenCalled();
     expect(ledger.readAll().map((e) => e.outcome)).toEqual(["spread_closed"]);
   });
 
   it("a negative edge at detection never produces spread_closed — it never becomes an order", async () => {
     const ledger = new AuditLedger();
-
-    await runAgentLoop({
-      spendTracker: new DailySpendTracker(),
-      getMode: () => "live",
-      ledger,
-      walletClient: mockWalletClient(),
-      agentConfig: CONFIG,
-      fetchPoolQuotesFn: vi.fn().mockResolvedValue(poolQuotes(LIVE_CHEAP, LIVE_EXPENSIVE)),
-      fetchFreshPoolPrices: freshPrices(LIVE_CHEAP, LIVE_EXPENSIVE),
-      getWalletAddress,
-    });
-
+    await runAgentLoop(loopDeps(LIVE_CHEAP, LIVE_EXPENSIVE, { ledger }));
     expect(ledger.readAll().some((e) => e.outcome === "spread_closed")).toBe(false);
   });
 });
@@ -232,17 +314,7 @@ describe("runAgentLoop — spread_closed only comes from a real proposed order's
 describe("runAgentLoop — narrator failures never change the constructed order (PRD rule 1)", () => {
   it("produces an identical order, verdict, and outcome whether or not narration succeeds", async () => {
     const run = (narrateProposalFn?: () => string) =>
-      runAgentLoop({
-        spendTracker: new DailySpendTracker(),
-        getMode: () => "dry-run",
-        ledger: new AuditLedger(),
-        walletClient: mockWalletClient(),
-        agentConfig: CONFIG,
-        fetchPoolQuotesFn: vi.fn().mockResolvedValue(poolQuotes(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE)),
-        fetchFreshPoolPrices: freshPrices(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE),
-        getWalletAddress,
-        narrateProposalFn,
-      });
+      runAgentLoop(loopDeps(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE, { narrateProposalFn }));
 
     const successfulRun = await run();
     const failingRun = await run(() => {
@@ -256,49 +328,107 @@ describe("runAgentLoop — narrator failures never change the constructed order 
   });
 });
 
-describe("previewOpportunities — read-only, never writes the ledger or calls the wallet", () => {
-  it("live negative edge: spreads returned, no opportunities, no ledger writes", async () => {
+describe("previewOpportunities — read-only, never writes the ledger, the price history, or calls the wallet", () => {
+  it("live negative edge: spreads returned, no opportunities, no ledger writes, no history writes", async () => {
     const before = defaultLedger.readAll().length;
+    const history = new BoundedPriceHistory();
 
     const result = await previewOpportunities({
       spendTracker: new DailySpendTracker(),
       agentConfig: CONFIG,
       fetchPoolQuotesFn: vi.fn().mockResolvedValue(poolQuotes(LIVE_CHEAP, LIVE_EXPENSIVE)),
+      estimateGasFn: pinnedGas,
+      priceHistory: history,
     });
 
     expect(result.spreads).toHaveLength(1);
     expect(result.opportunities).toHaveLength(0);
     expect(defaultLedger.readAll().length).toBe(before);
+    expect(history.recent(POOL_025)).toEqual([]);
   });
 
-  it("positive edge above threshold: one narrated, verdict-bearing opportunity", async () => {
+  it("during warm-up: no opportunity, and the warm-up status is reported", async () => {
     const result = await previewOpportunities({
       spendTracker: new DailySpendTracker(),
       agentConfig: CONFIG,
       fetchPoolQuotesFn: vi.fn().mockResolvedValue(poolQuotes(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE)),
+      estimateGasFn: pinnedGas,
+      priceHistory: historyWith(2, SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE),
+    });
+
+    expect(result.opportunities).toHaveLength(0);
+    expect(result.warmUp.MSFT).toEqual({ readings: 2, required: 10, complete: false });
+  });
+
+  it("positive edge above threshold after warm-up: one narrated opportunity, dry-run floor pending", async () => {
+    const result = await previewOpportunities({
+      spendTracker: new DailySpendTracker(),
+      agentConfig: CONFIG,
+      fetchPoolQuotesFn: vi.fn().mockResolvedValue(poolQuotes(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE)),
+      estimateGasFn: pinnedGas,
+      priceHistory: warmHistory(),
     });
 
     expect(result.opportunities).toHaveLength(1);
-    expect(result.opportunities[0]!.verdict.approved).toBe(true);
+    const verdict = result.opportunities[0]!.verdict;
+    expect(verdict.approved).toBe(true);
+    expect(verdict.checks.find((c) => c.name === "dryRunFloor")?.pending).toBe(true);
     expect(result.opportunities[0]!.narration).toContain("MSFT");
   });
 });
 
 describe("computeSpreads and defaults", () => {
-  it("returns the live gross gap and net edge without a wallet client", async () => {
+  it("returns the live gross gap and net edge, and the gas figure used", async () => {
     const spreads = await computeSpreads({
       underlyings: ["MSFT"],
       fetchPoolQuotesFn: vi.fn().mockResolvedValue(poolQuotes(LIVE_CHEAP, LIVE_EXPENSIVE)),
+      estimateGasFn: pinnedGas,
     });
 
-    expect(spreads).toHaveLength(1);
     expect(spreads[0]!.rawSpread).toBeCloseTo(0.00124, 5);
     expect(spreads[0]!.adjustedSpread).toBeCloseTo(-0.0128, 3);
-    expect(spreads[0]!.cheapPool.feeUnits).toBe(2500);
-    expect(spreads[0]!.expensivePool.feeUnits).toBe(10000);
+    expect(spreads[0]!.gas).toEqual({ costUsd: 0.21, source: "fallback" });
+  });
+
+  it("passes both pools, the trade size, the safety multiplier, and the fallback to the gas estimator", async () => {
+    const estimateGasFn = vi.fn(pinnedGas);
+    await computeSpreads({
+      underlyings: ["MSFT"],
+      fetchPoolQuotesFn: vi.fn().mockResolvedValue(poolQuotes(LIVE_CHEAP, LIVE_EXPENSIVE)),
+      estimateGasFn,
+      gasSafetyMultiplier: 3,
+      fallbackGasCostUsd: 0.5,
+      tradeSizeUsd: 150,
+    });
+
+    expect(estimateGasFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stablecoin: STABLECOIN,
+        cheapPool: expect.objectContaining({ address: POOL_025, feeUnits: 2500 }),
+        expensivePool: expect.objectContaining({ address: POOL_1, feeUnits: 10000 }),
+        tradeSizeUsd: 150,
+        safetyMultiplier: 3,
+        fallbackGasCostUsd: 0.5,
+      })
+    );
+  });
+
+  it("a live gas figure lowers the cost term compared with the flat fallback", async () => {
+    const quotes = vi.fn().mockResolvedValue(poolQuotes(LIVE_CHEAP, LIVE_EXPENSIVE));
+    const [flat] = await computeSpreads({ underlyings: ["MSFT"], fetchPoolQuotesFn: quotes, estimateGasFn: pinnedGas });
+    const [live] = await computeSpreads({
+      underlyings: ["MSFT"],
+      fetchPoolQuotesFn: quotes,
+      estimateGasFn: async () => ({ gasCostUsd: 0.027, source: "live" }),
+    });
+    expect(live!.adjustedSpread).toBeGreaterThan(flat!.adjustedSpread);
   });
 
   it("defaults to only tickers with at least two registered pools", () => {
     expect(DEFAULT_AGENT_LOOP_CONFIG.underlyings).toEqual(["MSFT"]);
+  });
+
+  it("defaults the gas safety multiplier to 2", () => {
+    expect(DEFAULT_AGENT_LOOP_CONFIG.gasSafetyMultiplier).toBe(2);
   });
 });

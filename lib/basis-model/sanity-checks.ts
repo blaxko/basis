@@ -1,6 +1,9 @@
 export interface CheckResult {
   ok: boolean;
   reason?: string;
+  // Set when the check failed only because there isn't enough history
+  // yet, so a UI can say "warming up" instead of implying bad data.
+  warmingUp?: boolean;
 }
 
 function median(values: number[]): number {
@@ -12,16 +15,23 @@ function median(values: number[]): number {
 // Rejects a price that's non-positive or that deviates too far from
 // recent history — added after a corrupted liquidity value produced an
 // absurd price in reference DeFi bot implementations (PRD section 5a).
+// Fails closed without enough history: a price can't be judged against
+// a median that doesn't exist yet.
 export function priceSanityCheck(
   price: number,
   recentTicks: number[],
-  maxDeviationPct = 0.05
+  maxDeviationPct = 0.05,
+  minReadings = 1
 ): CheckResult {
   if (!Number.isFinite(price) || price <= 0) {
     return { ok: false, reason: `non-positive or non-finite price: ${price}` };
   }
-  if (recentTicks.length === 0) {
-    return { ok: true };
+  if (recentTicks.length < Math.max(1, minReadings)) {
+    return {
+      ok: false,
+      warmingUp: true,
+      reason: `warming up: ${recentTicks.length} of ${Math.max(1, minReadings)} price readings`,
+    };
   }
   const recentMedian = median(recentTicks);
   const deviation = Math.abs(price - recentMedian) / recentMedian;

@@ -6,6 +6,7 @@ import {
   dailyCapCheck,
   dryRunFloorCheck,
   spreadFreshnessCheck,
+  slippageToleranceCheck,
   type ProposedOrder,
 } from "./check";
 import { DEFAULT_GUARDRAIL_CONFIG } from "./config";
@@ -26,6 +27,10 @@ const SYNTHETIC_POOL_PAIR = {
   expensivePoolFeeUnits: 10000,
 };
 
+// Exactly the default minimum of 10 readings per pool, gently varying.
+const CHEAP_HISTORY = [98, 99, 100, 101, 102, 100, 99, 101, 100, 100];
+const EXPENSIVE_HISTORY = [101, 102, 103, 102, 101, 102, 103, 102, 102, 102];
+
 // A baseline order that passes every check on its own, so each test below
 // can violate exactly one dimension and prove the others don't interfere.
 function baseOrder(overrides: Partial<ProposedOrder> = {}): ProposedOrder {
@@ -35,7 +40,9 @@ function baseOrder(overrides: Partial<ProposedOrder> = {}): ProposedOrder {
     sizeUsd: 200,
     adjustedSpread: 0.008,
     price: 101,
-    recentTicks: [98, 99, 100, 101, 102],
+    recentTicks: CHEAP_HISTORY,
+    expensivePrice: 102,
+    expensiveRecentTicks: EXPENSIVE_HISTORY,
     liquidityDepthUsd: 5000,
     simulatedOutputUsd: 199,
     poolPair: SYNTHETIC_POOL_PAIR,
@@ -44,8 +51,38 @@ function baseOrder(overrides: Partial<ProposedOrder> = {}): ProposedOrder {
 }
 
 describe("sanityAndLiquidityCheck", () => {
-  it("passes when price is within bounds and liquidity is sufficient", () => {
-    expect(sanityAndLiquidityCheck(baseOrder(), config).ok).toBe(true);
+  it("passes on normal history with enough readings for both pools", () => {
+    const result = sanityAndLiquidityCheck(baseOrder(), config);
+    expect(result.ok).toBe(true);
+    expect(result.warmingUp).toBeUndefined();
+  });
+
+  it("blocks a price spike on the cheap pool", () => {
+    const result = sanityAndLiquidityCheck(baseOrder({ price: 120 }), config);
+    expect(result.ok).toBe(false);
+    expect(result.warmingUp).toBeUndefined();
+    expect(result.reason).toContain("cheap pool");
+    expect(result.reason).toContain("deviates");
+  });
+
+  it("blocks a price spike on the expensive pool — a bad reading there can fake an edge too", () => {
+    const result = sanityAndLiquidityCheck(baseOrder({ expensivePrice: 120 }), config);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain("expensive pool");
+  });
+
+  it("blocks during warm-up, flagged as warming up rather than bad data", () => {
+    const result = sanityAndLiquidityCheck(baseOrder({ recentTicks: CHEAP_HISTORY.slice(0, 9) }), config);
+    expect(result.ok).toBe(false);
+    expect(result.warmingUp).toBe(true);
+    expect(result.reason).toContain("warming up: 9 of 10");
+  });
+
+  it("blocks during warm-up when only the expensive pool's history is short", () => {
+    const result = sanityAndLiquidityCheck(baseOrder({ expensiveRecentTicks: [] }), config);
+    expect(result.ok).toBe(false);
+    expect(result.warmingUp).toBe(true);
+    expect(result.reason).toContain("expensive pool: warming up: 0 of 10");
   });
 
   it("blocks when price deviates far from recent history", () => {
@@ -97,6 +134,33 @@ describe("dryRunFloorCheck", () => {
     expect(result.ok).toBe(false);
     expect(result.reason).toContain("floor");
   });
+
+  it("is pending — not passed — when no simulation has run yet", () => {
+    const result = dryRunFloorCheck(baseOrder({ simulatedOutputUsd: null }), config);
+    expect(result.pending).toBe(true);
+    expect(result.ok).toBe(true); // doesn't block; the pipeline re-runs it on the real output
+    expect(result.reason).toContain("no simulation yet");
+  });
+});
+
+describe("slippageToleranceCheck", () => {
+  it("passes when the tolerance is strictly below the net edge", () => {
+    expect(slippageToleranceCheck(0.006, config).ok).toBe(true);
+  });
+
+  it("fails closed when the tolerance equals the net edge", () => {
+    const result = slippageToleranceCheck(config.sendSlippageTolerance, config);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain("is not below the net edge");
+  });
+
+  it("fails closed when the tolerance exceeds the net edge", () => {
+    expect(slippageToleranceCheck(0.0001, config).ok).toBe(false);
+  });
+
+  it("default tolerance is well below the 1% it replaced", () => {
+    expect(config.sendSlippageTolerance).toBeLessThan(0.01);
+  });
 });
 
 describe("check() — composed gate", () => {
@@ -107,6 +171,27 @@ describe("check() — composed gate", () => {
     expect(verdict.blockedBy).toBeUndefined();
     expect(verdict.approvedSizeUsd).toBe(200);
     expect(verdict.checks.every((c) => c.ok)).toBe(true);
+    expect(verdict.reason).toBe("all guardrail checks passed");
+  });
+
+  it("an order built before simulation is approved with the floor pending, and says so", () => {
+    const verdict = check(baseOrder({ simulatedOutputUsd: null }), { spentTodaySoFarUsd: 0, config });
+    expect(verdict.approved).toBe(true);
+    expect(verdict.checks.find((c) => c.name === "dryRunFloor")?.pending).toBe(true);
+    expect(verdict.reason).toContain("pending until simulation: dryRunFloor");
+  });
+
+  it("never approves on empty price history — blocks as warming up", () => {
+    const verdict = check(baseOrder({ recentTicks: [], expensiveRecentTicks: [] }), { spentTodaySoFarUsd: 0, config });
+    expect(verdict.approved).toBe(false);
+    expect(verdict.blockedBy).toBe("sanityAndLiquidity");
+    expect(verdict.checks.find((c) => c.name === "sanityAndLiquidity")?.warmingUp).toBe(true);
+  });
+
+  it("no check is ever reported as a plain pass without data: every ok check is either backed by input or marked pending", () => {
+    const verdict = check(baseOrder({ simulatedOutputUsd: null }), { spentTodaySoFarUsd: 0, config });
+    const plainPasses = verdict.checks.filter((c) => c.ok && !c.pending).map((c) => c.name);
+    expect(plainPasses).toEqual(["sanityAndLiquidity", "perTradeCap", "dailyCap"]);
   });
 
   it("blocks on the daily cap alone when every other check would pass", () => {
@@ -177,7 +262,7 @@ describe("check() — composed gate", () => {
 });
 
 describe("integration: real MSFTB cross-pool pairing composes with check()", () => {
-  it("the LIVE MSFTB 0.25%-vs-1% PancakeSwap pairing (real, −1.28% net as of this check) correctly BLOCKS — not a lesser outcome, the honest one", () => {
+  it("the LIVE MSFTB 0.25%-vs-1% PancakeSwap pairing (−1.28% net as of this read) flows through check() cleanly — check() doesn't gate on sign; the pipeline's no_edge gate declines it", () => {
     // Prices from a LIVE on-chain read (public BSC RPC, both real
     // registered pools — see lib/data/pool-addresses.ts) performed
     // 2026-09-24: 0.25% pool $496.3821, 1% pool $496.9976. This is the
@@ -200,6 +285,8 @@ describe("integration: real MSFTB cross-pool pairing composes with check()", () 
 
     const effectiveBuyPriceUsd = feeAdjustedPrice(cheapPriceUsd, 2500, "buy");
     const effectiveSellPriceUsd = feeAdjustedPrice(expensivePriceUsd, 10000, "sell");
+    // The −1.28% figure was computed with the old flat $0.21 gas; kept
+    // here so the documented number stays reproducible.
     const gasCostUsd = 200_000 * 1.5e-9 * 700;
     const netSpread = adjustedSpread({
       effectiveBuyPriceUsd,
@@ -216,7 +303,9 @@ describe("integration: real MSFTB cross-pool pairing composes with check()", () 
       sizeUsd: 200,
       adjustedSpread: netSpread,
       price: cheapPriceUsd,
-      recentTicks: [],
+      recentTicks: Array.from({ length: 10 }, () => cheapPriceUsd),
+      expensivePrice: expensivePriceUsd,
+      expensiveRecentTicks: Array.from({ length: 10 }, () => expensivePriceUsd),
       liquidityDepthUsd: 100_000,
       // dryRunFloorCheck's floor is sized to a proportion of sizeUsd, not
       // to netSpread — a negative net edge doesn't automatically fail

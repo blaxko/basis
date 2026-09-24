@@ -25,12 +25,18 @@ export interface ProposedOrder {
   side: Side;
   sizeUsd: number;
   adjustedSpread: number;
+  // Cheap pool's price and its recent readings.
   price: number;
   recentTicks: number[];
+  // Expensive pool's too — a bad reading on either side can fake an edge.
+  expensivePrice: number;
+  expensiveRecentTicks: number[];
   liquidityDepthUsd: number;
-  // Modeled input, standing in for a real dry-run/simulation API call
-  // (PRD rule 3) — this phase never calls one.
-  simulatedOutputUsd: number;
+  // null until a real QuoterV2 simulation has run. The order builders
+  // never have one, so check() reports the dry-run floor as pending
+  // rather than passing it; the pipeline runs the same check against the
+  // real simulated output before any send.
+  simulatedOutputUsd: number | null;
   poolPair: PoolPair;
 }
 
@@ -48,6 +54,12 @@ export interface GuardrailCheckResult {
   name: string;
   ok: boolean;
   reason?: string;
+  // Failed only for lack of history (ok is false). Displayed as
+  // "warming up", never as a pass.
+  warmingUp?: boolean;
+  // The check has no data to run on yet (ok is true so it doesn't block,
+  // but it did not pass). Displayed as "pending", never as a pass.
+  pending?: boolean;
 }
 
 // The gate's decision. Deliberately includes enough structure (checks[],
@@ -79,9 +91,20 @@ export function sanityAndLiquidityCheck(
   order: ProposedOrder,
   config: GuardrailConfig
 ): GuardrailCheckResult {
-  const priceResult = priceSanityCheck(order.price, order.recentTicks, config.maxPriceDeviationPct);
-  if (!priceResult.ok) {
-    return { name: "sanityAndLiquidity", ok: false, reason: priceResult.reason };
+  const pools = [
+    { label: "cheap pool", price: order.price, ticks: order.recentTicks },
+    { label: "expensive pool", price: order.expensivePrice, ticks: order.expensiveRecentTicks },
+  ];
+  for (const pool of pools) {
+    const result = priceSanityCheck(pool.price, pool.ticks, config.maxPriceDeviationPct, config.minPriceHistoryReadings);
+    if (!result.ok) {
+      return {
+        name: "sanityAndLiquidity",
+        ok: false,
+        reason: `${pool.label}: ${result.reason}`,
+        ...(result.warmingUp ? { warmingUp: true } : {}),
+      };
+    }
   }
   const liquidityResult = liquidityDepthCheck(order.liquidityDepthUsd, config.minLiquidityDepthUsd);
   if (!liquidityResult.ok) {
@@ -122,10 +145,18 @@ export function dailyCapCheck(
   return { name: "dailyCap", ok: true };
 }
 
-// Named check 4: dry-run minimum-output floor. simulatedOutputUsd models
-// what a real dry-run/simulation call would report (PRD rule 3) — this
-// phase takes it as an input rather than calling anything.
+// Named check 4: dry-run minimum-output floor, against a real QuoterV2
+// simulation (PRD rule 3). Before one exists it is pending, not passed;
+// lib/execution/pipeline.ts re-runs it on the simulated output.
 export function dryRunFloorCheck(order: ProposedOrder, config: GuardrailConfig): GuardrailCheckResult {
+  if (order.simulatedOutputUsd === null) {
+    return {
+      name: "dryRunFloor",
+      ok: true,
+      pending: true,
+      reason: "no simulation yet — runs on the QuoterV2 output before any send",
+    };
+  }
   const minRequired = order.sizeUsd * config.minDryRunOutputRatio;
   if (order.simulatedOutputUsd < minRequired) {
     return {
@@ -171,6 +202,24 @@ export function spreadFreshnessCheck(
   return { name: "spreadFreshness", ok: true };
 }
 
+// Named check 6: like spreadFreshness, invoked from lib/execution/pipeline.ts
+// (against the detected edge, then again against the fresh one), not from
+// check() — for a non-positive edge the pipeline's no_edge gate has
+// already declined, and comparing a tolerance to it would be meaningless.
+// The swap's on-chain floor is simulated output × (1 − tolerance). If the
+// tolerance is not strictly below the net edge, the floor can let the
+// whole edge (or more) go and the swap would still succeed.
+export function slippageToleranceCheck(netEdge: number, config: GuardrailConfig): GuardrailCheckResult {
+  if (config.sendSlippageTolerance >= netEdge) {
+    return {
+      name: "slippageTolerance",
+      ok: false,
+      reason: `on-chain slippage tolerance ${(config.sendSlippageTolerance * 100).toFixed(4)}% is not below the net edge ${(netEdge * 100).toFixed(4)}% — the swap's minimum-output floor couldn't protect it`,
+    };
+  }
+  return { name: "slippageTolerance", ok: true };
+}
+
 // The gate. Pure and side-effect-free: no wallet calls, no network calls,
 // no signing — it only decides, and a caller must check verdict.approved
 // before proceeding to anything downstream (PRD rules 1 and 4).
@@ -203,10 +252,14 @@ export function check(order: ProposedOrder, deps: GuardrailDeps): GuardrailVerdi
       };
     }
 
+    const pending = checks.filter((c) => c.pending).map((c) => c.name);
     return {
       approved: true,
       status: "approved",
-      reason: "all guardrail checks passed",
+      reason:
+        pending.length === 0
+          ? "all guardrail checks passed"
+          : `all runnable guardrail checks passed; pending until simulation: ${pending.join(", ")}`,
       approvedSizeUsd: order.sizeUsd,
       checks,
       timestamp,

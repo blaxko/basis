@@ -17,6 +17,9 @@ const SYNTHETIC_POOL_PAIR = {
   expensivePoolFeeUnits: 10000,
 };
 
+// A full warm-up's worth of flat readings (the default minimum is 10).
+const tenOf = (price: number) => Array.from({ length: 10 }, () => price);
+
 describe("narrateProposal — real MSFTB cross-pool scenario (declined-trade case)", () => {
   it("produces the correct advisory line for the live pairing that does not clear net", () => {
     // Same live-read numbers as lib/guardrails/check.test.ts's
@@ -46,7 +49,9 @@ describe("narrateProposal — real MSFTB cross-pool scenario (declined-trade cas
       sizeUsd: 200,
       adjustedSpread: netSpread,
       price: cheapPriceUsd,
-      recentTicks: [],
+      recentTicks: tenOf(cheapPriceUsd),
+      expensivePrice: expensivePriceUsd,
+      expensiveRecentTicks: tenOf(expensivePriceUsd),
       liquidityDepthUsd: 100_000,
       simulatedOutputUsd: 199,
       poolPair: {
@@ -74,7 +79,9 @@ describe("narrateProposal — real MSFTB cross-pool scenario (declined-trade cas
       sizeUsd: 200,
       adjustedSpread: 0.008,
       price: 101,
-      recentTicks: [98, 99, 100, 101, 102],
+      recentTicks: tenOf(100),
+      expensivePrice: 102,
+      expensiveRecentTicks: tenOf(102),
       liquidityDepthUsd: 5000,
       simulatedOutputUsd: 199,
       poolPair: SYNTHETIC_POOL_PAIR,
@@ -82,6 +89,7 @@ describe("narrateProposal — real MSFTB cross-pool scenario (declined-trade cas
 
     const verdict = check(order, { spentTodaySoFarUsd: 1900, config: DEFAULT_GUARDRAIL_CONFIG });
     expect(verdict.approved).toBe(false);
+    expect(verdict.blockedBy).toBe("dailyCap");
 
     const text = narrateProposal({ ticker: "NVDA", adjustedSpread: 0.008, proposedSizeUsd: 200 }, verdict);
 
@@ -97,7 +105,9 @@ describe("narrateProposal — real MSFTB cross-pool scenario (declined-trade cas
       sizeUsd: 100,
       adjustedSpread: 0.0001,
       price: 200,
-      recentTicks: [199, 200, 201],
+      recentTicks: tenOf(200),
+      expensivePrice: 200.02,
+      expensiveRecentTicks: tenOf(200.02),
       liquidityDepthUsd: 5000,
       simulatedOutputUsd: 99,
       poolPair: SYNTHETIC_POOL_PAIR,

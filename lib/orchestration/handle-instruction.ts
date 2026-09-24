@@ -1,4 +1,5 @@
 import { fetchPoolQuotes as realFetchPoolQuotes } from "../data/quotes";
+import { defaultPriceHistory, type PriceHistory } from "../data/price-history";
 import { runPipeline, type WalletClient, type PipelineDeps } from "../execution/pipeline";
 import { AuditLedger, defaultLedger, type PipelineMode, type PipelineOutcome } from "../execution/audit-ledger";
 import { DEFAULT_GUARDRAIL_CONFIG, type GuardrailConfig } from "../guardrails/config";
@@ -8,7 +9,7 @@ import { chatCompletion } from "../llm/groq-client";
 import { narrateProposal as realNarrateProposal } from "../llm/proposal-narrator";
 import { defaultSpendTracker, type SpendTracker } from "./spend-tracker";
 import { getKillswitchMode } from "./killswitch";
-import { computeSpreads, DEFAULT_AGENT_LOOP_CONFIG, type AgentLoopConfig } from "./agent-loop";
+import { computeSpreads, warmUpStatus, DEFAULT_AGENT_LOOP_CONFIG, type AgentLoopConfig, type EstimateGasFn } from "./agent-loop";
 
 // The manual path. Free text -> intent-parser.ts -> pool-pair resolution
 // -> (ONLY once both succeed) the same runPipeline() the automatic loop
@@ -33,6 +34,17 @@ export interface PoolResolutionError {
   message: string;
 }
 
+// The pools resolved, but after a server start there aren't yet enough
+// price readings to sanity-check them. No order is proposed until there
+// are — same rule as the automatic loop.
+export interface WarmingUpError {
+  kind: "warming_up";
+  ticker: string;
+  readings: number;
+  required: number;
+  message: string;
+}
+
 export type InstructionResult =
   | {
       ok: true;
@@ -43,7 +55,7 @@ export type InstructionResult =
       outcome: PipelineOutcome;
       ledgerEntryId: string;
     }
-  | { ok: false; error: IntentParseError | PoolResolutionError };
+  | { ok: false; error: IntentParseError | PoolResolutionError | WarmingUpError };
 
 export interface HandleInstructionDeps {
   spendTracker?: SpendTracker;
@@ -53,6 +65,8 @@ export interface HandleInstructionDeps {
   guardrailConfig?: GuardrailConfig;
   agentConfig?: AgentLoopConfig;
   fetchPoolQuotesFn?: typeof realFetchPoolQuotes;
+  estimateGasFn?: EstimateGasFn;
+  priceHistory?: PriceHistory;
   chatCompletionFn?: typeof chatCompletion;
   narrateProposalFn?: typeof realNarrateProposal;
   // Forwarded straight through to runPipeline()'s PipelineDeps — same
@@ -81,6 +95,7 @@ export async function handleInstruction(
   const guardrailConfig = deps.guardrailConfig ?? DEFAULT_GUARDRAIL_CONFIG;
   const agentConfig = deps.agentConfig ?? DEFAULT_AGENT_LOOP_CONFIG;
   const narrateProposalFn = deps.narrateProposalFn ?? realNarrateProposal;
+  const history = deps.priceHistory ?? defaultPriceHistory;
 
   // Pool-pair resolution step: live-reads the ticker's cheapest and most
   // expensive known pool via the same computeSpreads() the automatic loop
@@ -92,7 +107,9 @@ export async function handleInstruction(
     const spreads = await computeSpreads({
       underlyings: [intent.ticker],
       fetchPoolQuotesFn: deps.fetchPoolQuotesFn,
-      gasCostUsdEstimate: agentConfig.gasCostUsdEstimate,
+      estimateGasFn: deps.estimateGasFn,
+      gasSafetyMultiplier: agentConfig.gasSafetyMultiplier,
+      fallbackGasCostUsd: agentConfig.fallbackGasCostUsd,
       slippagePctEstimate: agentConfig.slippagePctEstimate,
       tradeSizeUsd: intent.sizeUsd,
     });
@@ -115,6 +132,22 @@ export async function handleInstruction(
     };
   }
 
+  // Reads the history the scheduler has recorded; never records into it,
+  // so manual instructions can't shorten the warm-up.
+  const warmUp = warmUpStatus(spread, history, guardrailConfig.minPriceHistoryReadings);
+  if (!warmUp.complete) {
+    return {
+      ok: false,
+      error: {
+        kind: "warming_up",
+        ticker: intent.ticker,
+        readings: warmUp.readings,
+        required: warmUp.required,
+        message: `price history has ${warmUp.readings} of ${warmUp.required} readings — no orders until warm-up completes`,
+      },
+    };
+  }
+
   const poolPair: PoolPair = {
     cheapPoolAddress: spread.cheapPool.address,
     cheapPoolFeeUnits: spread.cheapPool.feeUnits,
@@ -131,12 +164,13 @@ export async function handleInstruction(
     sizeUsd: intent.sizeUsd,
     adjustedSpread: spread.adjustedSpread,
     price: spread.cheapPool.priceUsd,
-    recentTicks: [],
+    recentTicks: history.recent(spread.cheapPool.address),
+    expensivePrice: spread.expensivePool.priceUsd,
+    expensiveRecentTicks: history.recent(spread.expensivePool.address),
     liquidityDepthUsd: Math.min(spread.cheapPool.liquidityUsdEstimate, spread.expensivePool.liquidityUsdEstimate),
-    // No live dry-run estimate exists before check() runs, so this is an
-    // optimistic placeholder (100% of size). The real floor is enforced
-    // authoritatively by pipeline.ts's own fresh simulateSwap() call afterward.
-    simulatedOutputUsd: intent.sizeUsd,
+    // No simulation has run yet; check() reports the floor as pending and
+    // the pipeline checks it against the real QuoterV2 output.
+    simulatedOutputUsd: null,
     poolPair,
   };
 
@@ -150,7 +184,7 @@ export async function handleInstruction(
       fetchFreshPoolPrices: deps.fetchFreshPoolPrices,
       buildDirectSwapParams: deps.buildDirectSwapParams,
       getWalletAddress: deps.getWalletAddress,
-      gasCostUsdEstimate: agentConfig.gasCostUsdEstimate,
+      gasCostUsdEstimate: spread.gas.costUsd,
       slippagePctEstimate: agentConfig.slippagePctEstimate,
       ledger,
     },

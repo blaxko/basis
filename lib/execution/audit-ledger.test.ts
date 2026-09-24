@@ -8,6 +8,7 @@ const detection = {
   grossGap: 0.00124,
   netEdge: -0.0128,
   threshold: 0.0001,
+  gas: { costUsd: 0.21, source: "fallback" as const },
 };
 
 describe("AuditLedger — detection entries are a different kind from pipeline entries", () => {
@@ -20,6 +21,16 @@ describe("AuditLedger — detection entries are a different kind from pipeline e
     expect(entry.detection).toEqual(detection);
     expect("verdict" in entry).toBe(false);
     expect(ledger.readAll()).toEqual([entry]);
+  });
+
+  it("appendWarmingUp writes kind=detection, outcome=warming_up, with the reading counts and no verdict", () => {
+    const ledger = new AuditLedger();
+    const entry = ledger.appendWarmingUp({ mode: "simulation", detection, warmUp: { readings: 3, required: 10 } });
+
+    expect(entry.kind).toBe("detection");
+    expect(entry.outcome).toBe("warming_up");
+    expect(entry.warmUp).toEqual({ readings: 3, required: 10 });
+    expect("verdict" in entry).toBe(false);
   });
 
   it("gives every entry a unique id, across both kinds", () => {

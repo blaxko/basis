@@ -20,12 +20,12 @@ The catch, and the reason this isn't a free lunch: Binance's own Web3 Trading AP
 
 | User | Use case |
 |---|---|
-| **Primary — the trader** | Wants exposure to genuine cross-protocol mispricing between xStocks/bStocks and Ondo representations of the same underlying, without personally tracking dividend/ex-div calendars or babysitting an agent that might misfire. |
-| **Secondary — the judge/evaluator** | Needs to verify, in under four minutes, that the system does what it claims: detects a real spread, distinguishes it from dividend drift, and enforces its own safety rules — without reading the codebase. |
+| **Primary — the trader** | Wants exposure to genuine cross-pool mispricing between PancakeSwap V3 pools of the same tokenized stock, without personally watching every pool and fee tier or babysitting an agent that might misfire. |
+| **Secondary — the judge/evaluator** | Needs to verify, in under four minutes, that the system does what it claims: detects a real cross-pool gap, distinguishes it from one that doesn't survive fees, slippage, and gas, and enforces its own safety rules — without reading the codebase. |
 | **Tertiary — the builder reusing the pattern** | A developer wanting a reference implementation of Wallet Skills + Agent Studio + an isolated LLM layer, where "isolate the LLM from execution" is reusable outside tokenized equities entirely. |
 
 Core use cases:
-1. Detect and, within pre-set guardrails, execute a genuine cross-protocol spread on a chosen underlying.
+1. Detect a genuine cross-pool spread on a chosen underlying and, within pre-set guardrails, act on it. (Live on-chain execution is disabled until two-leg execution exists — see §10.)
 2. Query the agent conversationally (via the dashboard or directly through Wallet Skills in Claude/ChatGPT) for current status, rationale, and open positions.
 3. Manually override or pause the agent at any time via the killswitch, with the change taking effect on the next execution attempt, not the next page load.
 4. Review a complete, timestamped audit trail for every decision the agent made — approved, blocked, or executed — for accountability.
@@ -99,10 +99,10 @@ Across all four: **separate the thing that decides from the thing that holds mon
 
 1. **Landing = the dashboard itself.** No marketing page. The persistent header shows system state (API/RPC health, wallet balances, killswitch position) before any scrolling.
 2. **Judge/trader sees a live Pool Spread Monitor** — gross cross-pool gap vs. net edge after costs per underlying, with each pool's fee tier visible so it's obvious when a raw gap is being correctly rejected because it doesn't clear costs.
-3. **An opportunity clears threshold** → the LLM Advisory Feed prints a plain-English proposal ("MSFT: 0.7% raw cross-pool spread, 1% fee pool cheap, proposed size $200").
-4. **The Guardrail Gate evaluates it live**, visibly ticking through per-trade cap, daily cap, and dry-run min-output checks, resolving to a bold **APPROVED** or **BLOCKED** badge.
-5. **If approved**, execution fires through Agentic Wallet; a new row lands in the Audit Ledger showing the full chain: data fetch → guardrail check → transaction ID → (if applicable) x402 receipt for the data call that fed the decision.
-6. **Any time**, the trader can flip the Master Killswitch between Simulation → Dry-Run → Live, and can also just talk to the agent directly through Wallet Skills from their own Claude/ChatGPT client — the dashboard and the conversational surface are two views onto the same guardrailed core, not two separate products.
+3. **An opportunity clears threshold** — only when the net edge after both pools' fees, slippage, and gas is positive, and only after enough price history has built up since server start to sanity-check both pools — the LLM Advisory Feed prints a plain-English proposal. Every evaluation that doesn't clear is still recorded in the Audit Ledger as a detection decision.
+4. **The Guardrail Gate evaluates it live**, visibly ticking through price sanity on both pools, per-trade cap, daily cap, and dry-run min-output checks, resolving to a bold **APPROVED** or **BLOCKED** badge. A check with no data is shown as WARMING UP or PENDING, never as a pass.
+5. **If approved**, dry-run mode runs the execution path up to the point of sending: pre-send re-read of both pools, ERC-20 allowance check, QuoterV2 simulation, and the dry-run floor on the simulated output. Approval, signing, and sending straight to the PancakeSwap V3 SwapRouter are built and tested too, but no mode reaches them: **live on-chain arbitrage is disabled until two-leg execution exists**. Only the buy leg is built, and a single leg alone doesn't capture the spread, so live mode refuses every order before any approval or send and logs the refusal.
+6. **Any time**, the trader can flip the Master Killswitch between Simulation → Dry-Run → Live; the scheduler picks up the change on its next tick. The PRD's original conversational surface (talking to the agent through Wallet Skills from a Claude/ChatGPT client) is not built in this codebase.
 
 ---
 
@@ -203,11 +203,11 @@ The layout itself has to argue the thesis: decision and safety are visibly separ
 ## 10. MVP Scope
 
 **Real, working:**
-- Live quote pulling across 3–5 underlyings via Binance Web3 API
-- The fee-adjusted spread math, with unit tests proving it correctly distinguishes a genuinely tradeable net edge from a raw gap that doesn't clear real costs — validated against real MSFTB pool data, not synthetic numbers
-- Dry-run + small live execution via Agentic Wallet
-- The guardrail gate as independent, tested code (spend caps, dry-run floor, fail-closed behavior)
-- Audit ledger of every decision (proposed, approved, rejected, executed)
+- Live on-chain pool reads (slot0/liquidity) for every registered PancakeSwap V3 pool of the confirmed underlying(s), via a BSC RPC endpoint
+- The fee-adjusted spread math, with unit tests proving it correctly distinguishes a genuinely tradeable net edge from a raw gap that doesn't clear real costs — validated against real MSFTB pool data, not synthetic numbers; gas priced live for both legs (QuoterV2 gas × live gas price × on-chain BNB price × a safety multiplier)
+- The execution path — pre-send re-read, ERC-20 allowance and approval, QuoterV2 simulation, signing, and sending to the PancakeSwap V3 SwapRouter — built and tested with a mocked wallet. Dry-run mode runs it live up to, but not including, sending. **Live on-chain arbitrage is disabled until two-leg execution exists**: live mode refuses every order before any approval or send
+- The guardrail gate as independent, tested code (price sanity with a warm-up period, spend caps, dry-run floor, on-chain slippage tolerance below the edge, fail-closed behavior)
+- Audit ledger of every decision (detection decisions, guardrail blocks, refusals, dry-runs)
 
 **Mocked for demo:**
 - Pool registry — hardcoded to the specific fee-tier pools independently verified this way (MSFTB's 0.25%/1% pair today) rather than a general pool-discovery scanner
@@ -293,9 +293,9 @@ Stack awards targeted: **Best Use of Agentic Wallet/Wallet Skills** (isolated wa
 - [ ] Live pool prices render for each independently-verified fee-tier pool of the confirmed underlying(s) within the dashboard at an acceptable refresh latency.
 - [ ] The fee-adjusted spread calculation demonstrably identifies at least one documented case where a real raw cross-pool gap does not clear trading costs (fees, slippage, gas) — a case a naive raw-diff bot would have flagged as a false signal.
 - [ ] The guardrail gate visibly blocks at least one deliberately-triggered violation (e.g., an oversized order) live, not just in a unit test.
-- [ ] A real, tested, end-to-end execution capability (dry-run → sign → broadcast) is demonstrated live on BSC mainnet. This is not a guaranteed positive outcome and is not staged either way: it plays out as either a real trade executing (if a genuine cost-net opportunity has cleared at recording time) or the guardrail correctly declining one (if it hasn't) — both are a valid pass, since the system doing real cost accounting instead of executing on any raw gap is the actual claim being tested.
-- [ ] The audit ledger shows the complete chain for at least one trade: data fetch → guardrail check → TxID → x402 receipt (where applicable).
-- [ ] The killswitch demonstrably changes agent behavior across all three states (Simulation / Dry-Run / Live).
+- [ ] The execution path (pre-send re-read → allowance/approval → QuoterV2 simulation → sign → send) is built and covered by tests. **Live on-chain arbitrage is disabled until two-leg execution exists**, so no live trade is demonstrated: live mode refuses every order before any approval or send, and that refusal is itself tested and logged. The demo shows real detection declining a real gap that doesn't clear costs, and a deliberate guardrail block — neither staged.
+- [ ] The audit ledger shows the complete chain for every decision: detection (pool prices, gross gap, net edge, gas and its source) → guardrail check → outcome. There is no TxID while live execution is disabled.
+- [ ] The killswitch demonstrably changes agent behavior across all three states: Simulation (gates only), Dry-Run (full path short of sending), Live (refused as two-leg execution not implemented).
 
 **Submission**
 - [ ] Public repo with README instructions a judge can follow standalone, with no undocumented setup steps.

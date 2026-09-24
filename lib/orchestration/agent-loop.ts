@@ -1,5 +1,7 @@
-import { fetchPoolQuotes as realFetchPoolQuotes } from "../data/quotes";
+import { fetchPoolQuotes as realFetchPoolQuotes, BSC_USDT_ADDRESS } from "../data/quotes";
 import { getRegisteredTickers } from "../data/pool-addresses";
+import { defaultPriceHistory, type PriceHistory } from "../data/price-history";
+import { estimateRoundTripGasUsd, type GasEstimate, type RoundTripGasParams } from "../data/gas-estimate";
 import { feeAdjustedPrice } from "../basis-model/nav-equivalent";
 import { rawSpread, adjustedSpread as computeAdjustedSpread } from "../basis-model/adjusted-spread";
 import { runPipeline, type WalletClient, type PipelineDeps } from "../execution/pipeline";
@@ -33,16 +35,16 @@ export interface PoolLeg {
 }
 
 // One ticker's cheapest and most expensive known pool, and the spread
-// between them — the AMM cross-pool detection unit, replacing the old
-// xStocks-vs-Ondo pair. rawSpread is diagnostic-only (never an execution
-// signal); adjustedSpread is the net edge after both pools' fees,
-// estimated slippage, and gas.
+// between them. rawSpread is diagnostic-only (never an execution signal);
+// adjustedSpread is the net edge after both pools' fees, estimated
+// slippage, and gas — `gas` records which gas figure went into it.
 export interface UnderlyingSpread {
   ticker: string;
   cheapPool: PoolLeg;
   expensivePool: PoolLeg;
   rawSpread: number;
   adjustedSpread: number;
+  gas: { costUsd: number; source: "live" | "fallback" };
 }
 
 export interface TriggeredOpportunity {
@@ -60,12 +62,24 @@ export interface NoOpportunityRecord {
   ledgerEntryId: string;
 }
 
+export interface WarmUpStatus {
+  readings: number;
+  required: number;
+  complete: boolean;
+}
+
+export interface WarmingUpRecord extends WarmUpStatus {
+  ticker: string;
+  ledgerEntryId: string;
+}
+
 export interface AgentLoopResult {
   timestamp: number;
   mode: PipelineMode;
   spreads: UnderlyingSpread[];
   triggered: TriggeredOpportunity[];
   noOpportunities: NoOpportunityRecord[];
+  warmingUp: WarmingUpRecord[];
 }
 
 export interface AgentLoopConfig {
@@ -76,11 +90,13 @@ export interface AgentLoopConfig {
   // docs/config-rationale.md for why it isn't larger.
   adjustedSpreadThreshold: number;
   orderSizeUsd: number;
-  // Same assumptions used throughout this session's basis-model tests
-  // (~200k gas units, ~1.5 gwei, BNB ~$700) — a rough order-of-magnitude
-  // estimate, not a live gas quote. Configurable so a real gas oracle
-  // can replace this later without changing the math's shape.
-  gasCostUsdEstimate: number;
+  // Live round-trip gas (lib/data/gas-estimate.ts) is multiplied by this.
+  // See docs/config-rationale.md.
+  gasSafetyMultiplier: number;
+  // Used only when the live estimate fails (logged when it happens):
+  // ~200k gas × 1.5 gwei × $700 BNB, ~30× the live figure measured
+  // 2026-09-24, so it errs toward declining.
+  fallbackGasCostUsd: number;
   slippagePctEstimate: number;
 }
 
@@ -91,24 +107,31 @@ export const DEFAULT_AGENT_LOOP_CONFIG: AgentLoopConfig = {
   underlyings: getRegisteredTickers(),
   adjustedSpreadThreshold: 0.0001,
   orderSizeUsd: 200,
-  gasCostUsdEstimate: 200_000 * 1.5e-9 * 700,
+  gasSafetyMultiplier: 2,
+  fallbackGasCostUsd: 200_000 * 1.5e-9 * 700,
   slippagePctEstimate: 0.0005,
 };
 
+export type EstimateGasFn = (params: RoundTripGasParams) => Promise<GasEstimate>;
+
 // Steps 1–2: pull live per-pool prices and compute the net cross-pool
-// edge per underlying via the Basis Model. Deliberately side-effect-free
-// — this is what GET /api/opportunities calls directly, since a GET must
-// never trigger a guardrail/pipeline run.
+// edge per underlying via the Basis Model. Writes nothing — this is what
+// GET /api/opportunities calls, and a GET must never trigger a pipeline
+// run or feed the price history.
 export async function computeSpreads(deps: {
   underlyings?: readonly string[];
   fetchPoolQuotesFn?: typeof realFetchPoolQuotes;
-  gasCostUsdEstimate?: number;
+  estimateGasFn?: EstimateGasFn;
+  gasSafetyMultiplier?: number;
+  fallbackGasCostUsd?: number;
   slippagePctEstimate?: number;
   tradeSizeUsd?: number;
 } = {}): Promise<UnderlyingSpread[]> {
   const underlyings = deps.underlyings ?? DEFAULT_AGENT_LOOP_CONFIG.underlyings;
   const fetchPoolQuotesFn = deps.fetchPoolQuotesFn ?? realFetchPoolQuotes;
-  const gasCostUsdEstimate = deps.gasCostUsdEstimate ?? DEFAULT_AGENT_LOOP_CONFIG.gasCostUsdEstimate;
+  const estimateGasFn = deps.estimateGasFn ?? ((params: RoundTripGasParams) => estimateRoundTripGasUsd(params));
+  const gasSafetyMultiplier = deps.gasSafetyMultiplier ?? DEFAULT_AGENT_LOOP_CONFIG.gasSafetyMultiplier;
+  const fallbackGasCostUsd = deps.fallbackGasCostUsd ?? DEFAULT_AGENT_LOOP_CONFIG.fallbackGasCostUsd;
   const slippagePctEstimate = deps.slippagePctEstimate ?? DEFAULT_AGENT_LOOP_CONFIG.slippagePctEstimate;
   const tradeSizeUsd = deps.tradeSizeUsd ?? DEFAULT_AGENT_LOOP_CONFIG.orderSizeUsd;
 
@@ -136,6 +159,15 @@ export async function computeSpreads(deps: {
         liquidityUsdEstimate: expensiveQuote.liquidityUsdEstimate,
       };
 
+      const gasEstimate = await estimateGasFn({
+        stablecoin: BSC_USDT_ADDRESS,
+        cheapPool,
+        expensivePool,
+        tradeSizeUsd,
+        safetyMultiplier: gasSafetyMultiplier,
+        fallbackGasCostUsd,
+      });
+
       const raw = rawSpread(cheapPool.priceUsd, expensivePool.priceUsd);
       const effectiveBuyPriceUsd = feeAdjustedPrice(cheapPool.priceUsd, cheapPool.feeUnits, "buy");
       const effectiveSellPriceUsd = feeAdjustedPrice(expensivePool.priceUsd, expensivePool.feeUnits, "sell");
@@ -143,25 +175,37 @@ export async function computeSpreads(deps: {
         effectiveBuyPriceUsd,
         effectiveSellPriceUsd,
         slippagePct: slippagePctEstimate,
-        gasCostUsd: gasCostUsdEstimate,
+        gasCostUsd: gasEstimate.gasCostUsd,
         tradeSizeUsd,
       });
 
-      return { ticker, cheapPool, expensivePool, rawSpread: raw, adjustedSpread: adjusted };
+      return {
+        ticker,
+        cheapPool,
+        expensivePool,
+        rawSpread: raw,
+        adjustedSpread: adjusted,
+        gas: { costUsd: gasEstimate.gasCostUsd, source: gasEstimate.source },
+      };
     })
   );
+}
+
+// Readings available for the pair — the shorter of the two pools'
+// histories, since a spike on either side can fake an edge.
+export function warmUpStatus(spread: UnderlyingSpread, history: PriceHistory, required: number): WarmUpStatus {
+  const readings = Math.min(history.recent(spread.cheapPool.address).length, history.recent(spread.expensivePool.address).length);
+  return { readings, required, complete: readings >= required };
 }
 
 // Step 3: deterministic order construction — never the LLM's job for
 // this automatic path. The order represents buying on the cheap pool;
 // poolPair carries both legs' identity so downstream (the freshness
 // re-check, buildDirectSwapParams()) knows exactly which two pools this
-// order refers to. KNOWN SIMPLIFICATION: this models the trade as a
-// single "buy the cheap pool" leg — a true two-leg atomic arbitrage
-// (also selling the expensive pool to realize the edge) is not built
-// yet; poolPair exists so that work has something to build on, not
-// because this session claims to have solved it.
-function constructOrder(spread: UnderlyingSpread, config: AgentLoopConfig): ProposedOrder {
+// order refers to. KNOWN SIMPLIFICATION: only this buy leg is built, so
+// live mode refuses to send it (lib/execution/pipeline.ts,
+// "two_leg_execution_not_implemented") until two-leg execution exists.
+function constructOrder(spread: UnderlyingSpread, config: AgentLoopConfig, history: PriceHistory): ProposedOrder {
   const poolPair: PoolPair = {
     cheapPoolAddress: spread.cheapPool.address,
     cheapPoolFeeUnits: spread.cheapPool.feeUnits,
@@ -175,15 +219,13 @@ function constructOrder(spread: UnderlyingSpread, config: AgentLoopConfig): Prop
     sizeUsd: config.orderSizeUsd,
     adjustedSpread: spread.adjustedSpread,
     price: spread.cheapPool.priceUsd,
-    // No tick-history store exists yet — priceSanityCheck accepts any
-    // positive price when history is empty (lib/basis-model/sanity-checks.ts),
-    // so this is honest about what we actually know, not a fabricated history.
-    recentTicks: [],
+    recentTicks: history.recent(spread.cheapPool.address),
+    expensivePrice: spread.expensivePool.priceUsd,
+    expensiveRecentTicks: history.recent(spread.expensivePool.address),
     liquidityDepthUsd: Math.min(spread.cheapPool.liquidityUsdEstimate, spread.expensivePool.liquidityUsdEstimate),
-    // No live dry-run estimate exists before check() runs, so this is an
-    // optimistic placeholder (100% of size). The real floor is enforced
-    // authoritatively by pipeline.ts's own fresh simulateSwap() call afterward.
-    simulatedOutputUsd: config.orderSizeUsd,
+    // No simulation has run yet; check() reports the floor as pending and
+    // the pipeline checks it against the real QuoterV2 output.
+    simulatedOutputUsd: null,
     poolPair,
   };
 }
@@ -206,6 +248,7 @@ function toDetectionSnapshot(spread: UnderlyingSpread, threshold: number): Detec
     grossGap: spread.rawSpread,
     netEdge: spread.adjustedSpread,
     threshold,
+    gas: spread.gas,
   };
 }
 
@@ -219,6 +262,7 @@ export interface PreviewOpportunity {
 export interface PreviewOpportunitiesResult {
   spreads: UnderlyingSpread[];
   opportunities: PreviewOpportunity[];
+  warmUp: Record<string, WarmUpStatus>;
 }
 
 export interface PreviewOpportunitiesDeps {
@@ -226,39 +270,45 @@ export interface PreviewOpportunitiesDeps {
   guardrailConfig?: GuardrailConfig;
   agentConfig?: AgentLoopConfig;
   fetchPoolQuotesFn?: typeof realFetchPoolQuotes;
+  estimateGasFn?: EstimateGasFn;
   narrateProposalFn?: typeof realNarrateProposal;
+  priceHistory?: PriceHistory;
 }
 
-// Phase 5a addition (originally this file only had computeSpreads() and
-// runAgentLoop()): GET /api/opportunities needs narrated, verdict-bearing
-// proposals for the Advisory Feed and Guardrail Gate panels, but a GET
-// must stay side-effect-free. check() (Phase 2) is pure — no wallet call,
-// no ledger write — so this builds the same deterministic order
-// runAgentLoop() would, runs it through check() for a live-accurate
-// verdict, and narrates it, WITHOUT ever calling runPipeline(). Nothing
-// here writes to the ledger or touches agentic-wallet.
+// GET /api/opportunities needs narrated, verdict-bearing proposals for
+// the Advisory Feed and Guardrail Gate panels, but a GET must stay
+// side-effect-free. check() is pure, so this builds the same order
+// runAgentLoop() would, runs it through check(), and narrates it, WITHOUT
+// ever calling runPipeline(), writing the ledger, or recording prices.
+// Same gates as the loop: no order below threshold or during warm-up.
 export async function previewOpportunities(deps: PreviewOpportunitiesDeps = {}): Promise<PreviewOpportunitiesResult> {
   const spendTracker = deps.spendTracker ?? defaultSpendTracker;
   const guardrailConfig = deps.guardrailConfig ?? DEFAULT_GUARDRAIL_CONFIG;
   const agentConfig = deps.agentConfig ?? DEFAULT_AGENT_LOOP_CONFIG;
   const narrateProposalFn = deps.narrateProposalFn ?? realNarrateProposal;
+  const history = deps.priceHistory ?? defaultPriceHistory;
 
   const spreads = await computeSpreads({
     underlyings: agentConfig.underlyings,
     fetchPoolQuotesFn: deps.fetchPoolQuotesFn,
-    gasCostUsdEstimate: agentConfig.gasCostUsdEstimate,
+    estimateGasFn: deps.estimateGasFn,
+    gasSafetyMultiplier: agentConfig.gasSafetyMultiplier,
+    fallbackGasCostUsd: agentConfig.fallbackGasCostUsd,
     slippagePctEstimate: agentConfig.slippagePctEstimate,
     tradeSizeUsd: agentConfig.orderSizeUsd,
   });
 
   const opportunities: PreviewOpportunity[] = [];
+  const warmUp: Record<string, WarmUpStatus> = {};
 
   for (const spread of spreads) {
-    if (!clearsThreshold(spread, agentConfig.adjustedSpreadThreshold)) {
+    const status = warmUpStatus(spread, history, guardrailConfig.minPriceHistoryReadings);
+    warmUp[spread.ticker] = status;
+    if (!clearsThreshold(spread, agentConfig.adjustedSpreadThreshold) || !status.complete) {
       continue;
     }
 
-    const order = constructOrder(spread, agentConfig);
+    const order = constructOrder(spread, agentConfig, history);
     const verdict = check(order, { spentTodaySoFarUsd: spendTracker.getSpentToday(), config: guardrailConfig });
 
     let narration: string;
@@ -274,7 +324,7 @@ export async function previewOpportunities(deps: PreviewOpportunitiesDeps = {}):
     opportunities.push({ ticker: spread.ticker, order, narration, verdict });
   }
 
-  return { spreads, opportunities };
+  return { spreads, opportunities, warmUp };
 }
 
 export interface AgentLoopDeps {
@@ -285,32 +335,32 @@ export interface AgentLoopDeps {
   guardrailConfig?: GuardrailConfig;
   agentConfig?: AgentLoopConfig;
   fetchPoolQuotesFn?: typeof realFetchPoolQuotes;
+  estimateGasFn?: EstimateGasFn;
   narrateProposalFn?: typeof realNarrateProposal;
+  priceHistory?: PriceHistory;
   // Forwarded straight through to runPipeline()'s PipelineDeps — lets
-  // tests (and, later, a real gas oracle) replace the pre-send freshness
-  // re-read/direct-swap-param building without needing a live RPC
-  // endpoint just to exercise this loop's own composition.
+  // tests replace the pre-send freshness re-read/direct-swap-param
+  // building without needing a live RPC endpoint.
   fetchFreshPoolPrices?: PipelineDeps["fetchFreshPoolPrices"];
   buildDirectSwapParams?: PipelineDeps["buildDirectSwapParams"];
   getWalletAddress?: PipelineDeps["getWalletAddress"];
 }
 
-// The full automatic loop: steps 1–6. Note the call order deviates
-// slightly from the PRD's own step numbering — narrateProposal's Phase 4
-// signature requires a GuardrailVerdict, which only exists after
-// runPipeline resolves, so this calls runPipeline before narrating.
-// The order handed to runPipeline is fully built beforehand and never
-// touched again, so a narrator failure (caught below, PRD rule 1) cannot
-// retroactively change what was already sent to the guardrail gate.
+// The full automatic loop: steps 1–6. narrateProposal needs a
+// GuardrailVerdict, which only exists after runPipeline resolves, so this
+// calls runPipeline before narrating. The order handed to runPipeline is
+// fully built beforehand and never touched again, so a narrator failure
+// (caught below, PRD rule 1) cannot change what the gate saw.
 //
 // Triggered by lib/orchestration/scheduler.ts, never by a GET route —
-// this writes to the audit ledger and can execute real trades in live
-// mode.
+// this writes to the audit ledger and the price history.
 //
-// Every evaluated ticker writes exactly one ledger entry: a
-// "no_opportunity" detection entry when the net edge doesn't clear, or
-// a pipeline entry when it does. A declined evaluation is as complete an
-// outcome as an executed trade, not a lesser code path.
+// Every evaluated ticker writes exactly one ledger entry:
+//   "no_opportunity" (detection) — the net edge doesn't clear;
+//   "warming_up"     (detection) — it clears, but price history is short;
+//   a pipeline entry             — an order was built and run.
+// The ticker's pool prices are recorded into the history AFTER it is
+// evaluated, so a price is never judged against itself.
 export async function runAgentLoop(deps: AgentLoopDeps = {}): Promise<AgentLoopResult> {
   const spendTracker = deps.spendTracker ?? defaultSpendTracker;
   const getMode = deps.getMode ?? getKillswitchMode;
@@ -318,70 +368,86 @@ export async function runAgentLoop(deps: AgentLoopDeps = {}): Promise<AgentLoopR
   const guardrailConfig = deps.guardrailConfig ?? DEFAULT_GUARDRAIL_CONFIG;
   const agentConfig = deps.agentConfig ?? DEFAULT_AGENT_LOOP_CONFIG;
   const narrateProposalFn = deps.narrateProposalFn ?? realNarrateProposal;
+  const history = deps.priceHistory ?? defaultPriceHistory;
   const mode = getMode();
 
   const spreads = await computeSpreads({
     underlyings: agentConfig.underlyings,
     fetchPoolQuotesFn: deps.fetchPoolQuotesFn,
-    gasCostUsdEstimate: agentConfig.gasCostUsdEstimate,
+    estimateGasFn: deps.estimateGasFn,
+    gasSafetyMultiplier: agentConfig.gasSafetyMultiplier,
+    fallbackGasCostUsd: agentConfig.fallbackGasCostUsd,
     slippagePctEstimate: agentConfig.slippagePctEstimate,
     tradeSizeUsd: agentConfig.orderSizeUsd,
   });
 
   const triggered: TriggeredOpportunity[] = [];
   const noOpportunities: NoOpportunityRecord[] = [];
+  const warmingUp: WarmingUpRecord[] = [];
 
   for (const spread of spreads) {
-    const detection = toDetectionSnapshot(spread, agentConfig.adjustedSpreadThreshold);
-
-    if (!clearsThreshold(spread, agentConfig.adjustedSpreadThreshold)) {
-      const entry = ledger.appendNoOpportunity({ mode, detection });
-      noOpportunities.push({ ticker: spread.ticker, netEdge: spread.adjustedSpread, ledgerEntryId: entry.id });
-      continue;
-    }
-
-    const order = constructOrder(spread, agentConfig);
-
-    const ledgerEntry = await runPipeline(
-      order,
-      {
-        spentTodaySoFarUsd: spendTracker.getSpentToday(),
-        config: guardrailConfig,
-        walletClient: deps.walletClient,
-        fetchFreshPoolPrices: deps.fetchFreshPoolPrices,
-        buildDirectSwapParams: deps.buildDirectSwapParams,
-        getWalletAddress: deps.getWalletAddress,
-        gasCostUsdEstimate: agentConfig.gasCostUsdEstimate,
-        slippagePctEstimate: agentConfig.slippagePctEstimate,
-        detection,
-        ledger,
-      },
-      mode
-    );
-
-    if (ledgerEntry.outcome === "executed") {
-      spendTracker.recordSpend(order.sizeUsd);
-    }
-
-    let narration: string;
     try {
-      narration = narrateProposalFn(
-        { ticker: order.ticker, adjustedSpread: spread.adjustedSpread, proposedSizeUsd: order.sizeUsd },
-        ledgerEntry.verdict
-      );
-    } catch (err) {
-      narration = `(narration unavailable: ${err instanceof Error ? err.message : "unknown error"})`;
-    }
+      const detection = toDetectionSnapshot(spread, agentConfig.adjustedSpreadThreshold);
 
-    triggered.push({
-      ticker: spread.ticker,
-      order,
-      narration,
-      verdict: ledgerEntry.verdict,
-      outcome: ledgerEntry.outcome,
-      ledgerEntryId: ledgerEntry.id,
-    });
+      if (!clearsThreshold(spread, agentConfig.adjustedSpreadThreshold)) {
+        const entry = ledger.appendNoOpportunity({ mode, detection });
+        noOpportunities.push({ ticker: spread.ticker, netEdge: spread.adjustedSpread, ledgerEntryId: entry.id });
+        continue;
+      }
+
+      const status = warmUpStatus(spread, history, guardrailConfig.minPriceHistoryReadings);
+      if (!status.complete) {
+        const entry = ledger.appendWarmingUp({ mode, detection, warmUp: { readings: status.readings, required: status.required } });
+        warmingUp.push({ ticker: spread.ticker, ledgerEntryId: entry.id, ...status });
+        continue;
+      }
+
+      const order = constructOrder(spread, agentConfig, history);
+
+      const ledgerEntry = await runPipeline(
+        order,
+        {
+          spentTodaySoFarUsd: spendTracker.getSpentToday(),
+          config: guardrailConfig,
+          walletClient: deps.walletClient,
+          fetchFreshPoolPrices: deps.fetchFreshPoolPrices,
+          buildDirectSwapParams: deps.buildDirectSwapParams,
+          getWalletAddress: deps.getWalletAddress,
+          gasCostUsdEstimate: spread.gas.costUsd,
+          slippagePctEstimate: agentConfig.slippagePctEstimate,
+          detection,
+          ledger,
+        },
+        mode
+      );
+
+      if (ledgerEntry.outcome === "executed") {
+        spendTracker.recordSpend(order.sizeUsd);
+      }
+
+      let narration: string;
+      try {
+        narration = narrateProposalFn(
+          { ticker: order.ticker, adjustedSpread: spread.adjustedSpread, proposedSizeUsd: order.sizeUsd },
+          ledgerEntry.verdict
+        );
+      } catch (err) {
+        narration = `(narration unavailable: ${err instanceof Error ? err.message : "unknown error"})`;
+      }
+
+      triggered.push({
+        ticker: spread.ticker,
+        order,
+        narration,
+        verdict: ledgerEntry.verdict,
+        outcome: ledgerEntry.outcome,
+        ledgerEntryId: ledgerEntry.id,
+      });
+    } finally {
+      history.record(spread.cheapPool.address, spread.cheapPool.priceUsd);
+      history.record(spread.expensivePool.address, spread.expensivePool.priceUsd);
+    }
   }
 
-  return { timestamp: Date.now(), mode, spreads, triggered, noOpportunities };
+  return { timestamp: Date.now(), mode, spreads, triggered, noOpportunities, warmingUp };
 }

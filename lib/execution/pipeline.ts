@@ -1,5 +1,12 @@
 import { parseUnits, formatUnits, type Address } from "viem";
-import { check, dryRunFloorCheck, spreadFreshnessCheck, type ProposedOrder, type PoolPair } from "../guardrails/check";
+import {
+  check,
+  dryRunFloorCheck,
+  spreadFreshnessCheck,
+  slippageToleranceCheck,
+  type ProposedOrder,
+  type PoolPair,
+} from "../guardrails/check";
 import { DEFAULT_GUARDRAIL_CONFIG, type GuardrailConfig } from "../guardrails/config";
 import { feeAdjustedPrice } from "../basis-model/nav-equivalent";
 import { adjustedSpread } from "../basis-model/adjusted-spread";
@@ -18,25 +25,20 @@ import { AuditLedger, type PipelineLedgerEntry, type DetectionSnapshot, type Pip
 
 export type { PipelineMode } from "./audit-ledger";
 
-// Duplicated from lib/orchestration/agent-loop.ts's DEFAULT_AGENT_LOOP_CONFIG
-// rather than imported — importing orchestration/ from execution/ would
-// invert the layering (execution sits below orchestration). Same pattern
-// as the duplicated UnsignedTransaction interfaces across data/execution.
+// Used only when a caller doesn't pass the gas figure its detection used.
+// Duplicated from lib/orchestration/agent-loop.ts's fallback rather than
+// imported — importing orchestration/ from execution/ would invert the
+// layering. Same pattern as the duplicated UnsignedTransaction interfaces.
 const DEFAULT_GAS_COST_USD_ESTIMATE = 200_000 * 1.5e-9 * 700;
 const DEFAULT_SLIPPAGE_PCT_ESTIMATE = 0.0005;
 
-// A deliberate execution-safety parameter, not a researched/cited fact
-// like the SwapRouter address or ABI: the on-chain minimum-output floor
-// passed to exactInputSingle, protecting the send() transaction itself
-// against price movement between the QuoterV2 simulation and the
-// transaction actually landing. Separate from, and in addition to,
-// spreadFreshnessCheck (which protects the *decision* to send at all)
-// and dryRunFloorCheck (which protects against a stale *guardrail*
-// verdict) — this one protects the on-chain call.
-const SEND_SLIPPAGE_TOLERANCE_BPS = 100n; // 1%
-
-function applySlippageTolerance(amountOut: bigint): bigint {
-  return amountOut - (amountOut * SEND_SLIPPAGE_TOLERANCE_BPS) / 10_000n;
+// The swap's on-chain minimum output: QuoterV2's simulated output less
+// config.sendSlippageTolerance. Protects the transaction itself against
+// movement between simulation and inclusion; slippageToleranceCheck
+// refuses any order whose edge this floor couldn't protect.
+export function applySlippageTolerance(amountOut: bigint, tolerance: number): bigint {
+  const ppm = BigInt(Math.round(tolerance * 1_000_000));
+  return amountOut - (amountOut * ppm) / 1_000_000n;
 }
 
 export interface FreshPoolPrices {
@@ -203,34 +205,48 @@ export interface PipelineDeps {
 
 // Thin orchestrator: decides nothing itself. Calls the Phase 2 gate,
 // and only acts on an approved verdict — never re-derives or overrides
-// its decision. `mode` gates how far an approved order is allowed to
-// go, standing in for the killswitch until Phase 5 wires a UI to it:
+// its decision. `mode` gates how far an approved order is allowed to go:
 //
 //   (all modes)  — an approved order whose detected net edge is not
-//                  positive stops as "no_edge"; nothing is sent.
-//   "simulation" — stops after the guardrail verdict; no wallet/RPC call at all.
+//                  positive stops as "no_edge"; one whose edge the
+//                  on-chain slippage floor couldn't protect stops as
+//                  "tolerance_exceeds_edge". Nothing is sent.
+//   "simulation" — stops after those gates; no wallet/RPC call at all.
 //   "dry-run"    — re-reads both pools fresh and runs spreadFreshnessCheck
 //                  (fails closed as "spread_closed" if the edge decayed
 //                  or inverted since detection), then checks allowance
-//                  and simulates via QuoterV2, re-checking the same floor
-//                  the gate already validated — but never calls send(),
-//                  not even for a needed approval. This is the default:
-//                  mode must be passed explicitly to reach "live" (PRD rule 9).
-//   "live"       — same freshness re-check and simulation. If an
-//                  approval is needed, sends that transaction first and
-//                  stops (outcome "approval_failed") if it fails. Only on
-//                  a passing simulation does the swap's send() fire.
+//                  and simulates via QuoterV2, re-checking the dry-run
+//                  floor on the real output — but never calls send(),
+//                  not even for a needed approval. This is the default.
+//   "live"       — refuses as "two_leg_execution_not_implemented" before
+//                  any re-read, approval, or send. Only the buy leg is
+//                  built; a single leg alone doesn't capture the spread,
+//                  so live mode can't send one. See executeDirectSwap.
 //
-// Every outcome — blocked, error, simulated, a closed/decayed spread, a
-// failed approval, a failed simulation, a dry-run-only stop, an
-// execution, or a failed send — writes exactly one audit ledger entry
-// (PRD rule 8). A correctly-declined trade (blocked, spread_closed,
-// dry_run_failed) is a fully valid, well-logged outcome — never treated
-// as lesser than an execution.
+// Every outcome writes exactly one audit ledger entry (PRD rule 8). A
+// correctly-declined trade is a fully valid, well-logged outcome — never
+// treated as lesser than an execution.
 export async function runPipeline(
   order: ProposedOrder,
   deps: PipelineDeps,
   mode: PipelineMode = "dry-run"
+): Promise<PipelineLedgerEntry> {
+  return runSteps(order, deps, mode, { allowSend: false });
+}
+
+// The single-leg approval → simulation → send path, built and tested but
+// NOT reachable from runPipeline in any mode. It stays unwired until
+// two-leg execution exists; test/architecture.test.ts fails if anything
+// outside lib/execution/pipeline*.ts references it.
+export async function executeDirectSwap(order: ProposedOrder, deps: PipelineDeps): Promise<PipelineLedgerEntry> {
+  return runSteps(order, deps, "live", { allowSend: true });
+}
+
+async function runSteps(
+  order: ProposedOrder,
+  deps: PipelineDeps,
+  mode: PipelineMode,
+  { allowSend }: { allowSend: boolean }
 ): Promise<PipelineLedgerEntry> {
   const config = deps.config ?? DEFAULT_GUARDRAIL_CONFIG;
   const walletClient = deps.walletClient ?? defaultWalletClient;
@@ -260,8 +276,17 @@ export async function runPipeline(
     return record({ mode, outcome: "no_edge", verdict });
   }
 
+  const detectedTolerance = slippageToleranceCheck(order.adjustedSpread, config);
+  if (!detectedTolerance.ok) {
+    return record({ mode, outcome: "tolerance_exceeds_edge", verdict });
+  }
+
   if (mode === "simulation") {
     return record({ mode, outcome: "simulated", verdict });
+  }
+
+  if (mode === "live" && !allowSend) {
+    return record({ mode, outcome: "two_leg_execution_not_implemented", verdict });
   }
 
   const fresh = await fetchFreshPoolPricesFn(order.poolPair);
@@ -286,6 +311,18 @@ export async function runPipeline(
     });
   }
 
+  // The fresh edge can have decayed to half the detected one and still
+  // pass spreadFreshness — check the slippage floor against it too.
+  const freshTolerance = slippageToleranceCheck(freshSpread, config);
+  if (!freshTolerance.ok) {
+    return record({
+      mode,
+      outcome: "tolerance_exceeds_edge",
+      verdict,
+      freshness: { freshSpread, ok: true },
+    });
+  }
+
   const swapParams = await buildDirectSwapParamsFn(order, fresh);
   const walletAddress = getWalletAddressFn() as Address;
 
@@ -297,7 +334,7 @@ export async function runPipeline(
   });
   let approvalInfo: { needed: boolean; txId?: string } = { needed: !allowance.sufficient };
 
-  if (!allowance.sufficient && mode === "live") {
+  if (!allowance.sufficient && allowSend) {
     try {
       const approvalSendResult = await walletClient.send(allowance.approveTransaction!);
       // Approval succeeded — fall through to the swap's simulate/send
@@ -332,7 +369,7 @@ export async function runPipeline(
     });
   }
 
-  if (mode === "dry-run") {
+  if (!allowSend) {
     return record({
       mode,
       outcome: "dry_run_only",
@@ -349,7 +386,7 @@ export async function runPipeline(
     feeUnits: swapParams.feeUnits,
     recipient: walletAddress,
     amountIn: swapParams.amountIn,
-    amountOutMinimum: applySlippageTolerance(simulated.amountOut),
+    amountOutMinimum: applySlippageTolerance(simulated.amountOut, config.sendSlippageTolerance),
   });
 
   try {

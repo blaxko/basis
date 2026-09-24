@@ -2,9 +2,28 @@ import { describe, it, expect, vi } from "vitest";
 import { handleInstruction } from "./handle-instruction";
 import { DailySpendTracker } from "./spend-tracker";
 import { AuditLedger } from "../execution/audit-ledger";
+import { BoundedPriceHistory } from "../data/price-history";
 import type { PoolQuote } from "../data/types";
 import type { WalletClient, FreshPoolPrices } from "../execution/pipeline";
+import type { EstimateGasFn } from "./agent-loop";
 import type { chatCompletion, GroqChatResult } from "../llm/groq-client";
+
+const POOL_025 = "0x5018b018ceb7645c927c5cf246786f89ebcbe7ea";
+const POOL_1 = "0x58e44c2e5b17ef40915b4b3ae8451b6b87285b44";
+
+// Gas pinned to the old flat $0.21 so the documented −1.28% stays
+// reproducible; the live estimator has its own tests.
+const pinnedGas: EstimateGasFn = async () => ({ gasCostUsd: 200_000 * 1.5e-9 * 700, source: "fallback" });
+
+// What the scheduler would have recorded after `count` ticks.
+function historyWith(count: number): BoundedPriceHistory {
+  const history = new BoundedPriceHistory();
+  for (let i = 0; i < count; i++) {
+    history.record(POOL_025, 496.3821);
+    history.record(POOL_1, 496.9976);
+  }
+  return history;
+}
 
 // Both real, registered MSFTB pools (lib/data/pool-addresses.ts), read
 // LIVE via a public BSC RPC on 2026-09-24 — same reading as
@@ -144,6 +163,8 @@ describe("handleInstruction — valid instruction composes to a correctly-declin
     const result = await handleInstruction("buy 200 dollars of msft", {
       chatCompletionFn,
       fetchPoolQuotesFn,
+      estimateGasFn: pinnedGas,
+      priceHistory: historyWith(10),
       walletClient,
       fetchFreshPoolPrices: fakeFetchFreshPoolPrices,
       getWalletAddress: () => "0x1234567890123456789012345678901234567890",
@@ -170,15 +191,18 @@ describe("handleInstruction — valid instruction composes to a correctly-declin
     expect(ledger.readAll()).toHaveLength(1);
   });
 
-  it("an oversized request is reported as a per-trade-cap guardrail block, even when there's no edge", async () => {
-    // The real default per-trade cap is $500 (lib/guardrails/config.ts).
-    const chatCompletionFn = mockChat({ ok: true, content: '{"ticker":"MSFT","side":"buy","sizeUsd":5000}' });
+  it("demo moment B: a $1,000 request is blocked by the per-trade cap alone, even when there's no edge", async () => {
+    // The real default per-trade cap is $500 and daily cap $2,000
+    // (lib/guardrails/config.ts), so $1,000 fails only the per-trade cap.
+    const chatCompletionFn = mockChat({ ok: true, content: '{"ticker":"MSFT","side":"buy","sizeUsd":1000}' });
     const walletClient = mockWalletClient();
     const ledger = new AuditLedger();
 
-    const result = await handleInstruction("buy 5000 dollars of msft", {
+    const result = await handleInstruction("buy 1000 dollars of msft", {
       chatCompletionFn,
       fetchPoolQuotesFn: vi.fn().mockResolvedValue(msftPoolQuotes()),
+      estimateGasFn: pinnedGas,
+      priceHistory: historyWith(10),
       walletClient,
       fetchFreshPoolPrices: fakeFetchFreshPoolPrices,
       getWalletAddress: () => "0x1234567890123456789012345678901234567890",
@@ -192,8 +216,39 @@ describe("handleInstruction — valid instruction composes to a correctly-declin
       expect(result.outcome).toBe("blocked");
       expect(result.verdict.blockedBy).toBe("perTradeCap");
       expect(result.verdict.reason).toContain("exceeds per-trade cap $500");
+      const failed = result.verdict.checks.filter((c) => !c.ok).map((c) => c.name);
+      expect(failed).toEqual(["perTradeCap"]);
+      expect(result.verdict.checks.find((c) => c.name === "dryRunFloor")?.pending).toBe(true);
     }
     expect(walletClient.send).not.toHaveBeenCalled();
     expect(ledger.readAll()).toHaveLength(1);
+  });
+});
+
+describe("handleInstruction — no order during price-history warm-up", () => {
+  it("returns a typed warming_up rejection before building any order, and writes nothing", async () => {
+    const chatCompletionFn = mockChat({ ok: true, content: '{"ticker":"MSFT","side":"buy","sizeUsd":1000}' });
+    const walletClient = mockWalletClient();
+    const ledger = new AuditLedger();
+    const history = historyWith(3);
+
+    const result = await handleInstruction("buy 1000 dollars of msft", {
+      chatCompletionFn,
+      fetchPoolQuotesFn: vi.fn().mockResolvedValue(msftPoolQuotes()),
+      estimateGasFn: pinnedGas,
+      priceHistory: history,
+      walletClient,
+      ledger,
+      spendTracker: new DailySpendTracker(),
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toEqual(expect.objectContaining({ kind: "warming_up", ticker: "MSFT", readings: 3, required: 10 }));
+    }
+    expect(ledger.readAll()).toHaveLength(0);
+    expect(walletClient.checkAllowance).not.toHaveBeenCalled();
+    // Manual instructions read the history but never add to it.
+    expect(history.recent(POOL_025)).toHaveLength(3);
   });
 });

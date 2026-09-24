@@ -57,8 +57,8 @@ export async function GET() {
   const threshold = DEFAULT_AGENT_LOOP_CONFIG.adjustedSpreadThreshold;
 
   try {
-    const { spreads, opportunities } = await getPreview();
-    return NextResponse.json({ spreads, opportunities, history, threshold });
+    const { spreads, opportunities, warmUp } = await getPreview();
+    return NextResponse.json({ spreads, opportunities, warmUp, history, threshold });
   } catch (err) {
     // Live pool read failed (e.g. BSC_RPC_URL not configured). History is
     // still returned; spreads/opportunities come back empty with the
@@ -67,6 +67,7 @@ export async function GET() {
     return NextResponse.json({
       spreads: [],
       opportunities: [],
+      warmUp: {},
       history,
       threshold,
       error: err instanceof Error ? err.message : "failed to compute live spreads",

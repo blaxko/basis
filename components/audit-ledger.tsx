@@ -1,12 +1,17 @@
 "use client";
 
 import { usePoll } from "./use-poll";
-import type { AuditLedgerEntry, DetectionSnapshot, LedgerResponse, NoOpportunityLedgerEntry, PipelineLedgerEntry } from "./api-types";
+import type { DetectionLedgerEntry, DetectionSnapshot, LedgerResponse, PipelineLedgerEntry } from "./api-types";
+import { groupLedgerRows } from "./ledger-groups";
 
 const POLL_MS = 10_000;
 
 function fmtTime(ts: number): string {
   return new Date(ts).toISOString().replace("T", " ").replace("Z", " UTC");
+}
+
+function fmtClock(ts: number): string {
+  return new Date(ts).toISOString().slice(11, 19);
 }
 
 function signedPct(value: number): string {
@@ -19,13 +24,21 @@ function pools(d: DetectionSnapshot): string {
   }% pool $${d.expensivePool.priceUsd.toFixed(2)}`;
 }
 
-// Two kinds of row. A detection row is the detector deciding there is no
-// opportunity — no order was built and no guardrail ran. A pipeline row
-// is an order going through the guardrail gate and however far past it
-// the mode allowed. Nothing here fabricates a step that wasn't recorded.
+function gas(d: DetectionSnapshot): string {
+  return d.gas.source === "live" ? `gas $${d.gas.costUsd.toFixed(3)} (live)` : `gas $${d.gas.costUsd.toFixed(2)} (FALLBACK — live estimate failed)`;
+}
+
+// Two kinds of row. A detection row is the detector deciding not to build
+// an order — no guardrail ran. A pipeline row is an order going through
+// the guardrail gate and however far past it the mode allowed.
+//
+// Consecutive detection entries for the same ticker and outcome are shown
+// as one summary row so a guardrail block stays visible. Display only:
+// every entry is still in the ledger and in the /api/ledger response.
 export function AuditLedger() {
   const poll = usePoll<LedgerResponse>("/api/ledger", POLL_MS);
   const entries = poll.data?.entries ?? [];
+  const groups = groupLedgerRows(entries);
 
   return (
     <section className="panel panel--terminal">
@@ -35,22 +48,26 @@ export function AuditLedger() {
       {poll.error && <p className="state-message state-message--error mono">ledger unavailable: {poll.error}</p>}
 
       <div className="terminal-feed">
-        {entries.length === 0 && !poll.loading && (
-          <p className="terminal-empty mono">no ledger entries yet.</p>
+        {entries.length === 0 && !poll.loading && <p className="terminal-empty mono">no ledger entries yet.</p>}
+        {groups.map((group) =>
+          group.type === "pipeline" ? (
+            <PipelineRow key={group.entry.id} entry={group.entry} />
+          ) : group.entries.length === 1 ? (
+            <DetectionRow key={group.entries[0]!.id} entry={group.entries[0]!} />
+          ) : (
+            <DetectionSummaryRow key={group.entries[0]!.id} entries={group.entries} />
+          )
         )}
-        {entries.map((entry) => (
-          <LedgerRow key={entry.id} entry={entry} />
-        ))}
       </div>
     </section>
   );
 }
 
-function LedgerRow({ entry }: { entry: AuditLedgerEntry }) {
-  return entry.kind === "detection" ? <DetectionRow entry={entry} /> : <PipelineRow entry={entry} />;
+function detectionLabel(entry: DetectionLedgerEntry): string {
+  return entry.outcome === "warming_up" ? "warming up, no order proposed" : "no opportunity, no order built";
 }
 
-function DetectionRow({ entry }: { entry: NoOpportunityLedgerEntry }) {
+function DetectionRow({ entry }: { entry: DetectionLedgerEntry }) {
   const d = entry.detection;
   return (
     <div className="terminal-line">
@@ -58,14 +75,43 @@ function DetectionRow({ entry }: { entry: NoOpportunityLedgerEntry }) {
         {fmtTime(entry.timestamp)} · mode={entry.mode} · outcome={entry.outcome}
       </div>
       <div>
-        {d.ticker} — detection: no opportunity, no order built. {pools(d)} · gross gap {signedPct(d.grossGap)} · net edge{" "}
-        {signedPct(d.netEdge)} (needs &gt; {signedPct(Math.max(0, d.threshold))})
+        {d.ticker} — detection: {detectionLabel(entry)}. {pools(d)} · gross gap {signedPct(d.grossGap)} · net edge{" "}
+        {signedPct(d.netEdge)} (needs &gt; {signedPct(Math.max(0, d.threshold))}) · {gas(d)}
+        {entry.warmUp && ` · price history ${entry.warmUp.readings} of ${entry.warmUp.required} readings`}
       </div>
     </div>
   );
 }
 
+// Newest-first, like the rest of the feed: entries[0] is the latest.
+function DetectionSummaryRow({ entries }: { entries: DetectionLedgerEntry[] }) {
+  const latest = entries[0]!;
+  const oldest = entries[entries.length - 1]!;
+  const edges = entries.map((e) => e.detection.netEdge);
+  const fallbacks = entries.filter((e) => e.detection.gas.source === "fallback").length;
+  return (
+    <div className="terminal-line">
+      <div className="terminal-line-meta">
+        {fmtClock(oldest.timestamp)} → {fmtClock(latest.timestamp)} UTC · {entries.length} entries · outcome={latest.outcome}
+      </div>
+      <div>
+        {latest.detection.ticker} — {entries.length}× detection: {detectionLabel(latest)} · net edge {signedPct(Math.min(...edges))} to{" "}
+        {signedPct(Math.max(...edges))} · latest: {pools(latest.detection)}
+        {fallbacks > 0 && ` · ${fallbacks} used FALLBACK gas`}
+      </div>
+    </div>
+  );
+}
+
+const OUTCOME_NOTES: Partial<Record<PipelineLedgerEntry["outcome"], (e: PipelineLedgerEntry) => string>> = {
+  no_edge: (e) => `no edge: net ${signedPct(e.verdict.input.adjustedSpread)} is not positive — nothing sent`,
+  tolerance_exceeds_edge: (e) =>
+    `on-chain slippage tolerance isn't below the net edge (${signedPct(e.freshness?.freshSpread ?? e.verdict.input.adjustedSpread)}) — nothing sent`,
+  two_leg_execution_not_implemented: () => "live mode refused: only one leg of the arbitrage is built — nothing approved or sent",
+};
+
 function PipelineRow({ entry }: { entry: PipelineLedgerEntry }) {
+  const note = OUTCOME_NOTES[entry.outcome]?.(entry);
   return (
     <div className="terminal-line">
       <div className="terminal-line-meta">
@@ -77,12 +123,10 @@ function PipelineRow({ entry }: { entry: PipelineLedgerEntry }) {
       </div>
       {entry.detection && (
         <div>
-          detected: {pools(entry.detection)} · net edge {signedPct(entry.detection.netEdge)}
+          detected: {pools(entry.detection)} · net edge {signedPct(entry.detection.netEdge)} · {gas(entry.detection)}
         </div>
       )}
-      {entry.outcome === "no_edge" && (
-        <div>no edge: net {signedPct(entry.verdict.input.adjustedSpread)} is not positive — nothing sent</div>
-      )}
+      {note && <div>{note}</div>}
       {entry.freshness && (
         <div>
           pre-send re-read: net {signedPct(entry.freshness.freshSpread)} — {entry.freshness.ok ? "still clears" : "closed"}
@@ -91,7 +135,8 @@ function PipelineRow({ entry }: { entry: PipelineLedgerEntry }) {
       )}
       {entry.approval?.needed && (
         <div>
-          approval: {entry.approval.txId ? `sent ${entry.approval.txId}` : entry.approval.error ? `failed: ${entry.approval.error}` : "needed, not sent in this mode"}
+          approval:{" "}
+          {entry.approval.txId ? `sent ${entry.approval.txId}` : entry.approval.error ? `failed: ${entry.approval.error}` : "needed, not sent in this mode"}
         </div>
       )}
       {entry.dryRun && (

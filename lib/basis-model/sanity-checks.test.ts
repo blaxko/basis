@@ -6,8 +6,24 @@ describe("priceSanityCheck", () => {
     expect(priceSanityCheck(101, [98, 99, 100, 101, 102]).ok).toBe(true);
   });
 
-  it("accepts any positive price when there's no history yet", () => {
-    expect(priceSanityCheck(420, []).ok).toBe(true);
+  it("fails closed with no history, flagged as warming up", () => {
+    const result = priceSanityCheck(420, []);
+    expect(result.ok).toBe(false);
+    expect(result.warmingUp).toBe(true);
+    expect(result.reason).toContain("warming up: 0 of 1");
+  });
+
+  it("fails closed while history is shorter than the required minimum", () => {
+    const result = priceSanityCheck(100, [99, 100, 101], 0.05, 10);
+    expect(result.ok).toBe(false);
+    expect(result.warmingUp).toBe(true);
+    expect(result.reason).toContain("3 of 10");
+  });
+
+  it("passes once the minimum is met and the price is near the median", () => {
+    const result = priceSanityCheck(100, Array.from({ length: 10 }, () => 100), 0.05, 10);
+    expect(result.ok).toBe(true);
+    expect(result.warmingUp).toBeUndefined();
   });
 
   it("rejects a non-positive price", () => {
