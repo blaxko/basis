@@ -3,7 +3,7 @@ import { handleInstruction } from "./handle-instruction";
 import { DailySpendTracker } from "./spend-tracker";
 import { AuditLedger } from "../execution/audit-ledger";
 import type { Quote } from "../data/types";
-import type { WalletClient } from "../execution/pipeline";
+import type { WalletClient, SwapRequest } from "../execution/pipeline";
 import type { chatCompletion, GroqChatResult } from "../llm/groq-client";
 
 const NOW = Date.UTC(2025, 7, 20, 12, 0, 0);
@@ -21,8 +21,24 @@ function mockChat(result: GroqChatResult): typeof chatCompletion {
 
 function mockWalletClient(): WalletClient {
   return {
-    dryRun: vi.fn().mockResolvedValue({ outputUsd: 199, raw: {} }),
+    approvalCheck: vi.fn().mockResolvedValue({ needsApproval: false, raw: {} }),
+    dryRun: vi.fn().mockResolvedValue({ outputUsd: 199, unsignedTransaction: { to: "0xRouter", data: "0xdead" }, raw: {} }),
     send: vi.fn().mockResolvedValue({ txId: "0xdeadbeef", raw: {} }),
+  };
+}
+
+// Bypasses the (currently empty) token-address registry and unset
+// trading-wallet credentials — this test exercises handleInstruction()'s
+// own composition, not the real Transaction API request shape.
+function fakeBuildSwapRequest(): SwapRequest {
+  return {
+    binanceChainId: "56",
+    fromTokenAddress: "0xFrom",
+    toTokenAddress: "0xTo",
+    amount: "200",
+    userWalletAddress: "0xWallet",
+    vendor: "LiquidMesh",
+    autoSlippage: true,
   };
 }
 
@@ -93,6 +109,7 @@ describe("handleInstruction — valid instruction composes to an executed pipeli
       chatCompletionFn,
       fetchQuotesFn,
       walletClient,
+      buildSwapRequest: fakeBuildSwapRequest,
       ledger,
       getMode: () => "live",
       spendTracker: new DailySpendTracker(() => NOW),

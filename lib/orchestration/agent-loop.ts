@@ -2,7 +2,7 @@ import { fetchQuotes as realFetchQuotes, MVP_UNDERLYINGS } from "../data/quotes"
 import { accruedDividend } from "../data/dividend-calendar";
 import { navEquivalent } from "../basis-model/nav-equivalent";
 import { rawSpread, adjustedSpread as computeAdjustedSpread } from "../basis-model/adjusted-spread";
-import { runPipeline, type WalletClient } from "../execution/pipeline";
+import { runPipeline, type WalletClient, type SwapRequest } from "../execution/pipeline";
 import { AuditLedger, defaultLedger, type PipelineMode, type PipelineOutcome } from "../execution/audit-ledger";
 import { DEFAULT_GUARDRAIL_CONFIG, type GuardrailConfig } from "../guardrails/config";
 import { check, type ProposedOrder, type GuardrailVerdict } from "../guardrails/check";
@@ -196,6 +196,7 @@ export interface AgentLoopDeps {
   getMode?: () => PipelineMode;
   ledger?: AuditLedger;
   walletClient?: WalletClient;
+  buildSwapRequest?: (order: ProposedOrder) => SwapRequest;
   guardrailConfig?: GuardrailConfig;
   agentConfig?: AgentLoopConfig;
   fetchQuotesFn?: typeof realFetchQuotes;
@@ -245,6 +246,7 @@ export async function runAgentLoop(deps: AgentLoopDeps = {}): Promise<AgentLoopR
         spentTodaySoFarUsd: spendTracker.getSpentToday(),
         config: guardrailConfig,
         walletClient: deps.walletClient,
+        buildSwapRequest: deps.buildSwapRequest,
         ledger,
       },
       mode

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { chatCompletion } from "./groq-client";
+import { chatCompletion, buildGroqAuthHeaders } from "./groq-client";
 
 describe("chatCompletion without a Groq API key configured", () => {
   const originalKey = process.env.GROQ_API_KEY;
@@ -122,5 +122,11 @@ describe("chatCompletion against the documented Groq shape (mocked)", () => {
     if (!result.ok) {
       expect(result.error.kind).toBe("malformed_response");
     }
+  });
+});
+
+describe("buildGroqAuthHeaders — Groq's documented Bearer scheme", () => {
+  it("sends a single Authorization: Bearer header, nothing else", () => {
+    expect(buildGroqAuthHeaders("test-key")).toEqual({ Authorization: "Bearer test-key" });
   });
 });

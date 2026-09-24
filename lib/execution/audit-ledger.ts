@@ -7,6 +7,7 @@ export type PipelineOutcome =
   | "blocked"
   | "error"
   | "simulated"
+  | "approval_failed"
   | "dry_run_failed"
   | "dry_run_only"
   | "executed"
@@ -22,6 +23,9 @@ export interface AuditLedgerEntry {
   mode: PipelineMode;
   outcome: PipelineOutcome;
   verdict: GuardrailVerdict;
+  // ERC-20 allowance check (new: approvalCheck(), called before dryRun()
+  // in the pipeline) — present only for modes that reach the wallet.
+  approval?: { needed: boolean; txId?: string; error?: string };
   dryRun?: { outputUsd: number; ok: boolean; reason?: string };
   send?: { txId: string } | { error: string };
 }

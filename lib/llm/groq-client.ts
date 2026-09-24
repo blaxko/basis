@@ -34,6 +34,15 @@ export type GroqChatError =
 
 export type GroqChatResult = { ok: true; content: string } | { ok: false; error: GroqChatError };
 
+// Groq's documented and correct auth scheme (unlike its counterparts in
+// lib/data/quotes.ts and lib/execution/agentic-wallet.ts, this one isn't
+// in question) — isolated into its own function anyway, so every
+// outbound authenticated request in this codebase follows the same
+// pattern with no exceptions to remember.
+export function buildGroqAuthHeaders(apiKey: string): Record<string, string> {
+  return { Authorization: `Bearer ${apiKey}` };
+}
+
 // Thin wrapper around Groq's OpenAI-compatible chat completions endpoint.
 // Reads the API key from process.env only, on every call — never
 // hardcoded, never cached at module scope, never included in any
@@ -65,7 +74,7 @@ export async function chatCompletion(
     const res = await fetch(GROQ_CHAT_COMPLETIONS_URL, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        ...buildGroqAuthHeaders(apiKey),
         "Content-Type": "application/json",
       },
       body: JSON.stringify({

@@ -4,7 +4,7 @@ import { DailySpendTracker } from "./spend-tracker";
 import { AuditLedger } from "../execution/audit-ledger";
 import { DEFAULT_GUARDRAIL_CONFIG } from "../guardrails/config";
 import type { Quote } from "../data/types";
-import type { WalletClient } from "../execution/pipeline";
+import type { WalletClient, SwapRequest } from "../execution/pipeline";
 
 const EX_DIV_NOW = Date.UTC(2025, 7, 21, 12, 0, 0); // 2025-08-21T12:00:00Z, MSFT's ex-div date
 
@@ -33,8 +33,24 @@ function msftQuotes(): Quote[] {
 
 function mockWalletClient(): WalletClient {
   return {
-    dryRun: vi.fn().mockResolvedValue({ outputUsd: 199, raw: {} }),
+    approvalCheck: vi.fn().mockResolvedValue({ needsApproval: false, raw: {} }),
+    dryRun: vi.fn().mockResolvedValue({ outputUsd: 199, unsignedTransaction: { to: "0xRouter", data: "0xdead" }, raw: {} }),
     send: vi.fn().mockResolvedValue({ txId: "0xdeadbeef", raw: {} }),
+  };
+}
+
+// Bypasses the (currently empty) token-address registry and unset
+// trading-wallet credentials — these tests exercise the automatic loop's
+// own composition, not the real Transaction API request shape.
+function fakeBuildSwapRequest(): SwapRequest {
+  return {
+    binanceChainId: "56",
+    fromTokenAddress: "0xFrom",
+    toTokenAddress: "0xTo",
+    amount: "200",
+    userWalletAddress: "0xWallet",
+    vendor: "LiquidMesh",
+    autoSlippage: true,
   };
 }
 
@@ -61,6 +77,7 @@ describe("runAgentLoop — MSFT ex-div scenario end-to-end", () => {
       getMode: () => "dry-run",
       ledger,
       walletClient,
+      buildSwapRequest: fakeBuildSwapRequest,
       guardrailConfig: DEFAULT_GUARDRAIL_CONFIG,
       agentConfig: ZERO_THRESHOLD_CONFIG,
       fetchQuotesFn,
@@ -89,6 +106,7 @@ describe("runAgentLoop — MSFT ex-div scenario end-to-end", () => {
       getMode: () => "live",
       ledger,
       walletClient,
+      buildSwapRequest: fakeBuildSwapRequest,
       agentConfig: { underlyings: ["MSFT"], adjustedSpreadThreshold: 0.003, orderSizeUsd: 200 },
       fetchQuotesFn,
       now: () => EX_DIV_NOW,
@@ -110,6 +128,7 @@ describe("runAgentLoop — narrator failures never change the constructed order 
       getMode: () => "dry-run",
       ledger: new AuditLedger(),
       walletClient: mockWalletClient(),
+      buildSwapRequest: fakeBuildSwapRequest,
       agentConfig: ZERO_THRESHOLD_CONFIG,
       fetchQuotesFn,
       now: () => EX_DIV_NOW,
@@ -120,6 +139,7 @@ describe("runAgentLoop — narrator failures never change the constructed order 
       getMode: () => "dry-run",
       ledger: new AuditLedger(),
       walletClient: mockWalletClient(),
+      buildSwapRequest: fakeBuildSwapRequest,
       agentConfig: ZERO_THRESHOLD_CONFIG,
       fetchQuotesFn,
       now: () => EX_DIV_NOW,

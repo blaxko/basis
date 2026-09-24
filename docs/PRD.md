@@ -8,12 +8,11 @@
 
 ## 1. Problem Statement
 
-Tokenized equities landed on BNB Chain faster than the tooling around them. Multiple protocols (xStocks, bStocks, Ondo) now represent the same underlying stock, but they aren't priced the same way:
+Tokenized equities landed on BNB Chain faster than the tooling around them. Basis started from a different premise than it ships with: that multiple protocols (xStocks, bStocks, Ondo) represent the same underlying stock with genuinely different pricing behavior — one price-return, one total-return — and that the gap between them was the arbitrage. Empirical checks against each protocol's own official documentation and against real, live on-chain price history falsified that premise before any execution code was built on top of it: xStocks and bStocks are themselves dividend-reinvesting, rebase-adjusted tokens (confirmed via xStocks' own docs at docs.xstocks.fi and bStocks' own site), functionally total-return instruments, not price-return trackers. A live MSFT ex-dividend date and a full weekend "market closed" window were both checked against real BSC price data for bStocks vs. Ondo; neither showed any of the divergence the original thesis predicted. There was no real signal to detect.
 
-- **xStocks / bStocks** are 1:1 share-backed — the token price should track the raw share price.
-- **Ondo tokens are total-return trackers** — they reflect reinvested dividends, so their price *structurally drifts* from the underlying share price over time, independent of any real mispricing.
+What real, checkable divergence for the identical instrument, at every scale, was ordinary AMM microstructure: **the same tokenized stock, traded through more than one PancakeSwap V3 pool at a different fee tier, doesn't stay perfectly arbitraged against itself.** For MSFTB (bStocks' Microsoft token) on 2026-09-24, the 0.25%-fee pool and the 1%-fee pool were pricing the same token $3.56 apart (0.71%) at the same instant — a real, on-chain, verifiable gap, not a documentation claim. The same pools' hourly candles show intra-hour price swings up to 1.6% within a single hour, invisible to anything sampling once a day.
 
-Every "arbitrage bot" that just diffs the two prices will eventually fire a false signal around an ex-dividend date and lose money executing against structural drift, not a real gap. This has already happened in miniature: existing hackathon-adjacent projects in this space (e.g. rwa-stock-arbitrage) detect the weekend/after-hours pricing gap but are explicitly simulators — no live execution, no handling of the total-return basis issue, no autonomous guardrails.
+The catch, and the reason this isn't a free lunch: Binance's own Web3 Trading API (the aggregator this project already integrates with) auto-routes every quote to the best available price across pools — by design, it erases exactly this gap for anyone using it normally. Capturing it requires bypassing the aggregator for at least one leg of the trade and interacting with a specific pool contract directly, and even then the gap has to actually clear that pool's own swap fee, estimated slippage, and gas before it's a real edge — the same MSFTB gap, run through that math, turned out **not** to clear the cheaper-priced pool's own 1% fee. The signal is real; whether any given instance of it is tradeable is a computation, not an assumption, and the honest answer is sometimes no.
 
 ---
 
@@ -37,7 +36,7 @@ Core use cases:
 
 **Product thesis:** Trust in an autonomous trading agent doesn't come from a good LLM — it comes from guardrails a user can *see* enforcing themselves in real time. The dashboard's job isn't to visualize a black box; it's to make the box transparent enough that "trust the agent" becomes "verify the agent," live, every time.
 
-**Technical thesis:** The only defensible arbitrage signal in this asset class is a *domain-adjusted* spread. A raw price diff between a price-return token (xStocks/bStocks) and a total-return token (Ondo) is not a signal — it's noise that happens to look like a signal around every ex-dividend date. Safety, meanwhile, has to live outside the LLM's own reasoning as deterministic, independently tested code, because an LLM cannot be trusted to enforce its own limits.
+**Technical thesis:** The only defensible arbitrage signal in this asset class is a *cost-net* spread. A raw price diff between two pools of the identical tokenized stock is not a signal on its own — each pool's own swap fee, the trade's estimated slippage, and gas all have to be subtracted before what's left is real, and empirically that net figure is negative more often than the raw gap alone would suggest (the real MSFTB 0.25%/1% pair's 0.71% raw gap nets to roughly −0.7% once the cheap pool's own 1% fee is paid). Safety, meanwhile, has to live outside the LLM's own reasoning as deterministic, independently tested code, because an LLM cannot be trusted to enforce its own limits.
 
 **Business thesis:** Tokenized equities are the wedge; the durable value is the transparency-and-guardrail layer itself. As more capital moves through AI-driven onchain execution, "provably safe autonomous execution" is a standalone need — this build proves the pattern on one vertical first.
 
@@ -45,11 +44,11 @@ Core use cases:
 
 ## 4. The Reference Vertical
 
-Basis ports a mechanism that already exists and already works: **ETF arbitrage via Authorized Participants (APs).**
+Basis ports a mechanism that already exists and already works in every mature AMM ecosystem: **keeper-driven cross-pool arbitrage.**
 
-In TradFi, an ETF's market price can drift from its Net Asset Value (NAV); APs profit by trading that premium/discount back toward zero through a creation/redemption mechanism, which is precisely what keeps ETF prices honest. Basis treats the tokenized-equity ecosystem the same way: xStocks/bStocks are the "market price" leg, and a computed **NAV-equivalent** for the Ondo (total-return) leg stands in for NAV. The agent is functionally playing the AP role — except instead of creation/redemption, it trades the spread directly on decentralized venues, and instead of institutional capital, it runs on a small, guardrailed, self-funded wallet.
+Any AMM that lets the same asset trade through more than one pool — different fee tiers, different DEXs, different routing paths — relies on independent actors (keepers, arbitrage bots) to notice when those pools drift apart and trade them back toward parity. That's not a gap in the design; it's the mechanism that keeps pool prices honest in the first place, the same role market makers play in a TradFi order book. Basis plays that keeper role for tokenized-equity pools specifically: it watches a token's known fee-tier pools, computes whether the gap between them survives each pool's own fee plus slippage and gas, and only acts on the ones that do. Instead of institutional capital, it runs on a small, guardrailed, self-funded wallet; instead of routing through an aggregator that would auto-erase the gap (Binance's own Web3 Trading API does exactly this), it interacts with the cheap pool directly for at least one leg of the trade.
 
-This reference vertical matters because it means the hard part (defining what a "true" spread even means here) isn't invented for this hackathon — it's imported from a mechanism that's been load-bearing in TradFi for two decades.
+This reference vertical matters for the same reason the original ETF/AP framing was supposed to: the hard part (defining what a genuinely tradeable spread means, and proving a given instance of it survives real costs) isn't invented for this hackathon — it's the same math every keeper bot and every AMM-aware market maker already runs, just applied to a newer asset class.
 
 ---
 
@@ -65,10 +64,16 @@ Comparing multiple independent implementations of DEX arbitrage bots shows a cle
 
 **Principle taken:** detection and execution live in one process/loop for latency; every guardrail should map to a specific failure mode we can name, not a generic "add safety" checkbox.
 
-### b) Total-return vs. price-return arbitrage
-This is not a new problem — it's the ETF industry's core mechanism, ported. ETFs trade at a premium or discount to NAV, defined as `(Price − NAV) / NAV`, and authorized participants profit by arbitraging that gap back to zero via creation/redemption. Separately, total-return indices are a standard, well-defined construct: they assume all distributions are reinvested on top of price moves, which is *why* they drift from a pure price-return series over time.
+### b) AMM cross-pool fee-tier fragmentation
+This section originally described a TradFi-style total-return/price-return arbitrage between xStocks/bStocks and Ondo, ported from ETF NAV arbitrage. That thesis was tested empirically, not assumed, and didn't survive contact with real data — three separate checks, each against real sources, each negative:
 
-**Principle taken:** don't diff Ondo's price against xStocks' price directly. Construct a **NAV-equivalent** for the Ondo leg — its raw price minus an estimated accrued-dividend component — and diff *that* against the price-return leg. The spread that's left over is the real arbitrage; the rest is dividend accrual we're not entitled to trade against.
+- **Documentation check:** xStocks' own docs (docs.xstocks.fi/docs/dividends-and-stock-splits) and bStocks' own site (bstocks.finance) both describe a rebase mechanism that reinvests dividends into token balances — the same structural behavior the original thesis attributed only to Ondo. Neither is a price-return instrument.
+- **Ex-dividend check:** MSFT's real 2026-08-20 ex-dividend date, checked against real bStocks and Ondo token prices at the time, showed no divergence — both moved together, in the same direction, by a similar magnitude, while only the real underlying stock actually dropped on the ex-div date.
+- **Weekend-window check:** a full Friday-to-Monday window, checked the same way, showed both instruments moving continuously through the "market closed" period with no gap and no freeze at reopen.
+
+What real divergence for the identical instrument *did* show up, checked the same way (real data, not documentation claims): the same tokenized stock traded through PancakeSwap V3's different fee-tier pools doesn't stay arbitraged against itself. MSFTB's 0.25% and 1% fee pools showed a same-instant $3.56 (0.71%) gap; the same pools' hourly candles showed intra-hour swings up to 1.6%. This is ordinary AMM fragmentation, not a domain-specific total-return effect, and it's a well-understood, well-documented phenomenon in DeFi generally — smart-order-routing aggregators (Binance's own Web3 Trading API among them) exist specifically to erase it for end users, which is also why capturing it requires bypassing that aggregator for at least one leg of the trade.
+
+**Principle taken:** don't diff two pools' raw prices directly, and don't assume a raw gap is tradeable. Fee-adjust each pool's price for the side of the trade it's on (buying pays the pool's fee, selling nets less by it), then net that against estimated slippage and gas. The spread that's left over is the real, cost-net edge; a positive raw gap with a negative net edge is not a signal, it's a trap — confirmed directly on the real MSFTB pair, where the 1% pool's own fee alone exceeds the entire 0.71% gross gap.
 
 ### c) Guardrails for autonomous, LLM-driven execution
 Every independent guardrail implementation we examined converges on the same structural rule, arrived at from different starting points: **the safety check must be a separate, deterministic layer outside the LLM's own reasoning — not a prompt instruction, a pure function or external proxy the LLM's output is forced through.** Recurring specific patterns:
@@ -93,8 +98,8 @@ Across all four: **separate the thing that decides from the thing that holds mon
 ## 6. End-to-End User Experience
 
 1. **Landing = the dashboard itself.** No marketing page. The persistent header shows system state (API/RPC health, wallet balances, killswitch position) before any scrolling.
-2. **Judge/trader sees a live NAV Spread Monitor** — raw price spread vs. NAV-adjusted spread for 3–5 underlyings, with an ex-dividend date visibly suppressing the raw signal while the adjusted signal stays flat.
-3. **An opportunity clears threshold** → the LLM Advisory Feed prints a plain-English proposal ("NVDA: 0.8% adjusted spread after dividend accrual, xStocks cheap, proposed size $200").
+2. **Judge/trader sees a live NAV Spread Monitor** — raw cross-pool spread vs. fee-adjusted net spread per underlying, with each pool's fee tier visible so it's obvious when a raw gap is being correctly rejected because it doesn't clear costs.
+3. **An opportunity clears threshold** → the LLM Advisory Feed prints a plain-English proposal ("MSFT: 0.7% raw cross-pool spread, 1% fee pool cheap, proposed size $200").
 4. **The Guardrail Gate evaluates it live**, visibly ticking through per-trade cap, daily cap, and dry-run min-output checks, resolving to a bold **APPROVED** or **BLOCKED** badge.
 5. **If approved**, execution fires through Agentic Wallet; a new row lands in the Audit Ledger showing the full chain: data fetch → guardrail check → transaction ID → (if applicable) x402 receipt for the data call that fed the decision.
 6. **Any time**, the trader can flip the Master Killswitch between Simulation → Dry-Run → Live, and can also just talk to the agent directly through Wallet Skills from their own Claude/ChatGPT client — the dashboard and the conversational surface are two views onto the same guardrailed core, not two separate products.
@@ -182,7 +187,7 @@ A persistent header across the top of the single dashboard, always visible:
 
 ### 9.2 Core Dashboard Layout
 The layout itself has to argue the thesis: decision and safety are visibly separate systems, not one opaque pipeline.
-- **NAV Spread Monitor ("the math"):** dual-axis chart, raw spread vs. NAV-adjusted spread, per token pair, with estimated accrued dividends and flagged ex-dividend drift.
+- **NAV Spread Monitor ("the math"):** dual-line chart, raw cross-pool spread vs. fee-adjusted net spread, per pool pair, with each pool's fee tier and estimated slippage/gas shown so a positive raw gap that fails to clear costs is visibly flagged, not hidden.
 - **LLM Advisory Feed ("the brain"):** a scrolling terminal of plain-English proposals generated by Groq from the Basis Model's structured output — advisory only, visually distinct from anything that touches the wallet.
 - **Guardrail Gate ("the shield"):** a real-time checklist — per-trade cap, daily hard cap, dry-run min-output — each with live state, resolving to bold **APPROVED**/**BLOCKED** badges.
 - **Audit Ledger ("the log"):** a sequential, timestamped feed: Data Fetch → Guardrail Check → TxID (Agentic Wallet) → x402 Receipt Log.
@@ -199,13 +204,13 @@ The layout itself has to argue the thesis: decision and safety are visibly separ
 
 **Real, working:**
 - Live quote pulling across 3–5 underlyings via Binance Web3 API
-- The NAV-equivalent / adjusted-spread math, with unit tests proving it correctly suppresses a dividend-drift false positive
+- The fee-adjusted spread math, with unit tests proving it correctly distinguishes a genuinely tradeable net edge from a raw gap that doesn't clear real costs — validated against real MSFTB pool data, not synthetic numbers
 - Dry-run + small live execution via Agentic Wallet
 - The guardrail gate as independent, tested code (spend caps, dry-run floor, fail-closed behavior)
 - Audit ledger of every decision (proposed, approved, rejected, executed)
 
 **Mocked for demo:**
-- Dividend/distribution schedule — hardcoded for the 3–5 demo underlyings rather than a full corporate-actions feed
+- Pool registry — hardcoded to the specific fee-tier pools independently verified this way (MSFTB's 0.25%/1% pair today) rather than a general pool-discovery scanner
 - Multi-day autonomous x402 self-funding — shown at small scale on camera rather than run unattended for days
 
 ---
@@ -232,7 +237,7 @@ The layout itself has to argue the thesis: decision and safety are visibly separ
 3. Every live execution is preceded by a dry-run/simulation call; the minimum-output floor is enforced in code, not merely requested of the model.
 4. Spend limits (per-trade, per-day) are checked **before** any call goes out, not after. The gate fails closed on a limit violation.
 5. The trading-capital wallet and the x402 operating-budget wallet are logically and financially separate; a failure or drain in one must not propagate to the other.
-6. The NAV-equivalent computation exists as its own tested module. A raw, unadjusted price diff must never be used directly as an execution signal.
+6. The fee-adjusted spread computation exists as its own tested module. A raw, unadjusted cross-pool price diff must never be used directly as an execution signal.
 7. Every price feed passes a sanity-bounds check and a liquidity-depth check before being used in a spread calculation.
 8. Audit ledger writes are append-only and happen for **every** decision — approved, blocked, or failed — not only for executed trades.
 9. The killswitch state (Simulation / Dry-Run / Live) is checked on every execution attempt at the infrastructure layer, never cached at app load.
@@ -285,10 +290,10 @@ Stack awards targeted: **Best Use of Agentic Wallet/Wallet Skills** (isolated wa
 ## 16. Acceptance Criteria — Definition of Done
 
 **Functional**
-- [ ] Live quotes for ≥3 underlyings render across xStocks/bStocks and Ondo within the dashboard at an acceptable refresh latency.
-- [ ] The NAV-adjusted spread calculation demonstrably suppresses at least one documented dividend-drift false positive that the raw price diff would have flagged.
+- [ ] Live pool prices render for each independently-verified fee-tier pool of the confirmed underlying(s) within the dashboard at an acceptable refresh latency.
+- [ ] The fee-adjusted spread calculation demonstrably identifies at least one documented case where a real raw cross-pool gap does not clear trading costs (fees, slippage, gas) — a case a naive raw-diff bot would have flagged as a false signal.
 - [ ] The guardrail gate visibly blocks at least one deliberately-triggered violation (e.g., an oversized order) live, not just in a unit test.
-- [ ] At least one real, small, live trade executes via Agentic Wallet on BSC mainnet, preceded by a dry-run.
+- [ ] A real, tested, end-to-end execution capability (dry-run → sign → broadcast) is demonstrated live on BSC mainnet. This is not a guaranteed positive outcome and is not staged either way: it plays out as either a real trade executing (if a genuine cost-net opportunity has cleared at recording time) or the guardrail correctly declining one (if it hasn't) — both are a valid pass, since the system doing real cost accounting instead of executing on any raw gap is the actual claim being tested.
 - [ ] The audit ledger shows the complete chain for at least one trade: data fetch → guardrail check → TxID → x402 receipt (where applicable).
 - [ ] The killswitch demonstrably changes agent behavior across all three states (Simulation / Dry-Run / Live).
 

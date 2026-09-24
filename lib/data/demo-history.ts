@@ -1,63 +1,82 @@
-import { navEquivalent } from "../basis-model/nav-equivalent";
+import { feeAdjustedPrice } from "../basis-model/nav-equivalent";
 import { rawSpread, adjustedSpread } from "../basis-model/adjusted-spread";
-import { accruedDividend } from "./dividend-calendar";
 
 export interface SpreadHistoryPoint {
-  date: string; // YYYY-MM-DD (UTC)
-  priceReturnPrice: number;
-  totalReturnPrice: number;
+  timestamp: string; // ISO 8601 — hourly, not daily (real DEX data has no "trading day" concept)
+  cheapPoolPriceUsd: number;
+  cheapPoolFeeUnits: number;
+  expensivePoolPriceUsd: number;
+  expensivePoolFeeUnits: number;
   rawSpread: number;
-  adjustedSpread: number;
+  adjustedSpread: number; // net edge after both pools' fees, slippage, and gas
 }
 
-// Seeded demo fixture, not live data: GET /api/opportunities can only
-// ever report a single current snapshot per underlying (there's no tick
-// history store), so there is no way to show the ex-div raw-spike vs
-// adjusted-flat contrast from live quotes alone unless "today" happens
-// to be an actual ex-dividend date. This reuses the exact MSFT scenario
-// every phase since Phase 1 has tested against (preExDivPrice=420.00,
-// dividendPerShare=0.83, exDivDate=2025-08-21) and runs it through the
-// real Basis Model functions — the suppression shown here is computed,
-// not hand-typed.
-const MSFT_PRE_EX_DIV_PRICE = 420.0;
-const MSFT_DIVIDEND_PER_SHARE = 0.83;
-const MSFT_EX_DIV_DATE = "2025-08-21";
+// Seeded demo fixture, not live data — but unlike the old dividend-drift
+// series, every point here is a REAL matched-timestamp reading from this
+// session's research: hourly OHLCV close prices for MSFTB's two real
+// PancakeSwap V3 pools (0.25% fee: 0x5018b018ceb7645c927c5cf246786f89ebcbe7ea,
+// 1% fee: 0x58e44c2e5b17ef40915b4b3ae8451b6b87285b44), matched at the
+// nearest available hourly candle for each pool (the 1% pool trades far
+// less often — 7 distinct hourly candles across this 4-day window vs.
+// 96 for the 0.25% pool, itself a real finding: thin liquidity is part
+// of why this pairing isn't a clean arbitrage). Spread sign flips
+// between points, same as the real data — not curated to always favor
+// one direction.
+const GAS_COST_USD_ESTIMATE = 200_000 * 1.5e-9 * 700; // ~200k gas units, ~1.5 gwei, BNB ~$700
+const SLIPPAGE_PCT_ESTIMATE = 0.0005; // 0.05%, thin $200 trade against real pool depth
 
-function buildMsftDemoHistory(): SpreadHistoryPoint[] {
-  // xStocks/bStocks (price-return) drops by the dividend on the ex-div
-  // date and holds there; Ondo (total-return) holds flat throughout
-  // because the dividend is reinvested, not paid out.
-  const days = [
-    { date: "2025-08-18", priceReturnPrice: MSFT_PRE_EX_DIV_PRICE, totalReturnPrice: MSFT_PRE_EX_DIV_PRICE },
-    { date: "2025-08-19", priceReturnPrice: MSFT_PRE_EX_DIV_PRICE, totalReturnPrice: MSFT_PRE_EX_DIV_PRICE },
-    { date: "2025-08-20", priceReturnPrice: MSFT_PRE_EX_DIV_PRICE, totalReturnPrice: MSFT_PRE_EX_DIV_PRICE },
-    {
-      date: MSFT_EX_DIV_DATE,
-      priceReturnPrice: MSFT_PRE_EX_DIV_PRICE - MSFT_DIVIDEND_PER_SHARE,
-      totalReturnPrice: MSFT_PRE_EX_DIV_PRICE,
-    },
-    {
-      date: "2025-08-22",
-      priceReturnPrice: MSFT_PRE_EX_DIV_PRICE - MSFT_DIVIDEND_PER_SHARE,
-      totalReturnPrice: MSFT_PRE_EX_DIV_PRICE,
-    },
-  ];
+interface RawPoint {
+  timestamp: string;
+  price25: number; // 0.25% fee pool close
+  price1: number; // 1% fee pool close
+}
 
-  return days.map(({ date, priceReturnPrice, totalReturnPrice }) => {
-    const accrued = accruedDividend("MSFT", date);
-    const navEq = navEquivalent(totalReturnPrice, accrued);
+const MSFTB_RAW_POINTS: RawPoint[] = [
+  { timestamp: "2026-09-18T04:00:00Z", price25: 494.83, price1: 502.59 },
+  { timestamp: "2026-09-18T13:00:00Z", price25: 492.55, price1: 492.88 },
+  { timestamp: "2026-09-18T14:00:00Z", price25: 493.83, price1: 490.23 },
+  { timestamp: "2026-09-19T06:00:00Z", price25: 493.73, price1: 492.71 },
+  { timestamp: "2026-09-20T04:00:00Z", price25: 492.22, price1: 490.42 },
+  { timestamp: "2026-09-20T17:00:00Z", price25: 498.19, price1: 500.37 },
+  { timestamp: "2026-09-21T20:00:00Z", price25: 500.04, price1: 500.51 },
+];
+
+const FEE_25 = 2500;
+const FEE_1PCT = 10000;
+
+function buildMsftbDemoHistory(): SpreadHistoryPoint[] {
+  return MSFTB_RAW_POINTS.map(({ timestamp, price25, price1 }) => {
+    const cheapIs25 = price25 <= price1;
+    const cheapPoolPriceUsd = cheapIs25 ? price25 : price1;
+    const cheapPoolFeeUnits = cheapIs25 ? FEE_25 : FEE_1PCT;
+    const expensivePoolPriceUsd = cheapIs25 ? price1 : price25;
+    const expensivePoolFeeUnits = cheapIs25 ? FEE_1PCT : FEE_25;
+
+    const raw = rawSpread(cheapPoolPriceUsd, expensivePoolPriceUsd);
+    const effectiveBuyPriceUsd = feeAdjustedPrice(cheapPoolPriceUsd, cheapPoolFeeUnits, "buy");
+    const effectiveSellPriceUsd = feeAdjustedPrice(expensivePoolPriceUsd, expensivePoolFeeUnits, "sell");
+    const adjusted = adjustedSpread({
+      effectiveBuyPriceUsd,
+      effectiveSellPriceUsd,
+      slippagePct: SLIPPAGE_PCT_ESTIMATE,
+      gasCostUsd: GAS_COST_USD_ESTIMATE,
+      tradeSizeUsd: 200,
+    });
+
     return {
-      date,
-      priceReturnPrice,
-      totalReturnPrice,
-      rawSpread: rawSpread(totalReturnPrice, priceReturnPrice),
-      adjustedSpread: adjustedSpread(navEq, priceReturnPrice),
+      timestamp,
+      cheapPoolPriceUsd,
+      cheapPoolFeeUnits,
+      expensivePoolPriceUsd,
+      expensivePoolFeeUnits,
+      rawSpread: raw,
+      adjustedSpread: adjusted,
     };
   });
 }
 
 const DEMO_HISTORY: Record<string, () => SpreadHistoryPoint[]> = {
-  MSFT: buildMsftDemoHistory,
+  MSFT: buildMsftbDemoHistory,
 };
 
 // Returns the seeded demo series for underlyings we have one for (MSFT),
