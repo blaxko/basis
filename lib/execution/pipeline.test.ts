@@ -354,6 +354,18 @@ describe("executeDirectSwap — the built, unwired single-leg send path", () => 
     expect(entry.send).toEqual({ txId: "0xdeadbeef" });
   });
 
+  it("records Binance's orderId next to the approval's and the swap's txId", async () => {
+    const walletClient = mockWalletClient({
+      checkAllowance: vi.fn().mockResolvedValue({ sufficient: false, currentAllowance: 0n, approveTransaction: { to: "0xToken", data: "0xapprove" } }),
+      send: vi.fn().mockImplementation(async (tx) =>
+        tx.data === "0xapprove" ? { txId: "0xapprovaltx", orderId: "order-approval", raw: {} } : { txId: "0xswaptx", orderId: "order-swap", raw: {} }
+      ),
+    });
+    const entry = await executeDirectSwap(baseOrder(), deps({ walletClient }));
+    expect(entry.approval).toEqual({ needed: true, txId: "0xapprovaltx", orderId: "order-approval" });
+    expect(entry.send).toEqual({ txId: "0xswaptx", orderId: "order-swap" });
+  });
+
   it("sends the approval first when one is needed", async () => {
     const calls: string[] = [];
     const walletClient: WalletClient = {

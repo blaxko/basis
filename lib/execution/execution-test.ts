@@ -336,6 +336,7 @@ async function runLeg(
     if (!allowance.sufficient) {
       const approval = await sendFn(allowance.approveTransaction!);
       leg.approval.txId = approval.txId;
+      if (approval.orderId) leg.approval.orderId = approval.orderId;
     }
     stage = "swap";
 
@@ -355,6 +356,7 @@ async function runLeg(
     });
     const result = await sendFn(swap);
     leg.txId = result.txId;
+    if (result.orderId) leg.orderId = result.orderId;
     const simulation = (result.raw as { simulation?: TxSimulation } | undefined)?.simulation;
     if (simulation) leg.transactionSimulation = simulation;
 
@@ -365,8 +367,11 @@ async function runLeg(
     // Broadcast, but the receipt wasn't confirmed: the transaction may
     // still be mined. Keep its hash so the ledger never loses it.
     if (err instanceof SentButUnconfirmedError) {
-      if (stage === "swap") leg.pendingTxId = err.txHash;
-      else if (leg.approval) leg.approval.pendingTxId = err.txHash;
+      const target = stage === "swap" ? leg : leg.approval;
+      if (target) {
+        target.pendingTxId = err.txHash;
+        if (err.orderId) target.orderId = err.orderId;
+      }
     }
   }
   return leg;

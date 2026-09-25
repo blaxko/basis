@@ -47,7 +47,7 @@ function fakeChain(opts: { usdt?: bigint; bnb?: bigint; price?: number; allowanc
       const failure = opts.failSend?.(label);
       if (failure) throw new Error(failure);
       allowances[tx.to.toLowerCase()] = 10n ** 30n;
-      return { txId: `0x${label}`, raw: {} };
+      return { txId: `0x${label}`, orderId: `order-${label}`, raw: {} };
     }
     const { args } = decodeFunctionData({ abi: V3_SWAP_ROUTER_ABI, data: tx.data as `0x${string}` });
     const p = args[0];
@@ -57,7 +57,7 @@ function fakeChain(opts: { usdt?: bigint; bnb?: bigint; price?: number; allowanc
     if (failure) throw new Error(failure);
     balances[p.tokenIn.toLowerCase()]! -= p.amountIn;
     balances[p.tokenOut.toLowerCase()]! += out(p.tokenIn, p.amountIn);
-    return { txId: `0x${label}`, raw: { orderId: "o", simulation: { result: "succeeded", status: "SUCCESS", balanceChanges: [], allowanceChanges: [] } } };
+    return { txId: `0x${label}`, orderId: `order-${label}`, raw: { orderId: `order-${label}`, simulation: { result: "succeeded", status: "SUCCESS", balanceChanges: [], allowanceChanges: [] } } };
   });
 
   const deps = (
@@ -243,7 +243,7 @@ describe("runExecutionTest — failures stop where they happen", () => {
     expect(entry.outcome).toBe("buy_failed");
     expect(entry.legs).toHaveLength(1);
     expect(entry.legs[0]!.error).toContain("execution reverted: STF");
-    expect(entry.legs[0]!.approval).toEqual({ needed: true, txId: "0xapprove:USDT" });
+    expect(entry.legs[0]!.approval).toEqual({ needed: true, txId: "0xapprove:USDT", orderId: "order-approve:USDT" });
     expect(chain.sent).toEqual(["approve:USDT", "swap:buy"]);
   });
 
@@ -421,5 +421,33 @@ describe("Binance health gate — last 3 calls ok, each within 5 s", () => {
     const entry = await runExecutionTest({ sizeUsd: 1, confirm: true }, deps);
     expect(entry.reason).toContain("Binance health gate");
     expect(chain.send).not.toHaveBeenCalled();
+  });
+});
+
+describe("Binance orderId is recorded per transaction, alongside its txId", () => {
+  it("approval and swap on both legs carry the broadcast's orderId", async () => {
+    const chain = fakeChain();
+    const entry = await runExecutionTest({ sizeUsd: 2, confirm: true }, chain.deps());
+    const [buy, sell] = entry.legs;
+    expect(buy!.approval).toEqual({ needed: true, txId: "0xapprove:USDT", orderId: "order-approve:USDT" });
+    expect(buy).toMatchObject({ txId: "0xswap:buy", orderId: "order-swap:buy" });
+    expect(sell!.approval).toEqual({ needed: true, txId: "0xapprove:MSFTB", orderId: "order-approve:MSFTB" });
+    expect(sell).toMatchObject({ txId: "0xswap:sell", orderId: "order-swap:sell" });
+  });
+
+  it("an unconfirmed broadcast keeps its orderId next to pendingTxId", async () => {
+    const chain = fakeChain({ allowance: 10n ** 30n });
+    const d = chain.deps();
+    const realSend = d.send!;
+    d.send = vi.fn(async (tx) => {
+      if (tx.to === PANCAKESWAP_V3_SWAP_ROUTER_ADDRESS) {
+        const { args } = decodeFunctionData({ abi: V3_SWAP_ROUTER_ABI, data: tx.data as `0x${string}` });
+        if (args[0].tokenIn === MSFTB) throw new SentButUnconfirmedError("0x" + "ef".repeat(32), "timeout", "order-pending-sell");
+      }
+      return realSend(tx);
+    });
+    const entry = await runExecutionTest({ sizeUsd: 2, confirm: true }, d);
+    expect(entry.legs[1]).toMatchObject({ pendingTxId: "0x" + "ef".repeat(32), orderId: "order-pending-sell" });
+    expect(entry.legs[1]!.txId).toBeUndefined();
   });
 });

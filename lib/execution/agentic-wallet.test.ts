@@ -347,6 +347,7 @@ describe("send — Binance simulate, sign locally, Binance MEV-protected broadca
 
     expect(calls).toEqual(["simulate", "sign", "broadcast", "receipt"]);
     expect(result.txId).toBe(TX_HASH);
+    expect(result.orderId).toBe("order-1"); // from the broadcast-transaction response
     const from = getTradingWalletAddress();
     expect(deps.simulate).toHaveBeenCalledWith({ from, to: "0xRouter", value: "1000", data: "0xdeadbeef" });
     expect(deps.prepareAndSign).toHaveBeenCalledWith({ to: "0xRouter", data: "0xdeadbeef", value: 1000n });
@@ -390,6 +391,18 @@ describe("send — Binance simulate, sign locally, Binance MEV-protected broadca
     expect(err).toBeInstanceOf(SentButUnconfirmedError);
     expect((err as SentButUnconfirmedError).txHash).toBe(TX_HASH);
     expect((err as Error).message).toContain("may still be mined");
+  });
+
+  it("omits orderId when Binance returned an empty one", async () => {
+    const { deps } = steps({ broadcast: vi.fn(async () => ({ txHash: TX_HASH, orderId: "" })) });
+    const result = await send({ to: "0xRouter", data: "0xdead" }, deps);
+    expect(result).not.toHaveProperty("orderId");
+  });
+
+  it("SentButUnconfirmedError carries the broadcast's orderId too", async () => {
+    const { deps } = steps({ waitForReceipt: vi.fn(async () => Promise.reject(new Error("timeout"))) });
+    const err = await send({ to: "0xRouter", data: "0xdead" }, deps).catch((e: unknown) => e);
+    expect((err as SentButUnconfirmedError).orderId).toBe("order-1");
   });
 
   it("throws when the transaction is mined but reverts", async () => {

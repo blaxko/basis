@@ -176,6 +176,7 @@ function PipelineRow({ entry }: { entry: PipelineLedgerEntry }) {
         <div>
           approval:{" "}
           {entry.approval.txId ? `sent ${entry.approval.txId}` : entry.approval.error ? `failed: ${entry.approval.error}` : "needed, not sent in this mode"}
+          {entry.approval.orderId && ` (Binance order ${entry.approval.orderId})`}
         </div>
       )}
       {entry.dryRun && (
@@ -185,7 +186,12 @@ function PipelineRow({ entry }: { entry: PipelineLedgerEntry }) {
         </div>
       )}
       {entry.transactionSimulation && <div>{binanceSimulation(entry.transactionSimulation)}</div>}
-      {entry.send && "txId" in entry.send && <div>tx: {entry.send.txId}</div>}
+      {entry.send && "txId" in entry.send && (
+        <div>
+          tx: {entry.send.txId}
+          {entry.send.orderId && ` (Binance order ${entry.send.orderId})`}
+        </div>
+      )}
       {entry.send && "error" in entry.send && <div>send failed: {entry.send.error}</div>}
     </div>
   );
@@ -208,9 +214,11 @@ function ExecutionTestRow({ entry }: { entry: ExecutionTestLedgerEntry }) {
         <div key={leg.side}>
           {leg.side}: in {leg.amountIn}
           {leg.approval?.needed && ` · approval ${leg.approval.txId ?? (leg.approval.pendingTxId ? `${leg.approval.pendingTxId} (UNCONFIRMED)` : "not sent")}`}
+          {leg.approval?.orderId && ` (Binance order ${leg.approval.orderId})`}
           {leg.amountOutMinimum && ` · min out ${leg.amountOutMinimum}`}
           {leg.txId && ` · tx ${leg.txId}`}
           {leg.pendingTxId && ` · tx ${leg.pendingTxId} UNCONFIRMED — check on-chain`}
+          {leg.orderId && ` (Binance order ${leg.orderId})`}
           {leg.received && ` · received ${leg.received}`}
           {leg.error && ` · FAILED: ${leg.error}`}
         </div>

@@ -339,14 +339,18 @@ async function runSteps(
     spenderAddress: PANCAKESWAP_V3_SWAP_ROUTER_ADDRESS,
     amountRequired: swapParams.amountIn,
   });
-  let approvalInfo: { needed: boolean; txId?: string } = { needed: !allowance.sufficient };
+  let approvalInfo: { needed: boolean; txId?: string; orderId?: string } = { needed: !allowance.sufficient };
 
   if (!allowance.sufficient && allowSend) {
     try {
       const approvalSendResult = await walletClient.send(allowance.approveTransaction!);
       // Approval succeeded — fall through to the swap's simulate/send
       // below, carrying its txId into whichever entry gets appended.
-      approvalInfo = { needed: true, txId: approvalSendResult.txId };
+      approvalInfo = {
+        needed: true,
+        txId: approvalSendResult.txId,
+        ...(approvalSendResult.orderId ? { orderId: approvalSendResult.orderId } : {}),
+      };
     } catch (err) {
       return record({
         mode,
@@ -432,7 +436,7 @@ async function runSteps(
       approval: approvalInfo,
       dryRun,
       transactionSimulation,
-      send: { txId: sendResult.txId },
+      send: { txId: sendResult.txId, ...(sendResult.orderId ? { orderId: sendResult.orderId } : {}) },
     });
   } catch (err) {
     return record({

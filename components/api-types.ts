@@ -209,10 +209,11 @@ export interface PipelineLedgerEntry {
   verdict: GuardrailVerdict;
   detection?: DetectionSnapshot;
   freshness?: { freshSpread: number; ok: boolean; reason?: string };
-  approval?: { needed: boolean; txId?: string; error?: string };
+  // orderId: Binance's broadcast-transaction id for the same transaction.
+  approval?: { needed: boolean; txId?: string; orderId?: string; error?: string };
   dryRun?: { outputUsd: number; ok: boolean; reason?: string };
   transactionSimulation?: TxSimulation;
-  send?: { txId: string } | { error: string };
+  send?: { txId: string; orderId?: string } | { error: string };
 }
 
 // Mirrors lib/data/binance-transaction.ts's TxSimulation (balance and
@@ -239,9 +240,12 @@ export interface ExecutionTestLeg {
   amountIn: string;
   quotedAmountOut?: string;
   amountOutMinimum?: string;
-  approval?: { needed: boolean; txId?: string; pendingTxId?: string };
+  approval?: { needed: boolean; txId?: string; pendingTxId?: string; orderId?: string };
   transactionSimulation?: TxSimulation;
   txId?: string;
+  // Binance's broadcast-transaction orderId for the swap (with txId or
+  // pendingTxId).
+  orderId?: string;
   pendingTxId?: string;
   received?: string;
   error?: string;

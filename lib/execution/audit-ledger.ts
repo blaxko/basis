@@ -78,13 +78,14 @@ export interface PipelineLedgerEntry {
   // ERC-20 allowance check (checkAllowance(), called before the swap
   // simulation/send in the pipeline) — present only for modes that reach
   // the wallet.
-  approval?: { needed: boolean; txId?: string; error?: string };
+  // orderId: Binance's broadcast-transaction id for the same transaction.
+  approval?: { needed: boolean; txId?: string; orderId?: string; error?: string };
   dryRun?: { outputUsd: number; ok: boolean; reason?: string };
   // Binance Transaction API simulation of our own exactInputSingle
   // calldata from the trading wallet, run after the QuoterV2 floor
   // passes. Present only for runs that reached it.
   transactionSimulation?: TxSimulation;
-  send?: { txId: string } | { error: string };
+  send?: { txId: string; orderId?: string } | { error: string };
 }
 
 // A detection decision, not a guardrail decision: no order was built and
@@ -114,10 +115,13 @@ export interface ExecutionTestLeg {
   quotedAmountOut?: string;
   amountOutMinimum?: string;
   // pendingTxId: broadcast, receipt unconfirmed — may still be mined.
-  approval?: { needed: boolean; txId?: string; pendingTxId?: string };
+  approval?: { needed: boolean; txId?: string; pendingTxId?: string; orderId?: string };
   // Binance Transaction API simulation of the swap, as send() saw it.
   transactionSimulation?: TxSimulation;
   txId?: string;
+  // Binance's broadcast-transaction orderId for the swap (with txId or
+  // pendingTxId).
+  orderId?: string;
   // The swap was broadcast but its receipt is unconfirmed: it may still be
   // mined. Check it on-chain before running anything else.
   pendingTxId?: string;
