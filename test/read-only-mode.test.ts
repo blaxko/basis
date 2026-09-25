@@ -215,7 +215,7 @@ describe("read-only mode: Binance/Groq-triggering routes are rate-limited per IP
     vi.doMock("../lib/orchestration/handle-instruction", () => ({ handleInstruction }));
     const { POST } = await import("../app/api/instruction/route");
     const call = (ip: string) =>
-      POST(new Request("http://x/api/instruction", { method: "POST", headers: { "x-forwarded-for": ip }, body: JSON.stringify({ instruction: "buy $1 of MSFT" }) }));
+      POST(new Request("http://x/api/instruction", { method: "POST", headers: { "x-real-ip": ip }, body: JSON.stringify({ instruction: "buy $1 of MSFT" }) }));
     return { call, handleInstruction };
   }
 
@@ -252,18 +252,32 @@ describe("read-only mode: Binance/Groq-triggering routes are rate-limited per IP
     expect(checkRateLimit(rule, "b", 2).ok).toBe(true);
   });
 
-  it("clientIp takes the first X-Forwarded-For entry (the one Render sets to the real client) and nothing else", () => {
+  it("clientIp reads only X-Real-IP (the header Railway's edge documents) — never X-Forwarded-For", () => {
     const req = (h: Record<string, string>) => new Request("http://x", { headers: h });
-    expect(clientIp(req({ "x-forwarded-for": "203.0.113.7, 104.16.0.1, 10.0.0.2" }))).toBe("203.0.113.7");
-    expect(clientIp(req({ "x-forwarded-for": " 203.0.113.7 " }))).toBe("203.0.113.7");
-    // Headers Render doesn't document are ignored.
-    expect(clientIp(req({ "x-real-ip": "198.51.100.9", "cf-connecting-ip": "198.51.100.10" }))).toBe("unknown");
+    expect(clientIp(req({ "x-real-ip": "203.0.113.7" }))).toBe("203.0.113.7");
+    expect(clientIp(req({ "x-real-ip": " 203.0.113.7 " }))).toBe("203.0.113.7");
+    // A forged X-Forwarded-For next to the real header changes nothing.
+    expect(clientIp(req({ "x-real-ip": "203.0.113.7", "x-forwarded-for": "1.2.3.4" }))).toBe("203.0.113.7");
+    // Client-settable headers Railway doesn't document are never read.
+    expect(clientIp(req({ "x-forwarded-for": "1.2.3.4", "cf-connecting-ip": "1.2.3.5", "true-client-ip": "1.2.3.6" }))).toBe("unknown");
     expect(clientIp(req({}))).toBe("unknown");
+  });
+
+  it("per-IP limits can't be dodged by rotating X-Forwarded-For", async () => {
+    const { POST } = await (async () => {
+      vi.resetModules();
+      vi.doMock("../lib/orchestration/handle-instruction", () => ({ handleInstruction: vi.fn(async () => ({ ok: false, error: { kind: "stub" } })) }));
+      return import("../app/api/instruction/route");
+    })();
+    const call = (xff: string) =>
+      POST(new Request("http://x/api/instruction", { method: "POST", headers: { "x-real-ip": "203.0.113.7", "x-forwarded-for": xff }, body: JSON.stringify({ instruction: "buy $1 of MSFT" }) }));
+    for (let i = 0; i < INSTRUCTION_RATE_LIMIT.perIp; i++) expect((await call(`10.0.0.${i}`)).status).not.toBe(429);
+    expect((await call("10.0.0.99")).status).toBe(429);
   });
 
   it("/api/status echoes the client IP the app sees, so spoofing can be checked after deploying", async () => {
     const { GET } = await import("../app/api/status/route");
-    const body = await (await GET(new Request("http://x/api/status", { headers: { "x-forwarded-for": "203.0.113.7, 104.16.0.1" } }))).json();
+    const body = await (await GET(new Request("http://x/api/status", { headers: { "x-real-ip": "203.0.113.7", "x-forwarded-for": "1.2.3.4" } }))).json();
     expect(body.requestClientIp).toBe("203.0.113.7");
   });
 

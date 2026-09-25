@@ -54,24 +54,21 @@ export function resetRateLimits(): void {
   windows().clear();
 }
 
-// The client address as Render's proxy reports it: the FIRST entry of
-// X-Forwarded-For. Render staff, on "Send the correct X_FORWARDED_FOR"
-// (feedback.render.com/features/p/send-the-correct-xforwardedfor, status
-// Complete, reply of 2021-05-28): "we set the first IP in the list to the
-// real client IP". Render's DDoS article
-// (render.com/articles/how-render-handles-ddos-attacks) says to read the
-// client IP from x-forwarded-for, without naming the entry. The LAST
-// entry is not used: traffic passes through Cloudflare and Render's load
-// balancers, so it can be a proxy address shared by every client.
+// The client address as Railway's edge reports it: X-Real-IP. Railway's
+// public-networking specs (docs.railway.com/networking/public-networking/
+// specs-and-limits, "Request Headers") list "`X-Real-IP` for identifying
+// client's remote IP"; they document no X-Forwarded-For. X-Forwarded-For
+// (and any other client-settable header) is deliberately NOT read: a
+// client can send any value there.
 //
-// This rests on a staff reply, not formal docs — verify after deploying
+// Railway's docs don't say in so many words that the edge overwrites a
+// client-supplied X-Real-IP — verify after deploying
 // (docs/pre-flight-notes.md): /api/status echoes the IP it sees for the
-// caller. No other header (X-Real-IP, CF-Connecting-IP) is read: Render
-// doesn't document them. The global limit is the backstop if this is
-// ever spoofable.
+// caller, and a forged X-Real-IP must not come back. The global limit is
+// the backstop if this is ever spoofable. Without the header (local runs)
+// every client shares the "unknown" key.
 export function clientIp(request: Request): string {
-  const first = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return first || "unknown";
+  return request.headers.get("x-real-ip")?.trim() || "unknown";
 }
 
 // /api/instruction: Groq intent parsing + a Binance quote per request.

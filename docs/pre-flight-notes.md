@@ -50,18 +50,52 @@ If the video shows these, show them as what they are: the BscScan pages of a run
    - **Resolving is not enough: the header chip must read `Binance Web3 API · Nms`, green.** On 2026-09-25 from 10:54 UTC, on a network whose DNS server was `172.20.10.1` (a phone hotspot), the name resolved but every TLS handshake to `web3.binance.com` was reset, and the app's calls timed out. `/api/status` → `binanceWeb3Api.calls` shows each call's status and verbatim error.
    - Don't record through a VPN or proxy: Binance answers `40302` ("Proxy or VPN detected").
 
-## Execution test and deployment rules
+## Execution test
 
 - **The live execution test (`POST /api/execution-test`) runs locally only.** Never on the deployed instance: there, `PUBLIC_READ_ONLY=true` returns 403 and the server holds no trading key.
 - **Procedure used for the 2026-09-25 run** (it worked as written): confirm the last three Binance calls are ok and under 5 s (`/api/status` → `binanceWeb3Api.calls`; the test's health gate refuses otherwise) and `walletBalances` shows MSFTB 0; `POST /api/killswitch {"mode":"live"}`; `POST /api/execution-test {"sizeUsd":5,"confirm":true}` (≈ 61 s for four transactions); `POST /api/killswitch {"mode":"simulation"}` immediately after. If the outcome is `sell_failed`, check any `pendingTxId` on BscScan first, then recover with `{"action":"sell_only","confirm":true}` in live mode.
 - **After a run, both router allowances should read 0** (the test approves exact amounts). On 2026-09-25 they did. Binance's simulation of the sell swap listed no MSFTB allowance change even though the allowance was spent: MSFTB emits no `Approval` event on `transferFrom`, so check allowances on-chain, not from the simulation.
 - **Wallet after the run:** 0.00290496885 BNB, 4.975031264553765393 USDT, 0 MSFTB. Another round trip needs `sizeUsd` ≤ 4.97 or a USDT top-up (the buy leg checks the balance and stops as `buy_failed`, sending nothing, if short); gas left covers well over 50 more runs at 0.05 gwei.
-- **Never run the local server and the hosted one against Binance at the same time.** Binance answers `40303` ("Unusual IP activity detected") to "frequent location switching or concurrent multi-region access". Stop one before starting the other.
-- The deployment is pinned by `render.yaml` to `region: singapore` (Render's default, oregon, is in the US, which Binance restricts; the region can't be changed after the service is created). Before creating it, re-check web3.binance.com/en/dev-docs/web3-api-prohibited-regions.
-- Plan `0.5c-512mb` (legacy name *Starter*): 0.5 CPU / 512 MB, $7/month of compute on a Hobby workspace ($0/month), per render.com/pricing on 2026-09-25. Not the free plan, which spins down after 15 idle minutes and would stop the scheduler.
-- After the first deploy:
-  - Confirm one Binance call succeeds from the host (a `40301` means the host's IP is treated as restricted).
-  - Check the client IP the rate limiter uses. It is the FIRST `X-Forwarded-For` entry, per a Render staff reply ("we set the first IP in the list to the real client IP", feedback.render.com/features/p/send-the-correct-xforwardedfor, 2021-05-28), not formal docs. Run `curl -s https://<host>/api/status -H "X-Forwarded-For: 1.2.3.4"` and read `requestClientIp`: it must be your real IP, not `1.2.3.4`. If it shows `1.2.3.4`, per-IP limits are spoofable (the global cap still holds); fix `clientIp()` in `lib/config/rate-limit.ts` before relying on them.
+
+## Deploying to Railway (public, read-only)
+
+Sources, checked 2026-09-25: Railway docs pages "Infrastructure as Code", "Regions", "Serverless", "Healthchecks", "Public Networking → Specs & Limits", "Deployment actions", "Plans", "Free trial" (docs.railway.com), and railway.com/pricing.
+
+**Rules**
+
+- **Never run the local server and the hosted one against Binance at the same time.** Binance answers `40303` ("Unusual IP activity detected") to "frequent location switching or concurrent multi-region access". Stop the local server before the hosted one is deployed. To run locally again, first stop the hosted one: service → Deployments → the active deployment's menu → **Remove** ("will remove the deployment and stop any further project usage"), then confirm `https://<domain>/api/status` no longer answers.
+- The hosted server runs with `PUBLIC_READ_ONLY=true` and has **no trading key**. It can't send transactions, set the killswitch to live, or run the execution test.
+- The region is pinned to Singapore (`asia-southeast1-eqsg3a`) in `.railway/railway.ts`. Railway's other regions are US West (California), US East (Virginia) and EU West (**Amsterdam, Netherlands**); all three are on Binance's restricted list. Re-check web3.binance.com/en/dev-docs/web3-api-prohibited-regions before deploying.
+
+**Plan.** Hobby ($5/month minimum usage, includes $5 of usage). Not the Limited Trial: an unverified trial has "restricted outbound network access", and the app needs Binance and the BSC RPC. The Free plan's $1/month credit is below the expected usage (below).
+
+**Steps**
+
+1. In Railway, **Account Settings**: set the preferred region to Southeast Asia (Singapore). The config pins the region anyway; this covers anything created outside it.
+2. Create an empty project named `basis` in the dashboard. Install the Railway CLI (the `railway` SDK in this repo requires CLI 5.42.1 or newer), then from the repo root: `railway login`, `railway link` (choose `basis`, environment `production`), `npm install`.
+3. `railway config plan` (read-only). Expect exactly: create service `basis` from `blaxko/basis` `main`, build `npm run build`, start `npx next start -H 0.0.0.0`, healthcheck `/api/health`, **one replica in `asia-southeast1-eqsg3a`**, seven variables (values hidden), and nothing marked destructive. Anything else: stop.
+   - The four secrets are declared with `preserve()` ("keep the value that is already set in Railway"). The docs don't say what `preserve()` does for a variable that doesn't exist yet; read that part of the plan.
+4. `railway config apply` and confirm.
+5. In the service's **Variables**, set the four secrets, then deploy the change:
+   - `BINANCE_WEB3_API_KEY`, `BINANCE_WEB3_API_SECRET`, `GROQ_API_KEY`, `BSC_RPC_URL`.
+   - The file already sets `PUBLIC_READ_ONLY=true`, `TRADING_WALLET_ADDRESS=0x0bA556a253D2f1FdCF352aD55A5b44718802BB95`, `BINANCE_WEB3_API_BASE_URL=https://web3.binance.com/build`.
+   - **Never set `TRADING_WALLET_PRIVATE_KEY`.** `PORT` is injected by Railway; don't set it.
+   - Until the secrets are set, Binance and RPC calls fail closed; nothing can be sent either way.
+6. Service **Settings → Deploy → Serverless**: must be **off** (the default; the config file can't set it).
+7. Service **Settings → Networking → Public Networking → Generate Domain**.
+
+**Checks after the first deploy** (stop the local server first)
+
+1. **Read-only.** `curl -s https://<domain>/api/status`: `publicReadOnly` is `true` and `tradingWallet.address` is `0x0bA5…BB95`. Then `POST /api/killswitch {"mode":"live"}` → 403 and `POST /api/execution-test {"sizeUsd":1,"confirm":true}` → 403.
+2. **Server location.** `curl -s -D - -o /dev/null https://<domain>/api/health -H "X-Railway-Debug: 1"`: Railway returns `X-Railway-Upstream-Zone` ("the origin zone that served the request"); it must be the Singapore zone. The service's region in the dashboard must read Southeast Asia.
+3. **One logged Binance call.** In `/api/status` → `binanceWeb3Api.calls`, the newest calls are HTTP 200, code 0; the header chip shows a latency. A `40301`/`40304` means the host's IP is treated as restricted: remove the deployment (Rules above) and don't retry. Log the first successful hosted call in `docs/devex-log.md`.
+4. **Client-IP spoof test.** Railway documents one client-IP header: "`X-Real-IP` for identifying client's remote IP"; it documents no `X-Forwarded-For`. The app reads only `X-Real-IP` (`clientIp()`, `lib/config/rate-limit.ts`). The docs don't say outright that the edge overwrites a client-supplied `X-Real-IP`, so test it:
+   - `curl -s https://<domain>/api/status` → note `requestClientIp` (your real IP).
+   - `curl -s https://<domain>/api/status -H "X-Real-IP: 1.2.3.4" -H "X-Forwarded-For: 1.2.3.4"` → `requestClientIp` must be the same real IP, not `1.2.3.4`.
+   - If it shows `1.2.3.4`, per-IP limits are spoofable (the global cap still holds): fix `clientIp()` before relying on them.
+5. **Serverless off.** Settings → Deploy → Serverless is unchecked.
+
+**Expected cost.** Railway bills RAM at $10/GB/month and CPU at $20/vCPU/month ($0.00000386 per GB·s, $0.00000772 per vCPU·s) plus $0.05/GB egress; builds are free. Measured locally (production build, Windows, 14:21–19:37 UTC 2026-09-25, scheduler ticking every 30 s): 117 MB private memory (68 MB working set) and 29.4 CPU-seconds over 5.26 h, an average of 0.0016 vCPU. On Linux expect roughly 0.12–0.2 GB: about $1.2–2.0/month RAM, about $0.03 CPU, cents of egress. That is inside the Hobby plan's included $5, so **about $5/month in total**.
 
 ## Moment A: a live `no_opportunity` evaluation
 
