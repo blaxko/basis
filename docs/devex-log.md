@@ -235,3 +235,42 @@ Failures:
   - 5 further attempts 11:05:59 – 11:07:08 UTC: all `exit 28` (timeout at 12 s), no TLS handshake completed.
   - `https://www.google.com` from the same machine at the same time: HTTP response received.
 - Effect in the app: the manual instruction at 11:04:22 UTC ("Buy $200 of MSFT", ledger `ledger_1790334272923_38`) was blocked by `referencePriceCheck`: `no Binance reference quote: The operation was aborted due to timeout`. Fail-closed, as designed.
+
+## 2026-09-25 11:39 – 11:48 UTC — Compliance restriction (40304) through a US VPN exit
+
+- 11:39:57 – 11:45:54 UTC: 13 scheduler calls, no HTTP response (`TimeoutError: The operation was aborted due to timeout`), same network as the 10:54 entry.
+- From 11:46 UTC the machine was on a VPN: adapter `ProTUN` (`10.2.0.2`), DNS server `10.2.0.1`; `nslookup web3.binance.com` → `18.161.21.5`. Cloudflare trace for the connection: `loc=US`, `colo=EWR`.
+- 3 scheduler calls, `GET /api/v1/dex/aggregator/quote` (200 USDT → MSFTB, `userWalletAddress=0x0bA556a253D2f1FdCF352aD55A5b44718802BB95`), each sent with `X-OC-RECV-WINDOW: 15000`:
+
+| Call start (UTC) | HTTP | Latency ms | Code | Message (verbatim, as recorded by the app) |
+|---|---|---|---|---|
+| 11:46:40.393 | 200 | 2698 | 40304 | `Service not available due to compliance restriction` |
+| 11:46:57.613 | 200 | 2318 | 40304 | `Service not available due to compliance restriction` |
+| 11:48:03.183 | 200 | 1553 | 40304 | `Service not available due to compliance restriction` |
+
+- Unsigned `GET /build/api/v1/dex/aggregator/supported/chain` via curl at 11:47:03 UTC: HTTP 401, TLS 1.23 s, total 1.83 s.
+- The US is on the prohibited list (web3.binance.com/en/dev-docs/web3-api-prohibited-regions). 40304 is documented as "The request is blocked by a compliance rule not covered by a more specific code above" (IP Compliance table, alongside 40301 region / 40302 VPN or proxy). The response is HTTP 200 with a non-zero `code`, so the app's call log records the code and `msg`, not the full body.
+- These calls do not verify `X-OC-RECV-WINDOW`: they were refused by the compliance layer, not checked against the time window.
+- The local server was stopped at ~11:49 UTC to stop sending calls from a restricted-region IP.
+
+## 2026-09-25 ~11:55 – 12:03 UTC — Direct home connection; `X-OC-RECV-WINDOW` verified
+
+- Network: VPN disconnected; Wi-Fi only (`192.168.0.196`); DNS `1.1.1.1`; `web3.binance.com` → `3.173.161.34`. Cloudflare trace: `loc=NG` (not on the prohibited list), `colo=AMS`.
+- Two one-off signed calls from Node through `binanceRequest` (`GET /api/v1/dex/aggregator/supported/chain`) got no response within the app's 10 s timeout (`TimeoutError: The operation was aborted due to timeout`), ~11:55 and ~11:58 UTC. Unsigned curl requests at 11:56:23 / 11:56:28 / 11:56:32 UTC: HTTP 401 in 2.51 / 1.29 / 1.48 s. Unsigned Node `fetch` at 12:00:35 UTC: HTTP 401 in 3721 ms.
+- Signed `GET /build/api/v1/dex/aggregator/supported/chain` via curl with `X-OC-RECV-WINDOW: 15000`, fresh timestamp, 12:00:36 UTC: HTTP 200 in 5.78 s, `"code":0`, `"success":true` (list of supported chains). The unsigned header does not break the signature.
+- Same endpoint, `X-OC-TIMESTAMP` deliberately 8 s old:
+
+| Step | `X-OC-TIMESTAMP` | `X-OC-RECV-WINDOW` | Finished (UTC) | HTTP | Total s | Response (verbatim, truncated) |
+|---|---|---|---|---|---|---|
+| without header | 2026-09-25T12:00:56.423Z | not sent | 12:01:09.092 | 401 | 4.51 | `{"msg":"Timestamp outside recv_window. serverTime=2026-09-25T12:01:08.153960274Z","data":"","code":40103,"timestamp":1790337668154}` |
+| with header | 2026-09-25T12:01:01.465Z | `15000` | 12:01:13.528 | 200 | 3.91 | `{"code":0,"msg":"success","data":[{"binanceChainId":"1","name":"Ethereum",…` |
+
+- Server restarted (production build with the header): first three scheduler quote calls, 200 USDT → MSFTB:
+
+| Call start (UTC) | HTTP | Latency ms | Code |
+|---|---|---|---|
+| 12:02:00.575 | 200 | 9919 | 0 |
+| 12:02:30.742 | 200 | 7139 | 0 |
+| 12:02:59.013 | 200 | 9654 | 0 |
+
+- All three took longer than Binance's default 5,000 ms window; with the default they would be at risk of `40103`.

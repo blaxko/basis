@@ -70,7 +70,7 @@ describe("fetchAggregatorReference", () => {
       toTokenAddress: MSFTB,
       userWalletAddress: params.userWalletAddress,
     });
-    expect(Object.keys((init as RequestInit).headers as Record<string, string>).sort()).toEqual(["X-OC-APIKEY", "X-OC-SIGN", "X-OC-TIMESTAMP"]);
+    expect(Object.keys((init as RequestInit).headers as Record<string, string>).sort()).toEqual(["X-OC-APIKEY", "X-OC-RECV-WINDOW", "X-OC-SIGN", "X-OC-TIMESTAMP"]);
   });
 
   it("records the call: endpoint, HTTP status, latency, API code", async () => {

@@ -62,6 +62,14 @@ export const defaultBinanceClientDeps: BinanceClientDeps = {
 
 const TIMEOUT_MS = 10_000;
 
+// Sent as X-OC-RECV-WINDOW: how far (ms) the request timestamp may be from
+// Binance's server time on arrival. Default 5000, max 60000. Unsigned: the
+// pre-hash is exactly timestamp + method + requestPath + body
+// (web3.binance.com/en/dev-docs/authentication, Step 3.1), so this header
+// is added after signing and never enters the signature. Rationale for
+// 15000 in docs/config-rationale.md.
+export const BINANCE_RECV_WINDOW_MS = 15_000;
+
 // Throws on missing credentials (before any request, nothing logged) and
 // on network failure (logged, then rethrown). Otherwise returns whatever
 // came back — non-2xx and non-zero `code` included — for the caller to
@@ -75,6 +83,7 @@ export async function binanceRequest(
   const url = `${config.baseUrl}${request.path}${query ? `?${query}` : ""}`;
   const bodyText = request.body === undefined ? "" : JSON.stringify(request.body);
   const headers: Record<string, string> = buildAuthHeaders(config.apiKey, config.secretKey, request.method, url, bodyText);
+  headers["X-OC-RECV-WINDOW"] = String(BINANCE_RECV_WINDOW_MS);
   if (bodyText) headers["Content-Type"] = "application/json";
 
   const at = new Date().toISOString();
