@@ -199,16 +199,18 @@ function ExecutionTestRow({ entry }: { entry: ExecutionTestLedgerEntry }) {
         {fmtTime(entry.timestamp)} · mode={entry.mode} · kind=execution_test · outcome={entry.outcome}
       </div>
       <div>
-        EXECUTION TEST (not arbitrage) — ${entry.sizeUsd} round trip on the {entry.pool.feeUnits / 10_000}% pool · $
+        EXECUTION TEST (not arbitrage) — {entry.action === "sell_only" ? "sell-only recovery" : "round trip"}, $
+        {entry.sizeUsd} on the {entry.pool.feeUnits / 10_000}% pool · $
         {entry.spendRecordedUsd.toFixed(2)} counted toward the daily cap
         {entry.reason ? ` · ${entry.reason}` : ""}
       </div>
       {entry.legs.map((leg) => (
         <div key={leg.side}>
           {leg.side}: in {leg.amountIn}
-          {leg.approval?.needed && ` · approval ${leg.approval.txId ?? "not sent"}`}
+          {leg.approval?.needed && ` · approval ${leg.approval.txId ?? (leg.approval.pendingTxId ? `${leg.approval.pendingTxId} (UNCONFIRMED)` : "not sent")}`}
           {leg.amountOutMinimum && ` · min out ${leg.amountOutMinimum}`}
           {leg.txId && ` · tx ${leg.txId}`}
+          {leg.pendingTxId && ` · tx ${leg.pendingTxId} UNCONFIRMED — check on-chain`}
           {leg.received && ` · received ${leg.received}`}
           {leg.error && ` · FAILED: ${leg.error}`}
         </div>

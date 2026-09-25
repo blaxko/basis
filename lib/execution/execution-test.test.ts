@@ -1,6 +1,21 @@
 import { describe, it, expect, vi } from "vitest";
 import { decodeFunctionData, parseUnits, type Address } from "viem";
-import { runExecutionTest, EXECUTION_TEST_HARD_CAP_USD_PER_LEG, type ExecutionTestDeps } from "./execution-test";
+import {
+  runExecutionTest,
+  binanceHealthProblem,
+  EXECUTION_TEST_HARD_CAP_USD_PER_LEG,
+  SELL_ONLY_REQUEST,
+  type ExecutionTestDeps,
+} from "./execution-test";
+import type { BinanceCallRecord } from "../data/binance-client";
+import { SentButUnconfirmedError } from "./agentic-wallet";
+
+// Three recent successful Binance calls, each under 5 s: the health gate
+// passes. Shapes as the app's call log records them.
+function call(overrides: Partial<BinanceCallRecord> = {}): BinanceCallRecord {
+  return { at: "2026-09-25T12:36:35.984Z", method: "GET", path: "/api/v1/dex/aggregator/quote", query: "", httpStatus: 200, latencyMs: 1466, apiCode: 0, ok: true, ...overrides };
+}
+const HEALTHY = [call(), call({ path: "/api/v1/dex/market/rwa/underlying-market", latencyMs: 1448 }), call({ latencyMs: 960 })];
 import { AuditLedger } from "./audit-ledger";
 import { V3_SWAP_ROUTER_ABI, PANCAKESWAP_V3_SWAP_ROUTER_ADDRESS } from "../data/pancakeswap-v3";
 import type { PipelineMode } from "./audit-ledger";
@@ -51,6 +66,7 @@ function fakeChain(opts: { usdt?: bigint; bnb?: bigint; price?: number; allowanc
     spendTracker = new DailySpendTracker()
   ): ExecutionTestDeps & { ledger: AuditLedger; spendTracker: DailySpendTracker } => ({
     getKillswitchMode: () => mode,
+    recentBinanceCalls: () => HEALTHY,
     spendTracker,
     ledger,
     getWalletAddress: () => WALLET,
@@ -252,5 +268,158 @@ describe("runExecutionTest — failures stop where they happen", () => {
     expect(entry.outcome).toBe("sell_failed");
     expect(entry.legs[1]!.error).toContain("reverted");
     expect(chain.balances[MSFTB.toLowerCase()]).toBe(E18 / 500n);
+  });
+});
+
+describe("partial failure: buy mined, sell not — recorded with the state it leaves", () => {
+  it("records sell_failed with the buy tx, the sell error, the MSFTB still held, and the recovery request", async () => {
+    // Binance unreachable when the sell is attempted: send() refuses before signing.
+    const unreachable = "not sent: Binance simulation did not predict success (The operation was aborted due to timeout)";
+    const chain = fakeChain({ allowance: 10n ** 30n, failSend: (l) => (l === "swap:sell" ? unreachable : null) });
+    const d = chain.deps();
+    const entry = await runExecutionTest({ sizeUsd: 2, confirm: true }, d);
+
+    expect(entry).toMatchObject({ kind: "execution_test", action: "round_trip", outcome: "sell_failed", spendRecordedUsd: 2 });
+    expect(entry.legs[0]).toMatchObject({ side: "buy", txId: "0xswap:buy", received: ((2n * E18) / 500n).toString() });
+    expect(entry.legs[1]).toMatchObject({ side: "sell", error: unreachable });
+    expect(entry.legs[1]!.txId).toBeUndefined();
+    // The state left behind, read on-chain after the failure.
+    expect(entry.targetBalanceAfter).toBe(((2n * E18) / 500n).toString());
+    expect(chain.balances[USDT.toLowerCase()]).toBe(8n * E18);
+    expect(entry.reason).toContain("the wallet still holds 0.004 MSFTB");
+    expect(entry.reason).toContain(SELL_ONLY_REQUEST);
+    expect(d.ledger.readAll()).toEqual([entry]);
+  });
+
+  it("a sell broadcast whose receipt is unconfirmed keeps its hash as pendingTxId and counts the spend", async () => {
+    const chain = fakeChain({ allowance: 10n ** 30n });
+    const d = chain.deps();
+    const realSend = d.send!;
+    d.send = vi.fn(async (tx) => {
+      if (tx.to === PANCAKESWAP_V3_SWAP_ROUTER_ADDRESS) {
+        const { args } = decodeFunctionData({ abi: V3_SWAP_ROUTER_ABI, data: tx.data as `0x${string}` });
+        if (args[0].tokenIn === MSFTB) throw new SentButUnconfirmedError("0x" + "ef".repeat(32), "Timed out while waiting for transaction");
+      }
+      return realSend(tx);
+    });
+    const entry = await runExecutionTest({ sizeUsd: 2, confirm: true }, d);
+
+    expect(entry.outcome).toBe("sell_failed");
+    expect(entry.legs[1]!.pendingTxId).toBe("0x" + "ef".repeat(32));
+    expect(entry.legs[1]!.error).toContain("may still be mined");
+    // Buy $2 + the possibly-mined sell ($2), counted conservatively.
+    expect(entry.spendRecordedUsd).toBeCloseTo(4, 10);
+  });
+});
+
+describe("sell_only recovery — same route, same cap, same live + confirm requirements", () => {
+  it("after a failed sell, sells exactly the MSFTB the wallet holds and records it", async () => {
+    let sellFails = true;
+    const chain = fakeChain({ allowance: 10n ** 30n, failSend: (l) => (l === "swap:sell" && sellFails ? "not sent: Binance unreachable" : null) });
+    const d = chain.deps();
+    await runExecutionTest({ sizeUsd: 2, confirm: true }, d); // leaves 0.004 MSFTB
+    sellFails = false;
+
+    const entry = await runExecutionTest({ action: "sell_only", confirm: true }, d);
+
+    expect(entry).toMatchObject({ kind: "execution_test", action: "sell_only", outcome: "completed", targetBalanceAfter: "0" });
+    expect(entry.legs).toHaveLength(1);
+    expect(entry.legs[0]).toMatchObject({ side: "sell", tokenIn: MSFTB, tokenOut: USDT, amountIn: ((2n * E18) / 500n).toString(), txId: "0xswap:sell" });
+    expect(entry.sizeUsd).toBe(2);
+    expect(chain.balances[MSFTB.toLowerCase()]).toBe(0n);
+    expect(chain.balances[USDT.toLowerCase()]).toBe(10n * E18);
+    // The buy and the recovery sell, on the shared tracker.
+    expect(d.spendTracker.getSpentToday()).toBeCloseTo(4, 10);
+    expect(d.ledger.readAll().map((e) => (e.kind === "execution_test" ? `${e.action}:${e.outcome}` : e.kind))).toEqual([
+      "round_trip:sell_failed",
+      "sell_only:completed",
+    ]);
+  });
+
+  it("caps the sale at $5 of MSFTB and says the rest remains", async () => {
+    const chain = fakeChain({ allowance: 10n ** 30n });
+    chain.balances[MSFTB.toLowerCase()] = E18 / 50n; // 0.02 MSFTB = $10 at $500
+    const entry = await runExecutionTest({ action: "sell_only", confirm: true }, chain.deps());
+
+    expect(entry.outcome).toBe("completed");
+    expect(entry.legs[0]!.amountIn).toBe(((5n * E18) / 500n).toString());
+    expect(entry.sizeUsd).toBe(5);
+    expect(entry.reason).toContain("run sell_only again for the rest");
+    expect(chain.balances[MSFTB.toLowerCase()]).toBe(E18 / 100n);
+  });
+
+  it.each([
+    ["no confirmation", { action: "sell_only" as const, confirm: false }, "live" as const, "confirm: true"],
+    ["killswitch in simulation", { action: "sell_only" as const, confirm: true }, "simulation" as const, 'the killswitch is "simulation"'],
+    ["killswitch in dry-run", { action: "sell_only" as const, confirm: true }, "dry-run" as const, 'the killswitch is "dry-run"'],
+  ])("refuses with %s, sending nothing", async (_label, request, mode, reason) => {
+    const chain = fakeChain();
+    chain.balances[MSFTB.toLowerCase()] = E18 / 500n;
+    const entry = await runExecutionTest(request, chain.deps(mode));
+    expect(entry).toMatchObject({ action: "sell_only", outcome: "refused" });
+    expect(entry.reason).toContain(reason);
+    expect(chain.send).not.toHaveBeenCalled();
+  });
+
+  it("refuses when the wallet holds no MSFTB", async () => {
+    const chain = fakeChain();
+    const entry = await runExecutionTest({ action: "sell_only", confirm: true }, chain.deps());
+    expect(entry.outcome).toBe("refused");
+    expect(entry.reason).toContain("holds no MSFTB");
+    expect(chain.send).not.toHaveBeenCalled();
+  });
+
+  it("counts toward the daily cap and refuses if the sale would not fit", async () => {
+    const chain = fakeChain();
+    chain.balances[MSFTB.toLowerCase()] = E18 / 100n; // $5
+    const tracker = new DailySpendTracker();
+    tracker.recordSpend(DEFAULT_GUARDRAIL_CONFIG.perDayCapUsd - 4);
+    const entry = await runExecutionTest({ action: "sell_only", confirm: true }, chain.deps("live", new AuditLedger(), tracker));
+    expect(entry.outcome).toBe("refused");
+    expect(entry.reason).toContain("exceeds daily cap");
+    expect(chain.send).not.toHaveBeenCalled();
+  });
+});
+
+describe("Binance health gate — last 3 calls ok, each within 5 s", () => {
+  it("passes on three recent successes under 5 s, including exactly 5000 ms", () => {
+    expect(binanceHealthProblem(HEALTHY)).toBeNull();
+    expect(binanceHealthProblem([call(), call(), call({ latencyMs: 5000 })])).toBeNull();
+    // Only the last three count.
+    expect(binanceHealthProblem([call({ ok: false, httpStatus: null, latencyMs: 14000 }), ...HEALTHY])).toBeNull();
+  });
+
+  it.each([
+    ["fewer than 3 calls recorded", [call(), call()], "only 2 Binance call(s) recorded"],
+    ["a timeout", [call(), call(), call({ ok: false, httpStatus: null, apiCode: null, latencyMs: 14001 })], "failed (no response, 14001 ms)"],
+    ["a compliance refusal", [call({ ok: false, httpStatus: 200, apiCode: 40304, latencyMs: 2318 }), call(), call()], "failed (HTTP 200 code 40304, 2318 ms)"],
+    ["a slow success", [call(), call({ latencyMs: 9919 }), call()], "ok but 9919 ms"],
+  ])("fails on %s", (_label, calls, detail) => {
+    expect(binanceHealthProblem(calls)).toContain(detail);
+  });
+
+  it.each([
+    ["round_trip", { sizeUsd: 2, confirm: true }],
+    ["sell_only", { action: "sell_only" as const, confirm: true }],
+  ])("a failed gate refuses %s, is ledgered like any other outcome, and sends nothing", async (action, request) => {
+    const chain = fakeChain();
+    chain.balances[MSFTB.toLowerCase()] = E18 / 500n;
+    const d = { ...chain.deps(), recentBinanceCalls: () => [call(), call(), call({ ok: false, httpStatus: null, latencyMs: 10011 })] };
+    const entry = await runExecutionTest(request, d);
+
+    expect(entry).toMatchObject({ kind: "execution_test", action, outcome: "refused", legs: [], spendRecordedUsd: 0 });
+    expect(entry.reason).toContain("Binance health gate");
+    expect(d.ledger.readAll()).toEqual([entry]);
+    expect(chain.send).not.toHaveBeenCalled();
+  });
+
+  it("uses the app's own call log by default", async () => {
+    const { defaultBinanceCallLog } = await import("../data/binance-client");
+    const chain = fakeChain();
+    const deps: ExecutionTestDeps = { ...chain.deps(), recentBinanceCalls: undefined };
+    for (let i = 0; i < 3; i++) defaultBinanceCallLog.record(call({ ok: false, httpStatus: null, latencyMs: 14000 }));
+    const entry = await runExecutionTest({ sizeUsd: 1, confirm: true }, deps);
+    expect(entry.reason).toContain("Binance health gate");
+    expect(chain.send).not.toHaveBeenCalled();
   });
 });

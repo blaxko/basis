@@ -6,6 +6,7 @@ import { isPublicReadOnly } from "../../../lib/config/deployment";
 import { clientIp } from "../../../lib/config/rate-limit";
 import { getLatestMarketStatuses } from "../../../lib/data/binance-rwa";
 import { getSchedulerStats } from "../../../lib/orchestration/scheduler";
+import { readWalletBalances } from "../../../lib/execution/wallet-balances";
 
 const RECENT_BINANCE_CALLS = 50;
 
@@ -34,6 +35,7 @@ function tradingWalletStatus(): { configured: boolean; address: string | null; e
 // verbatim errors — read from memory, not re-fetched.
 export async function GET(request: Request) {
   const records = defaultBinanceCallLog.recent();
+  const walletBalances = await readWalletBalances();
   return NextResponse.json({
     publicReadOnly: isPublicReadOnly(),
     // The caller's own IP as the rate limiter sees it (see clientIp()).
@@ -59,5 +61,9 @@ export async function GET(request: Request) {
     marketStatus: getLatestMarketStatuses(),
     // Skipped ticks (previous tick still running) are also ledger entries.
     scheduler: getSchedulerStats(),
+    // On-chain BNB / USDT / MSFTB of the trading wallet (cached 15 s). A
+    // non-zero MSFTB balance after an execution test means a sell leg is
+    // outstanding.
+    walletBalances,
   });
 }

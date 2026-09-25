@@ -57,6 +57,9 @@ export interface StatusResponse {
   // Latest underlying-market status per ticker (RWA Data API).
   marketStatus: Record<string, MarketStatus>;
   scheduler: { running: boolean; tickInFlight: boolean; skippedTicks: number; lastSkippedAt: string | null };
+  walletBalances:
+    | { status: "ok"; address: string; bnb: string; usdt: string; msftb: string; msftbToken: string; blockNumber: string; readAt: string }
+    | { status: "unavailable"; reason: string; readAt: string };
 }
 
 export type ReferenceQuote =
@@ -236,9 +239,10 @@ export interface ExecutionTestLeg {
   amountIn: string;
   quotedAmountOut?: string;
   amountOutMinimum?: string;
-  approval?: { needed: boolean; txId?: string };
+  approval?: { needed: boolean; txId?: string; pendingTxId?: string };
   transactionSimulation?: TxSimulation;
   txId?: string;
+  pendingTxId?: string;
   received?: string;
   error?: string;
 }
@@ -248,6 +252,7 @@ export interface ExecutionTestLedgerEntry {
   kind: "execution_test";
   id: string;
   timestamp: number;
+  action: "round_trip" | "sell_only";
   mode: PipelineMode;
   outcome: "refused" | "buy_failed" | "sell_failed" | "completed";
   sizeUsd: number;
@@ -255,6 +260,7 @@ export interface ExecutionTestLedgerEntry {
   reason?: string;
   legs: ExecutionTestLeg[];
   spendRecordedUsd: number;
+  targetBalanceAfter?: string;
 }
 
 // A scheduler tick skipped because the previous one was still running.

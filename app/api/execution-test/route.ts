@@ -2,9 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isPublicReadOnly } from "../../../lib/config/deployment";
 
-// The manual execution test: buys up to $5 of MSFTB on the 0.25% pool and
-// sells it back, sending REAL transactions. Only an explicit POST reaches
-// it; the scheduler and the arbitrage path cannot. It still refuses unless
+// The manual execution test, sending REAL transactions:
+//   {"sizeUsd": <=5, "confirm": true}               round trip: buy MSFTB on
+//                                                   the 0.25% pool, sell it back
+//   {"action": "sell_only", "confirm": true}        recovery: sell the MSFTB the
+//                                                   wallet holds (up to $5 worth)
+// Only an explicit POST reaches it; the scheduler and the arbitrage path
+// cannot. It still refuses unless
 // the killswitch is "live" and the body carries confirm: true. The $5 cap
 // is enforced in lib/execution/execution-test.ts, not only here.
 //
@@ -13,7 +17,8 @@ import { isPublicReadOnly } from "../../../lib/config/deployment";
 // only by the dynamic import below — never on a read-only server. Keep it
 // that way: no static import of lib/execution/execution-test here.
 const BodySchema = z.object({
-  sizeUsd: z.number(),
+  action: z.enum(["round_trip", "sell_only"]).optional(),
+  sizeUsd: z.number().optional(),
   confirm: z.boolean(),
 });
 
@@ -34,7 +39,7 @@ export async function POST(request: Request) {
 
   const parsed = BodySchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: "body must be { sizeUsd: number (at most 5), confirm: true }" }, { status: 400 });
+    return NextResponse.json({ error: 'body must be { sizeUsd: number (at most 5), confirm: true } or { action: "sell_only", confirm: true }' }, { status: 400 });
   }
 
   const [{ runExecutionTest }, { getKillswitchMode }, { defaultSpendTracker }] = await Promise.all([

@@ -95,6 +95,14 @@ export function Header() {
               label={binanceChipLabel(status.data.binanceWeb3Api)}
               ok={status.data.binanceWeb3Api.configured && (status.data.binanceWeb3Api.calls[0]?.ok ?? false)}
             />
+            <StatusChip
+              label={
+                status.data.walletBalances.status === "ok"
+                  ? `Wallet · ${status.data.walletBalances.bnb} BNB · ${status.data.walletBalances.usdt} USDT · ${status.data.walletBalances.msftb} MSFTB`
+                  : "Wallet balances unavailable"
+              }
+              ok={status.data.walletBalances.status === "ok"}
+            />
             {Object.entries(status.data.marketStatus).map(([ticker, market]) => (
               <StatusChip key={ticker} label={marketChipLabel(ticker, market)} ok={marketChipOk(market)} />
             ))}

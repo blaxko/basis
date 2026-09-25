@@ -9,6 +9,7 @@ import {
   type SwapRequest,
   type SendDeps,
   normalizePrivateKey,
+  SentButUnconfirmedError,
 } from "./agentic-wallet";
 
 function swapRequest(overrides: Partial<SwapRequest> = {}): SwapRequest {
@@ -381,6 +382,14 @@ describe("send — Binance simulate, sign locally, Binance MEV-protected broadca
     expect(deps.broadcast).toHaveBeenCalledTimes(1);
     expect(deps.waitForReceipt).not.toHaveBeenCalled();
     expect(calls).toEqual(["simulate", "sign"]);
+  });
+
+  it("throws SentButUnconfirmedError carrying the hash when the receipt wait fails after a successful broadcast", async () => {
+    const { deps } = steps({ waitForReceipt: vi.fn(async () => Promise.reject(new Error("Timed out while waiting for transaction"))) });
+    const err = await send({ to: "0xRouter", data: "0xdead" }, deps).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SentButUnconfirmedError);
+    expect((err as SentButUnconfirmedError).txHash).toBe(TX_HASH);
+    expect((err as Error).message).toContain("may still be mined");
   });
 
   it("throws when the transaction is mined but reverts", async () => {

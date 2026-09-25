@@ -264,6 +264,18 @@ export async function dryRun(request: SwapRequest): Promise<DryRunResult> {
   return { outputUsd, unsignedTransaction, raw: data };
 }
 
+// Thrown when Binance accepted the broadcast but the receipt couldn't be
+// confirmed (timeout, RPC failure). The transaction may still be mined.
+export class SentButUnconfirmedError extends Error {
+  constructor(
+    readonly txHash: string,
+    cause: string
+  ) {
+    super(`transaction ${txHash} was broadcast but its receipt is unconfirmed (${cause}); it may still be mined — check it on-chain`);
+    this.name = "SentButUnconfirmedError";
+  }
+}
+
 // Each step is injectable so tests never touch a chain, an RPC, or
 // Binance. The defaults are the real implementations.
 export interface SendDeps {
@@ -326,7 +338,14 @@ export async function send(unsignedTransaction: UnsignedTransaction, deps: Parti
 
   const { txHash, orderId } = await steps.broadcast({ signedTransaction, address: from });
 
-  const receipt = await steps.waitForReceipt(txHash as `0x${string}`);
+  let receipt: { status: "success" | "reverted" };
+  try {
+    receipt = await steps.waitForReceipt(txHash as `0x${string}`);
+  } catch (err) {
+    // Broadcast succeeded, so the transaction may still be mined. Never
+    // lose its hash: callers record it as pending.
+    throw new SentButUnconfirmedError(txHash, err instanceof Error ? err.message : String(err));
+  }
   if (receipt.status !== "success") throw new Error(`transaction ${txHash} was mined but reverted`);
 
   return { txId: txHash, raw: { orderId, simulation } };

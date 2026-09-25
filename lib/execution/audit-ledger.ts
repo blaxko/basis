@@ -113,10 +113,14 @@ export interface ExecutionTestLeg {
   // QuoterV2's simulated output and the on-chain minimum sent with the swap.
   quotedAmountOut?: string;
   amountOutMinimum?: string;
-  approval?: { needed: boolean; txId?: string };
+  // pendingTxId: broadcast, receipt unconfirmed — may still be mined.
+  approval?: { needed: boolean; txId?: string; pendingTxId?: string };
   // Binance Transaction API simulation of the swap, as send() saw it.
   transactionSimulation?: TxSimulation;
   txId?: string;
+  // The swap was broadcast but its receipt is unconfirmed: it may still be
+  // mined. Check it on-chain before running anything else.
+  pendingTxId?: string;
   // Balance delta of tokenOut measured on-chain after the swap.
   received?: string;
   error?: string;
@@ -134,6 +138,9 @@ export interface ExecutionTestLedgerEntry {
   kind: "execution_test";
   id: string;
   timestamp: number;
+  // "round_trip" (buy then sell) or "sell_only" (recovery: sell what the
+  // wallet holds).
+  action: "round_trip" | "sell_only";
   mode: PipelineMode;
   outcome: "refused" | "buy_failed" | "sell_failed" | "completed";
   sizeUsd: number;
@@ -142,6 +149,9 @@ export interface ExecutionTestLedgerEntry {
   legs: ExecutionTestLeg[];
   // USD recorded against the shared daily spend tracker by this run.
   spendRecordedUsd: number;
+  // The wallet's MSFTB balance (smallest unit) read after the run, when
+  // any leg was attempted.
+  targetBalanceAfter?: string;
 }
 
 // The scheduler skipped a tick because the previous one was still
