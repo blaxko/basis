@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getKillswitchMode } from "../../../lib/orchestration/killswitch";
+import { getKillswitchMode, getKillswitchRevertAt } from "../../../lib/orchestration/killswitch";
 import { defaultBinanceCallLog, summarizeCalls } from "../../../lib/data/binance-client";
 import { getTradingWalletAddress } from "../../../lib/execution/agentic-wallet";
 import { isPublicReadOnly } from "../../../lib/config/deployment";
@@ -36,6 +36,7 @@ function tradingWalletStatus(): { configured: boolean; address: string | null; e
 export async function GET(request: Request) {
   const records = defaultBinanceCallLog.recent();
   const walletBalances = await readWalletBalances();
+  const revertAt = getKillswitchRevertAt();
   return NextResponse.json({
     publicReadOnly: isPublicReadOnly(),
     // The caller's own IP as the rate limiter sees it (see clientIp()).
@@ -51,6 +52,8 @@ export async function GET(request: Request) {
       calls: records.slice(-RECENT_BINANCE_CALLS).reverse(),
     },
     killswitch: getKillswitchMode(),
+    // Public demo only: when a non-simulation mode returns to simulation.
+    killswitchRevertsAt: revertAt === null ? null : new Date(revertAt).toISOString(),
     // Latest underlying-market status per ticker, as the scheduler last
     // fetched it (RWA Data API). Read from memory, not re-fetched.
     marketStatus: getLatestMarketStatuses(),

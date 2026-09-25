@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { readOnlyNote, LIVE_PROOF_TX, LIVE_PROOF_URL } from "../components/read-only-note";
+import { readOnlyNote, revertLabel, LIVE_PROOF_TX, LIVE_PROOF_URL } from "../components/read-only-note";
 
 // The public demo greys out Live; the dashboard must say why.
 
@@ -33,5 +33,17 @@ describe("readOnlyNote", () => {
     expect(header).toContain("readOnlyNote(status.data?.publicReadOnly)");
     expect(header).toContain('className="killswitch-note"');
     expect(header).toContain("note.liveButtonTitle");
+  });
+});
+
+describe("revertLabel", () => {
+  it("shows the public demo's return time as HH:MM UTC", () => {
+    expect(revertLabel("2026-09-25T21:15:30.000Z")).toBe("Returns to simulation at 21:15 UTC.");
+  });
+
+  it("the header shows it only while a return is pending", () => {
+    const header = readFileSync(join(__dirname, "..", "components", "header.tsx"), "utf8");
+    expect(header).toContain("status.data?.killswitchRevertsAt &&");
+    expect(header).toContain("revertLabel(status.data.killswitchRevertsAt)");
   });
 });

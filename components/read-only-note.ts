@@ -28,3 +28,9 @@ export function readOnlyNote(publicReadOnly: boolean | undefined): ReadOnlyNote 
     liveButtonTitle: "Disabled on this public, read-only demo — no wallet key, nothing can be sent.",
   };
 }
+
+// "Returns to simulation at 21:14 UTC." — the public demo's automatic
+// return of the killswitch to simulation (lib/orchestration/killswitch.ts).
+export function revertLabel(iso: string): string {
+  return `Returns to simulation at ${new Date(iso).toISOString().slice(11, 16)} UTC.`;
+}

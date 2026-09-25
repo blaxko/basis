@@ -30,7 +30,7 @@ The same token, MSFTB (a token that tracks Microsoft stock), trades in two diffe
 - `dry-run` — also re-reads the pools and asks the exchange and Binance to *simulate* the trade (a rehearsal that changes nothing), but never sends it.
 - `live` — would allow sending. **Greyed out on the public demo**, with a note under the buttons saying why (see section 3).
 
-The highlighted button is the current mode (orange; red if live). The mode is shared by everyone viewing this site, so if you switch to dry-run, put it back to simulation.
+The highlighted button is the current mode (orange; red if live). On the public demo the mode is shared by everyone viewing the site, so a change there lasts only 5 minutes: the header shows *"Returns to simulation at HH:MM UTC"*, and then it switches back by itself. Each new change restarts the 5 minutes; choosing simulation ends it. On your own machine a mode stays until you change it.
 
 ### Give an instruction (the box at the top)
 

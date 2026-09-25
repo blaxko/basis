@@ -53,6 +53,8 @@ export interface StatusResponse {
     calls: BinanceCallRecord[]; // newest first
   };
   killswitch: PipelineMode;
+  // Public demo only: ISO time the mode returns to simulation, or null.
+  killswitchRevertsAt: string | null;
   // Latest underlying-market status per ticker (RWA Data API).
   marketStatus: Record<string, MarketStatus>;
   scheduler: { running: boolean; tickInFlight: boolean; skippedTicks: number; lastSkippedAt: string | null };

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { usePoll } from "./use-poll";
 import type { MarketStatus, PipelineMode, StatusResponse } from "./api-types";
-import { readOnlyNote } from "./read-only-note";
+import { readOnlyNote, revertLabel } from "./read-only-note";
 
 const MODES: PipelineMode[] = ["simulation", "dry-run", "live"];
 
@@ -67,6 +67,12 @@ export function Header() {
               </button>
             ))}
           </div>
+          {status.data?.killswitchRevertsAt && (
+            <p className="killswitch-note">
+              <strong>{revertLabel(status.data.killswitchRevertsAt)}</strong> Changes on this public demo are shared by every
+              visitor, so they don't last.
+            </p>
+          )}
           {note && (
             <p className="killswitch-note">
               {note.text}{" "}
