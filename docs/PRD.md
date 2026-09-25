@@ -88,10 +88,12 @@ Every independent guardrail implementation we examined converges on the same str
 ### d) x402 self-funding
 Real production dogfooding of x402 surfaces a specific, recurring failure: a payment settles on-chain but the destination service's verification step rejects the proof anyway, leaving the agent having paid without receiving the resource. Combined with the fact that payment challenges have a fixed expiry window (commonly ~10 minutes), the operational answer isn't "retry harder" — it's tracking receipts explicitly, treating a stuck payment as a distinguishable state from a rejected one, and falling back to a free/cached data source rather than looping into your own budget cap.
 
-**Principle taken:** the agent's *own* operating spend (data calls, x402-metered lookups) is budgeted and audited completely separately from the *trading* capital it moves through Agentic Wallet. A failure in one must not cascade into the other.
+**Principle taken:** if the agent ever pays for its own data, that operating spend must be budgeted and audited completely separately from the trading capital, so a failure in one can't cascade into the other.
+
+**Decision: evaluated and rejected.** x402 self-funding would only be worth its failure modes if it bought data Basis needs. The x402 Bazaar listings reviewed had no equity/RWA data merchants, so there was nothing for Basis to pay for. Basis therefore has **no operating-budget wallet and makes no x402 payments**: its market data comes from on-chain pool reads (BSC RPC) and the Binance Web3 API, neither paid per call from a wallet. The separation principle above stays the rule should paid data ever be added.
 
 ### The convergent design principle
-Across all four: **separate the thing that decides from the thing that holds money, at every layer.** LLM intent-parsing is separate from the trade-execution path. Trading capital is separate from the agent's own x402 operating budget. And a raw price difference is treated as a hypothesis to disprove against a domain-adjusted baseline, not a signal to act on directly.
+Across all four: **separate the thing that decides from the thing that holds money, at every layer.** LLM intent-parsing is separate from the trade-execution path. The one trading wallet's key is read only by the local signer; the public deployment never has it. And a raw price difference is treated as a hypothesis to disprove against a domain-adjusted baseline, not a signal to act on directly.
 
 ---
 
@@ -140,26 +142,20 @@ Across all four: **separate the thing that decides from the thing that holds mon
 └───────────────────────────┬───────────────────────────────────────┘
                             ▼ only if approved
 ┌─────────────────────────────────────────────────────────────────┐
-│  EXECUTION — Agentic Wallet / Wallet Skills                       │
-│  Isolated TRADING CAPITAL wallet. Executes, returns order ID,     │
-│  writes to the audit ledger.                                     │
-└─────────────────────────────────────────────────────────────────┘
-
-     (running alongside, financially isolated from the above)
-┌─────────────────────────────────────────────────────────────────┐
-│  AGENT IDENTITY & SELF-FUNDING — BNB Agent Studio + x402           │
-│  Separate, small OPERATING BUDGET wallet — pays for its own data/│
-│  compute calls only. Tracks receipt IDs; on a failed/orphaned     │
-│  payment, falls back to cached data rather than retry-looping.   │
+│  EXECUTION — single trading wallet, signed locally              │
+│  Binance Transaction API simulate → local signing → Binance     │
+│  MEV-protected broadcast → receipt; writes to the audit ledger. │
+│  (No Agentic Wallet / Wallet Skills.)                           │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Wallet separation matrix** (the load-bearing safety boundary):
+There is no second, operating-budget wallet: x402 self-funding was evaluated and rejected (section 5d).
+
+**Wallet** (the load-bearing safety boundary is who can use the key, not a second wallet):
 
 | Wallet | Funds what | Failure blast radius |
 |---|---|---|
-| Trading Capital (Agentic Wallet) | Live swaps on detected spreads | Bounded by per-trade/per-day caps; cannot be drained by an x402/data-layer failure |
-| Operating Budget (x402 / Agent Studio) | The agent's own paid data/compute calls | Bounded independently; a runaway loop here cannot touch trading capital |
+| Trading wallet (self-funded BSC account, key held locally) | Swaps and their gas. Today only the $5-capped execution test; live arbitrage is disabled | Bounded by the per-trade and per-day caps and the execution test's $5 hard cap. The public deployment runs `PUBLIC_READ_ONLY` and never reads the key |
 
 **Deployment:** Next.js (TS) app, API routes as the server boundary — Groq and Binance Web3 API keys never reach the client. One deployed URL. BSC mainnet, dry-run via Transaction API during development, small live amounts for the demo.
 
@@ -171,7 +167,7 @@ Across all four: **separate the thing that decides from the thing that holds mon
 - **viem** for BSC calls.
 - **Binance Web3 API** — aggregated market data, quotes, swaps, dry-run Transaction API across all three protocols.
 - **Wallet Skills** — natural-language execution surface, also usable directly from Claude/ChatGPT/Copilot for the "talk to your agent" demo path.
-- **BNB Agent Studio + x402** — agent identity and self-funded data calls.
+- **BNB Agent Studio + x402** — evaluated for agent identity and self-funded data calls; not used (section 5d).
 - **Groq (free tier)** — isolated LLM layer for intent parsing and English-language trade explanations. Chosen because the task (structured extraction, not deep reasoning) fits comfortably within Groq's free rate limits, and its low latency keeps a live demo feeling responsive. Kept structurally incapable of touching the wallet directly.
 
 ---
@@ -191,7 +187,7 @@ The layout itself has to argue the thesis: decision and safety are visibly separ
 - **Instruction box:** type an order in plain English (with clickable examples); the result is shown in plain language with the raw reply expandable. The AI only reads the sentence into ticker, side and size; the decision comes from the guardrails and live data.
 - **Advisory Feed ("the brain"):** a scrolling terminal of plain-English proposals generated from fixed templates filled from the Basis Model's structured output and the guardrail verdict (no AI writes them) — advisory only, visually distinct from anything that touches the wallet.
 - **Guardrail Gate ("the shield"):** a real-time checklist — per-trade cap, daily hard cap, dry-run min-output — each with live state, resolving to bold **APPROVED**/**BLOCKED** badges.
-- **Audit Ledger ("the log"):** a sequential, timestamped feed: Data Fetch → Guardrail Check → TxID (Agentic Wallet) → x402 Receipt Log.
+- **Audit Ledger ("the log"):** a sequential, timestamped feed: detection (pool prices, net edge, Binance reference, market status) → guardrail check → outcome, with transaction hashes for anything actually sent (so far only the execution test).
 
 ### 9.3 Visual style
 - **Bento UI** for structure — the system's real architecture is a set of distinct, isolated components (data layer, basis model, LLM layer, guardrail gate), so a strict grid that compartmentalizes each into its own card keeps a data-dense, multi-variable system legible instead of overwhelming.
@@ -212,7 +208,6 @@ The layout itself has to argue the thesis: decision and safety are visibly separ
 
 **Mocked for demo:**
 - Pool registry — hardcoded to the specific fee-tier pools independently verified this way (MSFTB's 0.25%/1% pair today) rather than a general pool-discovery scanner
-- Multi-day autonomous x402 self-funding — shown at small scale on camera rather than run unattended for days
 
 ---
 
@@ -237,7 +232,7 @@ The layout itself has to argue the thesis: decision and safety are visibly separ
 2. LLM output must always be a schema-validated structured object. It is never permitted to construct or sign a transaction directly.
 3. Every live execution is preceded by a dry-run/simulation call; the minimum-output floor is enforced in code, not merely requested of the model.
 4. Spend limits (per-trade, per-day) are checked **before** any call goes out, not after. The gate fails closed on a limit violation.
-5. The trading-capital wallet and the x402 operating-budget wallet are logically and financially separate; a failure or drain in one must not propagate to the other.
+5. There is one trading wallet. Its key is read only by the local signer; the public deployment runs `PUBLIC_READ_ONLY` and never reads it. There is no operating-budget wallet (x402 self-funding was evaluated and rejected, section 5d); if paid data is ever added, its spend must be kept financially separate from the trading wallet.
 6. The fee-adjusted spread computation exists as its own tested module. A raw, unadjusted cross-pool price diff must never be used directly as an execution signal.
 7. Every price feed passes a sanity-bounds check and a liquidity-depth check before being used in a spread calculation.
 8. Audit ledger writes are append-only and happen for **every** decision — approved, blocked, or failed — not only for executed trades.
