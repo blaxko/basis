@@ -1,8 +1,20 @@
 import { NextResponse } from "next/server";
 import { getKillswitchMode } from "../../../lib/orchestration/killswitch";
 import { defaultBinanceCallLog, summarizeCalls } from "../../../lib/data/binance-client";
+import { getTradingWalletAddress } from "../../../lib/execution/agentic-wallet";
 
 const RECENT_BINANCE_CALLS = 50;
+
+// The derived PUBLIC address, or why the key can't be used. The key
+// itself never leaves getTradingWalletAddress().
+function tradingWalletStatus(): { configured: boolean; address: string | null; error?: string } {
+  if (!process.env.TRADING_WALLET_PRIVATE_KEY) return { configured: false, address: null };
+  try {
+    return { configured: true, address: getTradingWalletAddress() };
+  } catch (err) {
+    return { configured: false, address: null, error: err instanceof Error ? err.message : "invalid key" };
+  }
+}
 
 // Reports whether each credential is configured, never the value itself.
 // Presence checks only: this route never makes an authenticated call.
@@ -19,7 +31,7 @@ export async function GET() {
   return NextResponse.json({
     groq: { configured: Boolean(process.env.GROQ_API_KEY) },
     bscRpc: { configured: Boolean(process.env.BSC_RPC_URL) },
-    tradingWallet: { configured: Boolean(process.env.TRADING_WALLET_PRIVATE_KEY) },
+    tradingWallet: tradingWalletStatus(),
     binanceWeb3Api: {
       configured: Boolean(
         process.env.BINANCE_WEB3_API_BASE_URL && process.env.BINANCE_WEB3_API_KEY && process.env.BINANCE_WEB3_API_SECRET

@@ -79,7 +79,16 @@ export function Header() {
           <div className="status-row">
             <StatusChip label="Groq" ok={status.data.groq.configured} />
             <StatusChip label="BSC RPC" ok={status.data.bscRpc.configured} />
-            <StatusChip label="Trading wallet key" ok={status.data.tradingWallet.configured} />
+            <StatusChip
+              label={
+                status.data.tradingWallet.address
+                  ? `Trading wallet ${status.data.tradingWallet.address.slice(0, 6)}…${status.data.tradingWallet.address.slice(-4)}`
+                  : status.data.tradingWallet.error
+                    ? "Trading wallet key invalid"
+                    : "Trading wallet key"
+              }
+              ok={status.data.tradingWallet.configured}
+            />
             <StatusChip
               label={binanceChipLabel(status.data.binanceWeb3Api)}
               ok={status.data.binanceWeb3Api.configured && (status.data.binanceWeb3Api.calls[0]?.ok ?? false)}

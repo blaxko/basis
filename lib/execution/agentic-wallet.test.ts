@@ -8,6 +8,7 @@ import {
   buildTransactionApiAuthHeaders,
   type SwapRequest,
   type SendDeps,
+  normalizePrivateKey,
 } from "./agentic-wallet";
 
 function swapRequest(overrides: Partial<SwapRequest> = {}): SwapRequest {
@@ -256,6 +257,46 @@ describe("approvalCheck (mocked) — needs-approval and already-approved branche
     await expect(
       approvalCheck({ binanceChainId: "56", fromTokenAddress: "0xFromToken", amount: "1000000", userWalletAddress: "0xWallet" })
     ).rejects.toThrow(/failed/);
+  });
+});
+
+describe("normalizePrivateKey — accepts an optional 0x prefix, never echoes the value", () => {
+  const HEX = "1".repeat(64);
+
+  it("adds the 0x prefix viem requires, and keeps an existing one", () => {
+    expect(normalizePrivateKey(HEX)).toBe(`0x${HEX}`);
+    expect(normalizePrivateKey(`0x${HEX}`)).toBe(`0x${HEX}`);
+    expect(normalizePrivateKey(` ${HEX}\n`)).toBe(`0x${HEX}`);
+  });
+
+  it.each([
+    ["too short", "a".repeat(63), "got 63 characters"],
+    ["too long", "a".repeat(65), "got 65 characters"],
+    ["non-hex", "g".repeat(64), "non-hex"],
+  ])("rejects a key that is %s, without including it in the message", (_label, value, fragment) => {
+    let message = "";
+    try {
+      normalizePrivateKey(value);
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    expect(message).toContain(fragment);
+    expect(message).not.toContain(value);
+  });
+
+  it("derives the same address with or without the prefix", () => {
+    const original = process.env.TRADING_WALLET_PRIVATE_KEY;
+    const originalRpc = process.env.BSC_RPC_URL;
+    process.env.BSC_RPC_URL = "https://bsc-dataseed.example";
+    try {
+      process.env.TRADING_WALLET_PRIVATE_KEY = HEX;
+      const bare = getTradingWalletAddress();
+      process.env.TRADING_WALLET_PRIVATE_KEY = `0x${HEX}`;
+      expect(getTradingWalletAddress()).toBe(bare);
+    } finally {
+      process.env.TRADING_WALLET_PRIVATE_KEY = original;
+      process.env.BSC_RPC_URL = originalRpc;
+    }
   });
 });
 

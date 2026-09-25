@@ -39,7 +39,7 @@ export interface BinanceCallRecord {
 export interface StatusResponse {
   groq: { configured: boolean };
   bscRpc: { configured: boolean };
-  tradingWallet: { configured: boolean };
+  tradingWallet: { configured: boolean; address: string | null; error?: string };
   binanceWeb3Api: {
     configured: boolean;
     summary: {

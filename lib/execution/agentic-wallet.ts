@@ -128,7 +128,21 @@ function getTradingWalletConfig(): TradingWalletConfig {
         "through Binance — no live credentials configured yet. See .env.example."
     );
   }
-  return { rpcUrl, privateKey: privateKey as `0x${string}` };
+  return { rpcUrl, privateKey: normalizePrivateKey(privateKey) };
+}
+
+// Accepts the key with or without a 0x prefix (viem requires one). Any
+// other shape fails closed. Error messages describe the problem only —
+// they never include the value.
+export function normalizePrivateKey(value: string): `0x${string}` {
+  const hex = value.trim().replace(/^0x/i, "");
+  if (hex.length !== 64 || !/^[0-9a-fA-F]+$/.test(hex)) {
+    throw new Error(
+      `TRADING_WALLET_PRIVATE_KEY is malformed: expected 64 hex characters (optional 0x prefix), got ${hex.length} characters` +
+        (/[^0-9a-fA-F]/.test(hex) ? " including non-hex characters" : "")
+    );
+  }
+  return `0x${hex}`;
 }
 
 // Derives and returns only the wallet's public address — never the key
