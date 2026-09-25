@@ -69,7 +69,7 @@ The result of the safety checks for the most recent order.
 Every decision, newest first:
 
 - **Detection rows** — `MSFT — N× detection: no opportunity, no order built`, with a time range, the net-edge range and the latest prices. Repeated "no" decisions are grouped into one row; each is still recorded.
-- **Guardrail rows** — `MSFT $200 — guardrail: APPROVED (…)` or `BLOCKED (…)`, then what happened, e.g. `no edge: net −0.82% is not positive — nothing sent`.
+- **Guardrail rows** — `MSFT $200 — guardrail: APPROVED (…)` or `BLOCKED (…)`, then what happened, e.g. `no edge: net -0.819% is not positive — nothing sent`.
 - Rarer rows: `EXECUTION TEST (not arbitrage)` (only on the local machine) and `tick skipped` (a check ran late).
 - **Normal:** one detection row whose count grows every 30 seconds.
 
@@ -101,7 +101,7 @@ Every decision, newest first:
 Use the **Give an instruction** box at the top of the dashboard: click an example (it fills the box), then **Send**. Each takes about 2 seconds. The result appears under the box; the Guardrail Gate and Audit Ledger update within about 10 seconds. The demo accepts up to 5 instructions a minute from you; more shows *"Too many requests, wait a minute and try again."* In the first 5 minutes after a restart you'll see *"Still warming up: x of 10 price readings collected"* instead: Basis is collecting a price reading every 30 seconds before it will judge any order.
 
 **Test 1 — `Buy $200 of MSFT` (approved, nothing sent).**
-Under the box (green): *"Approved by all guardrails, but not sent: net edge -0.82% is below zero."* and *"After both pools' fees, slippage and gas, this trade would lose money, so Basis doesn't make it."* Guardrail Gate: `APPROVED`, five `[PASS]` and `dryRunFloor [PENDING]`. Audit Ledger: `MSFT $200 — guardrail: APPROVED (…)` then `no edge: net −0.82% is not positive — nothing sent`.
+Under the box (green): *"Approved by all guardrails, but not sent: net edge -0.82% is below zero."* and *"After both pools' fees, slippage and gas, this trade would lose money, so Basis doesn't make it."* Guardrail Gate: `APPROVED`, five `[PASS]` and `dryRunFloor [PENDING]`. Audit Ledger: `MSFT $200 — guardrail: APPROVED (…)` then `no edge: net -0.819% is not positive — nothing sent`.
 
 **Test 2 — `Buy $1000 of MSFT` (over the $500 per-trade cap, blocked).**
 Under the box (red): *"Blocked by perTradeCap: order size $1000 exceeds per-trade cap $500."* and *"That's the per-trade limit. Nothing was sent."* Guardrail Gate: `BLOCKED`, `perTradeCap [FAIL]`, the rest `[PASS]` (`dryRunFloor [PENDING]`). A `guardrail: BLOCKED` row in the ledger.
