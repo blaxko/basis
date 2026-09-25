@@ -42,7 +42,8 @@ npx vitest run
 
 The hosted instance runs with `PUBLIC_READ_ONLY=true`: it never reads a trading key, can't be switched to live, answers 403 to the execution test, and rate-limits the routes that call Binance or Groq per client IP.
 
-- Configuration: [`.railway/railway.ts`](.railway/railway.ts) (Railway Infrastructure as Code), pinned to **Singapore** (`asia-southeast1-eqsg3a`), one replica, healthcheck `/api/health`. Railway's US and Amsterdam regions are all on Binance's restricted list.
+- **Set it up in the Railway dashboard with [`docs/railway-dashboard-checklist.md`](docs/railway-dashboard-checklist.md)**: Singapore region, one replica, build `npm run build`, start `npx next start -H 0.0.0.0`, healthcheck `/api/health`, Serverless off. Railway's US and Amsterdam regions are all on Binance's restricted list.
+- [`.railway/railway.ts`](.railway/railway.ts) documents the same intended settings as Railway Infrastructure as Code, but **it is not applied automatically**: Railway doesn't read it during deploys, and a dashboard setup doesn't use it. It only takes effect if someone runs `railway config plan` / `railway config apply` with the Railway CLI. If you change a setting in the dashboard, update the file (or the checklist) so they don't drift.
 - Variables to set in the Railway dashboard: `BINANCE_WEB3_API_KEY`, `BINANCE_WEB3_API_SECRET`, `GROQ_API_KEY`, `BSC_RPC_URL`. The file sets `PUBLIC_READ_ONLY`, `TRADING_WALLET_ADDRESS` and `BINANCE_WEB3_API_BASE_URL`. **Never set `TRADING_WALLET_PRIVATE_KEY` on the host.**
 - **Never run a local server and the hosted one against Binance at the same time** (Binance error `40303`).
 - Step-by-step deploy and the post-deploy checks (server location, a logged Binance call, the client-IP spoof test): [`docs/pre-flight-notes.md`](docs/pre-flight-notes.md#deploying-to-railway-public-read-only).

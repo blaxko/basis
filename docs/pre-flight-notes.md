@@ -71,6 +71,8 @@ Sources, checked 2026-09-25: Railway docs pages "Infrastructure as Code", "Regio
 
 **Steps**
 
+Setting it up in the dashboard instead of the CLI: follow [`railway-dashboard-checklist.md`](railway-dashboard-checklist.md), then run the checks below. The CLI route:
+
 1. In Railway, **Account Settings**: set the preferred region to Southeast Asia (Singapore). The config pins the region anyway; this covers anything created outside it.
 2. Create an empty project named `basis` in the dashboard. Install the Railway CLI (the `railway` SDK in this repo requires CLI 5.42.1 or newer), then from the repo root: `railway login`, `railway link` (choose `basis`, environment `production`), `npm install`.
 3. `railway config plan` (read-only). Expect exactly: create service `basis` from `blaxko/basis` `main`, build `npm run build`, start `npx next start -H 0.0.0.0`, healthcheck `/api/health`, **one replica in `asia-southeast1-eqsg3a`**, seven variables (values hidden), and nothing marked destructive. Anything else: stop.
