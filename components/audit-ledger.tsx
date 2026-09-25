@@ -77,6 +77,16 @@ export function AuditLedger() {
             <PipelineRow key={group.entry.id} entry={group.entry} />
           ) : group.type === "execution_test" ? (
             <ExecutionTestRow key={group.entry.id} entry={group.entry} />
+          ) : group.type === "scheduler" ? (
+            <div key={group.entry.id} className="terminal-line">
+              <div className="terminal-line-meta">
+                {fmtTime(group.entry.timestamp)} · mode={group.entry.mode} · kind=scheduler · outcome={group.entry.outcome}
+              </div>
+              <div>
+                tick skipped: the previous tick (started {group.entry.runningTickStartedAt.slice(11, 19)} UTC) was still running after{" "}
+                {(group.entry.runningForMs / 1000).toFixed(1)}s — no evaluation this interval
+              </div>
+            </div>
           ) : group.entries.length === 1 ? (
             <DetectionRow key={group.entries[0]!.id} entry={group.entries[0]!} />
           ) : (

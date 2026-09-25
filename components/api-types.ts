@@ -56,6 +56,7 @@ export interface StatusResponse {
   killswitch: PipelineMode;
   // Latest underlying-market status per ticker (RWA Data API).
   marketStatus: Record<string, MarketStatus>;
+  scheduler: { running: boolean; tickInFlight: boolean; skippedTicks: number; lastSkippedAt: string | null };
 }
 
 export type ReferenceQuote =
@@ -256,7 +257,18 @@ export interface ExecutionTestLedgerEntry {
   spendRecordedUsd: number;
 }
 
-export type AuditLedgerEntry = PipelineLedgerEntry | DetectionLedgerEntry | ExecutionTestLedgerEntry;
+// A scheduler tick skipped because the previous one was still running.
+export interface SchedulerLedgerEntry {
+  kind: "scheduler";
+  id: string;
+  timestamp: number;
+  mode: PipelineMode;
+  outcome: "tick_skipped";
+  runningTickStartedAt: string;
+  runningForMs: number;
+}
+
+export type AuditLedgerEntry = PipelineLedgerEntry | DetectionLedgerEntry | ExecutionTestLedgerEntry | SchedulerLedgerEntry;
 
 export interface LedgerResponse {
   entries: AuditLedgerEntry[];

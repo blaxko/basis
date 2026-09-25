@@ -144,7 +144,21 @@ export interface ExecutionTestLedgerEntry {
   spendRecordedUsd: number;
 }
 
-export type AuditLedgerEntry = PipelineLedgerEntry | DetectionLedgerEntry | ExecutionTestLedgerEntry;
+// The scheduler skipped a tick because the previous one was still
+// running: no evaluation happened for that interval. Recorded so the gap
+// is visible, never silently dropped.
+export interface SchedulerLedgerEntry {
+  kind: "scheduler";
+  id: string;
+  timestamp: number;
+  mode: PipelineMode;
+  outcome: "tick_skipped";
+  // When the still-running tick started, and how long it had run.
+  runningTickStartedAt: string;
+  runningForMs: number;
+}
+
+export type AuditLedgerEntry = PipelineLedgerEntry | DetectionLedgerEntry | ExecutionTestLedgerEntry | SchedulerLedgerEntry;
 export type LedgerOutcome = AuditLedgerEntry["outcome"];
 
 // Append-only writer. No update/delete is exposed on purpose — the only
@@ -176,6 +190,10 @@ export class AuditLedger {
 
   appendExecutionTest(entry: Omit<ExecutionTestLedgerEntry, "id" | "timestamp" | "kind">): ExecutionTestLedgerEntry {
     return this.write({ kind: "execution_test", id: this.nextId(), timestamp: Date.now(), ...entry });
+  }
+
+  appendTickSkipped(entry: Omit<SchedulerLedgerEntry, "id" | "timestamp" | "kind" | "outcome">): SchedulerLedgerEntry {
+    return this.write({ kind: "scheduler", id: this.nextId(), timestamp: Date.now(), outcome: "tick_skipped", ...entry });
   }
 
   private nextId(): string {

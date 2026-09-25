@@ -60,7 +60,11 @@ export const defaultBinanceClientDeps: BinanceClientDeps = {
   now: () => performance.now(),
 };
 
-const TIMEOUT_MS = 10_000;
+// How long one Binance call may take before it is abandoned (and
+// recorded as a TimeoutError). Just under BINANCE_RECV_WINDOW_MS: a call
+// still in flight past 15 s would be rejected with 40103 anyway. Rationale
+// in docs/config-rationale.md.
+export const BINANCE_REQUEST_TIMEOUT_MS = 14_000;
 
 // Sent as X-OC-RECV-WINDOW: how far (ms) the request timestamp may be from
 // Binance's server time on arrival. Default 5000, max 60000. Unsigned: the
@@ -97,7 +101,7 @@ export async function binanceRequest(
       method: request.method,
       headers,
       body: bodyText || undefined,
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(BINANCE_REQUEST_TIMEOUT_MS),
     });
     text = await res.text();
   } catch (err) {

@@ -5,6 +5,7 @@ import { getTradingWalletAddress } from "../../../lib/execution/agentic-wallet";
 import { isPublicReadOnly } from "../../../lib/config/deployment";
 import { clientIp } from "../../../lib/config/rate-limit";
 import { getLatestMarketStatuses } from "../../../lib/data/binance-rwa";
+import { getSchedulerStats } from "../../../lib/orchestration/scheduler";
 
 const RECENT_BINANCE_CALLS = 50;
 
@@ -56,5 +57,7 @@ export async function GET(request: Request) {
     // Latest underlying-market status per ticker, as the scheduler last
     // fetched it (RWA Data API). Read from memory, not re-fetched.
     marketStatus: getLatestMarketStatuses(),
+    // Skipped ticks (previous tick still running) are also ledger entries.
+    scheduler: getSchedulerStats(),
   });
 }

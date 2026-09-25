@@ -1,8 +1,9 @@
-import type { AuditLedgerEntry, DetectionLedgerEntry, ExecutionTestLedgerEntry, PipelineLedgerEntry } from "./api-types";
+import type { AuditLedgerEntry, DetectionLedgerEntry, ExecutionTestLedgerEntry, PipelineLedgerEntry, SchedulerLedgerEntry } from "./api-types";
 
 export type LedgerRowGroup =
   | { type: "pipeline"; entry: PipelineLedgerEntry }
   | { type: "execution_test"; entry: ExecutionTestLedgerEntry }
+  | { type: "scheduler"; entry: SchedulerLedgerEntry }
   | { type: "detection"; entries: DetectionLedgerEntry[] };
 
 // Display-only: collapses runs of consecutive detection entries for the
@@ -19,6 +20,10 @@ export function groupLedgerRows(entries: readonly AuditLedgerEntry[]): LedgerRow
     }
     if (entry.kind === "execution_test") {
       groups.push({ type: "execution_test", entry });
+      continue;
+    }
+    if (entry.kind === "scheduler") {
+      groups.push({ type: "scheduler", entry });
       continue;
     }
     const last = groups[groups.length - 1];

@@ -107,3 +107,50 @@ describe("scheduler — reads killswitch fresh each tick", () => {
     expect(runAgentLoopFn).toHaveBeenCalledTimes(2); // immediate tick + one interval tick
   });
 });
+
+describe("scheduler — a tick never overlaps the previous one; skips are recorded", () => {
+  it("while a tick is still running, the next interval is skipped, written to the ledger, and counted", async () => {
+    vi.useFakeTimers();
+    const { start, getSchedulerStats } = await import("./scheduler");
+    const { AuditLedger } = await import("../execution/audit-ledger");
+    const ledger = new AuditLedger();
+    const logs: string[] = [];
+
+    let release!: () => void;
+    let running = 0;
+    let maxConcurrent = 0;
+    const runAgentLoopFn = vi.fn(async (deps: AgentLoopDeps = {}) => {
+      running += 1;
+      maxConcurrent = Math.max(maxConcurrent, running);
+      await new Promise<void>((r) => (release = r));
+      running -= 1;
+      return okResult(deps.getMode!());
+    });
+    const skippedBefore = getSchedulerStats().skippedTicks;
+
+    start({ intervalMs: 1000, underlyings: ["MSFT"], getMode: () => "simulation", runAgentLoopFn, log: (m) => logs.push(m), ledger, now: () => Date.now() });
+    await vi.advanceTimersByTimeAsync(0); // first tick starts and hangs
+    await vi.advanceTimersByTimeAsync(1000); // second interval: must be skipped
+    await vi.advanceTimersByTimeAsync(1000); // third: skipped too
+
+    expect(runAgentLoopFn).toHaveBeenCalledTimes(1);
+    expect(maxConcurrent).toBe(1);
+    const skipped = ledger.readAll();
+    expect(skipped).toHaveLength(2);
+    expect(skipped[0]).toMatchObject({ kind: "scheduler", outcome: "tick_skipped", mode: "simulation", runningForMs: 1000 });
+    expect(skipped[1]).toMatchObject({ runningForMs: 2000 });
+    expect(getSchedulerStats().skippedTicks - skippedBefore).toBe(2);
+    expect(getSchedulerStats().tickInFlight).toBe(true);
+    expect(logs.filter((l) => l.startsWith("tick skipped")).length).toBe(2);
+
+    // Once the running tick finishes, the next interval runs normally.
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(getSchedulerStats().tickInFlight).toBe(false);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(runAgentLoopFn).toHaveBeenCalledTimes(2);
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ledger.readAll()).toHaveLength(2); // no new skip
+  });
+});

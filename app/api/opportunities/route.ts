@@ -62,7 +62,7 @@ export async function GET(request: Request) {
 
   for (const ticker of DEFAULT_AGENT_LOOP_CONFIG.underlyings) {
     const live = entries
-      .filter((entry): entry is DetectionOrPipelineEntry => entry.kind !== "execution_test" && entry.detection?.ticker === ticker)
+      .filter((entry): entry is DetectionOrPipelineEntry => (entry.kind === "detection" || entry.kind === "pipeline") && entry.detection?.ticker === ticker)
       .slice(-MAX_LIVE_POINTS)
       .map(toHistoryPoint);
     history[ticker] = live.length > 0 ? { source: "live", points: live } : { source: "historical", points: getDemoHistory(ticker) };
@@ -89,8 +89,9 @@ export async function GET(request: Request) {
   }
 }
 
-// Execution-test entries carry no detection and never feed the chart.
-type DetectionOrPipelineEntry = Exclude<AuditLedgerEntry, { kind: "execution_test" }>;
+// Only detection and pipeline entries carry a detection snapshot; the
+// execution-test and scheduler kinds never feed the chart.
+type DetectionOrPipelineEntry = Extract<AuditLedgerEntry, { kind: "detection" | "pipeline" }>;
 
 function toHistoryPoint(entry: DetectionOrPipelineEntry): SpreadHistoryPoint {
   const detection = entry.detection!;

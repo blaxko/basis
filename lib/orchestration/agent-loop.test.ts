@@ -564,3 +564,30 @@ describe("runAgentLoop — the underlying market status is recorded on every eva
     expect(entry.kind === "detection" && entry.detection.marketStatus).toEqual(unavailable);
   });
 });
+
+describe("runAgentLoop — independent Binance calls in a tick run concurrently", () => {
+  it("the reference quote and the market status are both in flight before either returns", async () => {
+    const started: string[] = [];
+    let releaseReference!: () => void;
+    let releaseStatus!: () => void;
+    const fetchReferenceFn = vi.fn(async () => {
+      started.push("reference");
+      await new Promise<void>((r) => (releaseReference = r));
+      return { status: "ok" as const, priceUsd: LIVE_CHEAP * 1.0025, vendor: "LiquidMesh", route: "stub" };
+    });
+    const fetchMarketStatusFn = vi.fn(async () => {
+      started.push("marketStatus");
+      await new Promise<void>((r) => (releaseStatus = r));
+      return { status: "ok" as const, openState: true, reasonCode: "TRADING", marketStatus: null, reasonMsg: null, nextOpenTime: null, nextCloseTime: null, fetchedAt: "t" };
+    });
+
+    const done = runAgentLoop(loopDeps(LIVE_CHEAP, LIVE_EXPENSIVE, { fetchReferenceFn, fetchMarketStatusFn }));
+    // Let the loop reach the Binance step without resolving either call.
+    await vi.waitFor(() => expect(started.length).toBe(2));
+    expect(started.sort()).toEqual(["marketStatus", "reference"]);
+
+    releaseStatus();
+    releaseReference();
+    await done;
+  });
+});

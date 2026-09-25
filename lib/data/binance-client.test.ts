@@ -4,6 +4,7 @@ import {
   binanceRequest,
   BinanceCallLog,
   BINANCE_RECV_WINDOW_MS,
+  BINANCE_REQUEST_TIMEOUT_MS,
   MAX_CALL_RECORDS,
   summarizeCalls,
   type BinanceClientDeps,
@@ -100,6 +101,14 @@ describe("binanceRequest — every call is recorded", () => {
       const signedWithout = createHmac("sha256", "secret").update(`${headers["X-OC-TIMESTAMP"]}${req.method}${path}${body}`).digest("base64");
       expect(headers["X-OC-SIGN"]).toBe(signedWithout);
     }
+  });
+
+  it("aborts a call after 14 s — just under the 15 s recv window, past which Binance would reject it anyway", async () => {
+    expect(BINANCE_REQUEST_TIMEOUT_MS).toBe(14_000);
+    expect(BINANCE_REQUEST_TIMEOUT_MS).toBeLessThan(BINANCE_RECV_WINDOW_MS);
+    const d = deps({ status: 200, text: JSON.stringify({ code: 0 }) });
+    await binanceRequest({ method: "GET", path: "/p" }, d);
+    expect((d.fetchFn.mock.calls[0]![1] as RequestInit).signal).toBeInstanceOf(AbortSignal);
   });
 
   it("throws without calling out, or recording, when credentials are missing", async () => {

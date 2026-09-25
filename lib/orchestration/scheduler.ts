@@ -1,6 +1,6 @@
 import { runAgentLoop, DEFAULT_AGENT_LOOP_CONFIG } from "./agent-loop";
 import { getKillswitchMode } from "./killswitch";
-import type { PipelineMode } from "../execution/audit-ledger";
+import { defaultLedger, type AuditLedger, type PipelineMode } from "../execution/audit-ledger";
 
 export const DEFAULT_SCHEDULER_INTERVAL_MS = 30_000;
 
@@ -10,6 +10,9 @@ export interface SchedulerOptions {
   getMode?: () => PipelineMode;
   runAgentLoopFn?: typeof runAgentLoop;
   log?: (message: string) => void;
+  // Where skipped ticks are recorded; defaults to the shared ledger.
+  ledger?: AuditLedger;
+  now?: () => number;
 }
 
 export interface TickResult {
@@ -56,36 +59,59 @@ export async function runTick(options: SchedulerOptions = {}): Promise<TickResul
 
 interface SchedulerState {
   timer: ReturnType<typeof setInterval> | null;
-  inFlight: boolean;
+  // Start time (ms) of the tick still running, or null.
+  inFlightSince: number | null;
+  skippedTicks: number;
+  lastSkippedAt: string | null;
 }
 
 // Kept on globalThis so a dev-mode hot reload that re-evaluates this
-// module can't start a second interval alongside the first.
+// module can't start a second interval alongside the first, and so
+// /api/status (a separate bundle) can read the skip count.
 const STATE_KEY = Symbol.for("basis.scheduler.state");
 function state(): SchedulerState {
   const g = globalThis as unknown as Record<symbol, SchedulerState | undefined>;
-  return (g[STATE_KEY] ??= { timer: null, inFlight: false });
+  return (g[STATE_KEY] ??= { timer: null, inFlightSince: null, skippedTicks: 0, lastSkippedAt: null });
 }
 
 export function isRunning(): boolean {
   return state().timer !== null;
 }
 
+export function getSchedulerStats(): { running: boolean; tickInFlight: boolean; skippedTicks: number; lastSkippedAt: string | null } {
+  const s = state();
+  return { running: s.timer !== null, tickInFlight: s.inFlightSince !== null, skippedTicks: s.skippedTicks, lastSkippedAt: s.lastSkippedAt };
+}
+
 // Never called on import — only by instrumentation.ts's register() on
-// server start. Idempotent. Skips a tick if the previous one is still
-// running rather than overlapping two.
+// server start. Idempotent. A tick never starts while the previous one is
+// still running (slow RPC or Binance calls can push a tick past the
+// interval). A skipped tick is recorded — a "scheduler" ledger entry, a
+// log line, and a count on /api/status — never silently dropped.
 export function start(options: SchedulerOptions = {}): void {
   const s = state();
   if (s.timer !== null) return;
 
   const intervalMs = options.intervalMs ?? DEFAULT_SCHEDULER_INTERVAL_MS;
+  const ledger = options.ledger ?? defaultLedger;
+  const log = options.log ?? defaultLog;
+  const getMode = options.getMode ?? getKillswitchMode;
+  const now = options.now ?? Date.now;
   const tick = async () => {
-    if (s.inFlight) return;
-    s.inFlight = true;
+    if (s.inFlightSince !== null) {
+      const runningForMs = now() - s.inFlightSince;
+      const runningTickStartedAt = new Date(s.inFlightSince).toISOString();
+      s.skippedTicks += 1;
+      s.lastSkippedAt = new Date(now()).toISOString();
+      ledger.appendTickSkipped({ mode: getMode(), runningTickStartedAt, runningForMs });
+      log(`tick skipped: previous tick (started ${runningTickStartedAt}) still running after ${runningForMs} ms`);
+      return;
+    }
+    s.inFlightSince = now();
     try {
       await runTick(options);
     } finally {
-      s.inFlight = false;
+      s.inFlightSince = null;
     }
   };
 
