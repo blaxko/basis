@@ -71,6 +71,8 @@ function baseOrder(overrides: Partial<ProposedOrder> = {}): ProposedOrder {
     poolPair: POOL_PAIR,
     // 0.25% above the cheap pool's spot price, well inside the 2% limit.
     reference: { status: "ok", priceUsd: 491.225, vendor: "LiquidMesh", route: "synthetic" },
+    // Real statusInfo shape, MSFTB, 2026-09-25 12:06 UTC (docs/devex-log.md).
+    marketStatus: { status: "ok" as const, openState: true, reasonCode: "TRADING", marketStatus: null, reasonMsg: null, nextOpenTime: null, nextCloseTime: null, fetchedAt: "2026-09-25T12:06:16.554Z" },
     ...overrides,
   };
 }
@@ -497,6 +499,8 @@ describe("runPipeline — detection snapshot pass-through", () => {
       threshold: 0.0001,
       gas: { costUsd: FLAT_GAS_USD, source: "fallback" as const },
       reference: { status: "ok" as const, priceUsd: 491.225, vendor: "LiquidMesh", route: "synthetic" },
+      // Real statusInfo shape, MSFTB, 2026-09-25 12:06 UTC (docs/devex-log.md).
+      marketStatus: { status: "ok" as const, openState: true, reasonCode: "TRADING", marketStatus: null, reasonMsg: null, nextOpenTime: null, nextCloseTime: null, fetchedAt: "2026-09-25T12:06:16.554Z" },
     };
     const entry = await runPipeline(baseOrder(), deps({ detection }), "dry-run");
     expect(entry.kind).toBe("pipeline");

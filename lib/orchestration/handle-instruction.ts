@@ -13,10 +13,12 @@ import {
   computeSpreads,
   warmUpStatus,
   defaultFetchReference,
+  defaultFetchMarketStatus,
   DEFAULT_AGENT_LOOP_CONFIG,
   type AgentLoopConfig,
   type EstimateGasFn,
   type FetchReferenceFn,
+  type FetchMarketStatusFn,
 } from "./agent-loop";
 
 // The manual path. Free text -> intent-parser.ts -> pool-pair resolution
@@ -75,6 +77,7 @@ export interface HandleInstructionDeps {
   fetchPoolQuotesFn?: typeof realFetchPoolQuotes;
   estimateGasFn?: EstimateGasFn;
   fetchReferenceFn?: FetchReferenceFn;
+  fetchMarketStatusFn?: FetchMarketStatusFn;
   priceHistory?: PriceHistory;
   chatCompletionFn?: typeof chatCompletion;
   narrateProposalFn?: typeof realNarrateProposal;
@@ -159,11 +162,14 @@ export async function handleInstruction(
 
   // At the requested size, not the loop's default size: the reference
   // must describe the same trade the guardrail is judging.
-  const reference = await (deps.fetchReferenceFn ?? defaultFetchReference)({
-    ticker: intent.ticker,
-    cheapPoolAddress: spread.cheapPool.address,
-    sizeUsd: intent.sizeUsd,
-  });
+  const [reference, marketStatus] = await Promise.all([
+    (deps.fetchReferenceFn ?? defaultFetchReference)({
+      ticker: intent.ticker,
+      cheapPoolAddress: spread.cheapPool.address,
+      sizeUsd: intent.sizeUsd,
+    }),
+    (deps.fetchMarketStatusFn ?? defaultFetchMarketStatus)({ ticker: intent.ticker, cheapPoolAddress: spread.cheapPool.address }),
+  ]);
 
   const poolPair: PoolPair = {
     cheapPoolAddress: spread.cheapPool.address,
@@ -190,6 +196,7 @@ export async function handleInstruction(
     simulatedOutputUsd: null,
     poolPair,
     reference,
+    marketStatus,
   };
 
   const mode = getMode();

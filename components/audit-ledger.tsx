@@ -37,6 +37,16 @@ function reference(d: DetectionSnapshot): string {
     : `Binance ref UNAVAILABLE (${d.reference.reason})`;
 }
 
+// Underlying market status (RWA Data API) as recorded on the evaluation.
+function market(d: DetectionSnapshot): string {
+  const m = d.marketStatus;
+  if (!m) return "market status not recorded";
+  if (m.status !== "ok") return `market status UNAVAILABLE (${m.reason})`;
+  const code = m.reasonCode ?? (m.openState ? "open" : "not tradable");
+  const extra = [m.marketStatus, m.reasonMsg].filter(Boolean).join(", ");
+  return `market ${code}${extra ? ` (${extra})` : ""}`;
+}
+
 function gas(d: DetectionSnapshot): string {
   return d.gas.source === "live" ? `gas $${d.gas.costUsd.toFixed(3)} (live)` : `gas $${d.gas.costUsd.toFixed(2)} (FALLBACK — live estimate failed)`;
 }
@@ -91,7 +101,7 @@ function DetectionRow({ entry }: { entry: DetectionLedgerEntry }) {
       </div>
       <div>
         {d.ticker} — detection: {detectionLabel(entry)}. {pools(d)} · gross gap {signedPct(d.grossGap)} · net edge{" "}
-        {signedPct(d.netEdge)} (needs &gt; {signedPct(Math.max(0, d.threshold))}) · {gas(d)} · {reference(d)}
+        {signedPct(d.netEdge)} (needs &gt; {signedPct(Math.max(0, d.threshold))}) · {gas(d)} · {reference(d)} · {market(d)}
         {entry.warmUp && ` · price history ${entry.warmUp.readings} of ${entry.warmUp.required} readings`}
       </div>
     </div>
@@ -113,7 +123,7 @@ function DetectionSummaryRow({ entries }: { entries: DetectionLedgerEntry[] }) {
       <div>
         {latest.detection.ticker} — {entries.length}× detection: {detectionLabel(latest)} · net edge {signedPct(Math.min(...edges))} to{" "}
         {signedPct(Math.max(...edges))} · latest: {pools(latest.detection)}
-        {` · latest ${reference(latest.detection)}`}
+        {` · latest ${reference(latest.detection)} · ${market(latest.detection)}`}
         {fallbacks > 0 && ` · ${fallbacks} used FALLBACK gas`}
         {noReference > 0 && ` · ${noReference} without a Binance reference`}
       </div>
@@ -141,7 +151,8 @@ function PipelineRow({ entry }: { entry: PipelineLedgerEntry }) {
       </div>
       {entry.detection && (
         <div>
-          detected: {pools(entry.detection)} · net edge {signedPct(entry.detection.netEdge)} · {gas(entry.detection)}
+          detected: {pools(entry.detection)} · net edge {signedPct(entry.detection.netEdge)} · {gas(entry.detection)} ·{" "}
+          {market(entry.detection)}
         </div>
       )}
       {note && <div>{note}</div>}

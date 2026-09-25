@@ -1,8 +1,10 @@
 import { priceSanityCheck, liquidityDepthCheck } from "../basis-model/sanity-checks";
 import type { ReferenceQuote } from "../data/binance-reference";
+import type { MarketStatus } from "../data/binance-rwa";
 import { DEFAULT_GUARDRAIL_CONFIG, type GuardrailConfig } from "./config";
 
 export type { ReferenceQuote } from "../data/binance-reference";
+export type { MarketStatus } from "../data/binance-rwa";
 
 export type Side = "buy" | "sell";
 
@@ -44,6 +46,9 @@ export interface ProposedOrder {
   // Binance's aggregator quote for buying the same token at the same
   // size, fetched by the order builder. check() never fetches it.
   reference: ReferenceQuote;
+  // The underlying market's status from Binance's RWA Data API, fetched
+  // by the order builder. check() never fetches it.
+  marketStatus: MarketStatus;
 }
 
 // Caller-supplied context the gate needs but must not compute itself,
@@ -145,6 +150,47 @@ export function referencePriceCheck(order: ProposedOrder, config: GuardrailConfi
     };
   }
   return { name: "referencePrice", ok: true };
+}
+
+// Underlying-market status, from the RWA Data API's statusInfo.reasonCode
+// (documented enum: TRADING, MARKET_CLOSED, MARKET_PAUSED,
+// MARKET_MAINTENANCE, ASSET_PAUSED, ASSET_LIMITED, UNSUPPORTED).
+//
+// Passes on TRADING, and on MARKET_CLOSED: trading the token through the
+// underlying's closed hours is this product's premise. Passes on
+// openState true with no reasonCode (the schema says the code is
+// "returned when openState=false").
+//
+// Blocks on the asset- and venue-level codes below, when the status
+// couldn't be fetched, and on anything else (a code not in the enum, or
+// openState false with no code) — an unrecognized status is not a pass.
+// Decides on reasonCode only; reasonMsg and marketStatus are free text
+// and are shown, never matched.
+export const MARKET_STATUS_PASS_CODES: readonly string[] = ["TRADING", "MARKET_CLOSED"];
+export const MARKET_STATUS_BLOCK_CODES: readonly string[] = [
+  "ASSET_PAUSED",
+  "ASSET_LIMITED",
+  "UNSUPPORTED",
+  "MARKET_MAINTENANCE",
+  "MARKET_PAUSED",
+];
+
+export function marketStatusCheck(order: ProposedOrder): GuardrailCheckResult {
+  const s = order.marketStatus;
+  const name = "marketStatus";
+  if (s.status !== "ok") return { name, ok: false, reason: `underlying market status unavailable: ${s.reason}` };
+
+  const detail = s.reasonMsg ? ` (Binance: "${s.reasonMsg}")` : "";
+  if (s.reasonCode !== null && MARKET_STATUS_PASS_CODES.includes(s.reasonCode)) return { name, ok: true };
+  if (s.reasonCode === null && s.openState) return { name, ok: true };
+  if (s.reasonCode !== null && MARKET_STATUS_BLOCK_CODES.includes(s.reasonCode)) {
+    return { name, ok: false, reason: `underlying market status ${s.reasonCode}${detail}` };
+  }
+  return {
+    name,
+    ok: false,
+    reason: `unrecognized underlying market status: reasonCode ${s.reasonCode ?? "null"}, openState ${s.openState}${detail}`,
+  };
 }
 
 // Named check 2: hard per-trade spend cap.
@@ -268,6 +314,7 @@ export function check(order: ProposedOrder, deps: GuardrailDeps): GuardrailVerdi
   try {
     const checks: GuardrailCheckResult[] = [
       sanityAndLiquidityCheck(order, config),
+      marketStatusCheck(order),
       referencePriceCheck(order, config),
       perTradeCapCheck(order, config),
       dailyCapCheck(order, deps, config),

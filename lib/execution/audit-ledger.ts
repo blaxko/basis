@@ -2,6 +2,7 @@ import { appendFileSync } from "node:fs";
 import type { GuardrailVerdict } from "../guardrails/check";
 import type { ReferenceQuote } from "../data/binance-reference";
 import type { TxSimulation } from "../data/binance-transaction";
+import type { MarketStatus } from "../data/binance-rwa";
 
 export type PipelineMode = "simulation" | "dry-run" | "live";
 
@@ -51,6 +52,9 @@ export interface DetectionSnapshot {
   // Binance aggregator quote for buying the target at the order size,
   // fetched on the same tick — or why it couldn't be.
   reference: ReferenceQuote;
+  // The underlying market's status (RWA Data API), same tick — or why it
+  // couldn't be fetched. Includes marketStatus and reasonMsg as returned.
+  marketStatus: MarketStatus;
 }
 
 // One row per pipeline run (PRD rule 8: every decision — approved,

@@ -7,6 +7,7 @@ import {
   type AgentLoopConfig,
   type EstimateGasFn,
   type FetchReferenceFn,
+  type FetchMarketStatusFn,
 } from "./agent-loop";
 import { DailySpendTracker } from "./spend-tracker";
 import { AuditLedger, defaultLedger } from "../execution/audit-ledger";
@@ -98,6 +99,11 @@ function agreeingReference(cheap: number): FetchReferenceFn {
   return vi.fn(async () => ({ status: "ok" as const, priceUsd: cheap * 1.0025, vendor: "LiquidMesh", route: "stub" }));
 }
 
+// The real statusInfo shape for MSFTB, 2026-09-25 12:06 UTC (docs/devex-log.md).
+function tradingStatus(): FetchMarketStatusFn {
+  return vi.fn(async () => ({ status: "ok" as const, openState: true, reasonCode: "TRADING", marketStatus: null, reasonMsg: null, nextOpenTime: null, nextCloseTime: null, fetchedAt: "2026-09-25T12:06:16.554Z" }));
+}
+
 function loopDeps(cheap: number, expensive: number, overrides: Record<string, unknown> = {}) {
   return {
     spendTracker: new DailySpendTracker(),
@@ -108,6 +114,7 @@ function loopDeps(cheap: number, expensive: number, overrides: Record<string, un
     fetchPoolQuotesFn: vi.fn().mockResolvedValue(poolQuotes(cheap, expensive)),
     estimateGasFn: pinnedGas,
     fetchReferenceFn: agreeingReference(cheap),
+    fetchMarketStatusFn: tradingStatus(),
     priceHistory: warmHistory(),
     fetchFreshPoolPrices: freshPrices(cheap, expensive),
     getWalletAddress,
@@ -377,6 +384,7 @@ describe("previewOpportunities — read-only, never writes the ledger, the price
       fetchPoolQuotesFn: vi.fn().mockResolvedValue(poolQuotes(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE)),
       estimateGasFn: pinnedGas,
       fetchReferenceFn,
+      fetchMarketStatusFn: tradingStatus(),
       priceHistory: warmHistory(),
     });
 
@@ -397,6 +405,7 @@ describe("previewOpportunities — read-only, never writes the ledger, the price
       fetchPoolQuotesFn: vi.fn().mockResolvedValue(poolQuotes(LIVE_CHEAP, LIVE_EXPENSIVE)),
       estimateGasFn: pinnedGas,
       fetchReferenceFn,
+      fetchMarketStatusFn: tradingStatus(),
       priceHistory: warmHistory(),
     });
     expect(fetchReferenceFn).not.toHaveBeenCalled();
@@ -521,5 +530,37 @@ describe("computeSpreads and defaults", () => {
 
   it("defaults the gas safety multiplier to 2", () => {
     expect(DEFAULT_AGENT_LOOP_CONFIG.gasSafetyMultiplier).toBe(2);
+  });
+});
+
+describe("runAgentLoop — the underlying market status is recorded on every evaluation", () => {
+  it("fetches it every tick and puts it, reasonMsg included, on the detection entry", async () => {
+    const ledger = new AuditLedger();
+    // SYNTHETIC closed-market status in the documented shape.
+    const closed = {
+      status: "ok" as const,
+      openState: false,
+      reasonCode: "MARKET_CLOSED",
+      marketStatus: "closed",
+      reasonMsg: "Weekend or Holiday",
+      nextOpenTime: 1790596200000,
+      nextCloseTime: null,
+      fetchedAt: "2026-09-26T12:00:00.000Z",
+    };
+    const fetchMarketStatusFn = vi.fn(async () => closed);
+    await runAgentLoop(loopDeps(LIVE_CHEAP, LIVE_EXPENSIVE, { ledger, fetchMarketStatusFn }));
+
+    expect(fetchMarketStatusFn).toHaveBeenCalledWith({ ticker: "MSFT", cheapPoolAddress: POOL_025 });
+    const entry = ledger.readAll()[0]!;
+    expect(entry.kind).toBe("detection");
+    expect(entry.kind === "detection" && entry.detection.marketStatus).toEqual(closed);
+  });
+
+  it("records an unavailable status too, rather than dropping the evaluation", async () => {
+    const ledger = new AuditLedger();
+    const unavailable = { status: "unavailable" as const, reason: "The operation was aborted due to timeout", fetchedAt: "2026-09-25T12:00:00.000Z" };
+    await runAgentLoop(loopDeps(LIVE_CHEAP, LIVE_EXPENSIVE, { ledger, fetchMarketStatusFn: vi.fn(async () => unavailable) }));
+    const entry = ledger.readAll()[0]!;
+    expect(entry.kind === "detection" && entry.detection.marketStatus).toEqual(unavailable);
   });
 });

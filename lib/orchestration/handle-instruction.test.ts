@@ -5,7 +5,7 @@ import { AuditLedger } from "../execution/audit-ledger";
 import { BoundedPriceHistory } from "../data/price-history";
 import type { PoolQuote } from "../data/types";
 import type { WalletClient, FreshPoolPrices } from "../execution/pipeline";
-import type { EstimateGasFn, FetchReferenceFn } from "./agent-loop";
+import type { EstimateGasFn, FetchReferenceFn, FetchMarketStatusFn } from "./agent-loop";
 import type { chatCompletion, GroqChatResult } from "../llm/groq-client";
 
 const POOL_025 = "0x5018b018ceb7645c927c5cf246786f89ebcbe7ea";
@@ -72,6 +72,12 @@ function fakeFetchFreshPoolPrices(): Promise<FreshPoolPrices> {
     expensivePoolToken0: FAKE_STABLECOIN as `0x${string}`,
     expensivePoolToken1: FAKE_TARGET_TOKEN as `0x${string}`,
   });
+}
+
+
+// The real statusInfo shape for MSFTB, 2026-09-25 12:06 UTC (docs/devex-log.md).
+function tradingStatus(): FetchMarketStatusFn {
+  return vi.fn(async () => ({ status: "ok" as const, openState: true, reasonCode: "TRADING", marketStatus: null, reasonMsg: null, nextOpenTime: null, nextCloseTime: null, fetchedAt: "2026-09-25T12:06:16.554Z" }));
 }
 
 describe("handleInstruction — a malformed instruction never reaches pool resolution or runPipeline()", () => {
@@ -171,6 +177,7 @@ describe("handleInstruction — valid instruction composes to a correctly-declin
       fetchPoolQuotesFn,
       estimateGasFn: pinnedGas,
       fetchReferenceFn: agreeingReference(),
+      fetchMarketStatusFn: tradingStatus(),
       priceHistory: historyWith(10),
       walletClient,
       fetchFreshPoolPrices: fakeFetchFreshPoolPrices,
@@ -210,6 +217,7 @@ describe("handleInstruction — valid instruction composes to a correctly-declin
       fetchPoolQuotesFn: vi.fn().mockResolvedValue(msftPoolQuotes()),
       estimateGasFn: pinnedGas,
       fetchReferenceFn: agreeingReference(),
+      fetchMarketStatusFn: tradingStatus(),
       priceHistory: historyWith(10),
       walletClient,
       fetchFreshPoolPrices: fakeFetchFreshPoolPrices,
@@ -251,6 +259,7 @@ describe("handleInstruction — Binance reference price", () => {
       ...base(),
       chatCompletionFn: mockChat({ ok: true, content: '{"ticker":"MSFT","side":"buy","sizeUsd":300}' }),
       fetchReferenceFn,
+      fetchMarketStatusFn: tradingStatus(),
     });
     expect(fetchReferenceFn).toHaveBeenCalledWith({ ticker: "MSFT", cheapPoolAddress: POOL_025, sizeUsd: 300 });
   });
@@ -260,6 +269,7 @@ describe("handleInstruction — Binance reference price", () => {
       ...base(),
       chatCompletionFn: mockChat({ ok: true, content: '{"ticker":"MSFT","side":"buy","sizeUsd":200}' }),
       fetchReferenceFn: vi.fn<FetchReferenceFn>(async () => ({ status: "unavailable", reason: "getaddrinfo ENOTFOUND web3.binance.com" })),
+      fetchMarketStatusFn: tradingStatus(),
     });
     expect(result.ok && result.outcome).toBe("blocked");
     expect(result.ok && result.verdict.blockedBy).toBe("referencePrice");
@@ -270,6 +280,7 @@ describe("handleInstruction — Binance reference price", () => {
       ...base(),
       chatCompletionFn: mockChat({ ok: true, content: '{"ticker":"MSFT","side":"buy","sizeUsd":1000}' }),
       fetchReferenceFn: vi.fn<FetchReferenceFn>(async () => ({ status: "unavailable", reason: "HTTP 503" })),
+      fetchMarketStatusFn: tradingStatus(),
     });
     const failed = result.ok ? result.verdict.checks.filter((c) => !c.ok).map((c) => c.name) : [];
     expect(failed).toEqual(["referencePrice", "perTradeCap"]);
@@ -288,6 +299,7 @@ describe("handleInstruction — no order during price-history warm-up", () => {
       fetchPoolQuotesFn: vi.fn().mockResolvedValue(msftPoolQuotes()),
       estimateGasFn: pinnedGas,
       fetchReferenceFn: agreeingReference(),
+      fetchMarketStatusFn: tradingStatus(),
       priceHistory: history,
       walletClient,
       ledger,

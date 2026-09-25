@@ -4,6 +4,7 @@ import { defaultBinanceCallLog, summarizeCalls } from "../../../lib/data/binance
 import { getTradingWalletAddress } from "../../../lib/execution/agentic-wallet";
 import { isPublicReadOnly } from "../../../lib/config/deployment";
 import { clientIp } from "../../../lib/config/rate-limit";
+import { getLatestMarketStatuses } from "../../../lib/data/binance-rwa";
 
 const RECENT_BINANCE_CALLS = 50;
 
@@ -52,5 +53,8 @@ export async function GET(request: Request) {
       reason: "not_implemented: no balance-query endpoint wired yet",
     },
     killswitch: getKillswitchMode(),
+    // Latest underlying-market status per ticker, as the scheduler last
+    // fetched it (RWA Data API). Read from memory, not re-fetched.
+    marketStatus: getLatestMarketStatuses(),
   });
 }

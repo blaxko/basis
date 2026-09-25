@@ -56,6 +56,8 @@ describe("narrateProposal — real MSFTB cross-pool scenario (declined-trade cas
       simulatedOutputUsd: 199,
       // Real Binance quote from docs/devex-log.md (different moment, 0.5% from this pool's spot).
       reference: { status: "ok", priceUsd: 498.8459, vendor: "LiquidMesh", route: "Rfq Neptunex" },
+      // Real statusInfo shape, MSFTB, 2026-09-25 12:06 UTC (docs/devex-log.md).
+      marketStatus: { status: "ok" as const, openState: true, reasonCode: "TRADING", marketStatus: null, reasonMsg: null, nextOpenTime: null, nextCloseTime: null, fetchedAt: "2026-09-25T12:06:16.554Z" },
       poolPair: {
         cheapPoolAddress: "0x5018b018ceb7645c927c5cf246786f89ebcbe7ea",
         cheapPoolFeeUnits: 2500,
@@ -88,6 +90,8 @@ describe("narrateProposal — real MSFTB cross-pool scenario (declined-trade cas
       simulatedOutputUsd: 199,
       poolPair: SYNTHETIC_POOL_PAIR,
       reference: { status: "ok", priceUsd: 101.2525, vendor: "LiquidMesh", route: "synthetic" },
+      // Real statusInfo shape, MSFTB, 2026-09-25 12:06 UTC (docs/devex-log.md).
+      marketStatus: { status: "ok" as const, openState: true, reasonCode: "TRADING", marketStatus: null, reasonMsg: null, nextOpenTime: null, nextCloseTime: null, fetchedAt: "2026-09-25T12:06:16.554Z" },
     };
 
     const verdict = check(order, { spentTodaySoFarUsd: 1900, config: DEFAULT_GUARDRAIL_CONFIG });
@@ -115,6 +119,8 @@ describe("narrateProposal — real MSFTB cross-pool scenario (declined-trade cas
       simulatedOutputUsd: 99,
       poolPair: SYNTHETIC_POOL_PAIR,
       reference: { status: "ok", priceUsd: 200.5, vendor: "LiquidMesh", route: "synthetic" },
+      // Real statusInfo shape, MSFTB, 2026-09-25 12:06 UTC (docs/devex-log.md).
+      marketStatus: { status: "ok" as const, openState: true, reasonCode: "TRADING", marketStatus: null, reasonMsg: null, nextOpenTime: null, nextCloseTime: null, fetchedAt: "2026-09-25T12:06:16.554Z" },
     };
 
     const verdict = check(order, { spentTodaySoFarUsd: 0, config: DEFAULT_GUARDRAIL_CONFIG });

@@ -10,6 +10,8 @@ const detection = {
   threshold: 0.0001,
   gas: { costUsd: 0.21, source: "fallback" as const },
   reference: { status: "ok" as const, priceUsd: 498.8459, vendor: "LiquidMesh", route: "Rfq Neptunex" },
+  // Real statusInfo shape, MSFTB, 2026-09-25 12:06 UTC (docs/devex-log.md).
+  marketStatus: { status: "ok" as const, openState: true, reasonCode: "TRADING", marketStatus: null, reasonMsg: null, nextOpenTime: null, nextCloseTime: null, fetchedAt: "2026-09-25T12:06:16.554Z" },
 };
 
 describe("AuditLedger — detection entries are a different kind from pipeline entries", () => {

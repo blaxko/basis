@@ -8,7 +8,10 @@ import {
   spreadFreshnessCheck,
   slippageToleranceCheck,
   referencePriceCheck,
+  marketStatusCheck,
+  MARKET_STATUS_BLOCK_CODES,
   type ProposedOrder,
+  type MarketStatus,
 } from "./check";
 import { DEFAULT_GUARDRAIL_CONFIG } from "./config";
 import { feeAdjustedPrice } from "../basis-model/nav-equivalent";
@@ -49,9 +52,78 @@ function baseOrder(overrides: Partial<ProposedOrder> = {}): ProposedOrder {
     poolPair: SYNTHETIC_POOL_PAIR,
     // 0.25% above the cheap pool's spot price, well inside the 2% limit.
     reference: { status: "ok", priceUsd: 101.2525, vendor: "LiquidMesh", route: "synthetic" },
+    // Real statusInfo shape, MSFTB, 2026-09-25 12:06 UTC (docs/devex-log.md).
+    marketStatus: { status: "ok" as const, openState: true, reasonCode: "TRADING", marketStatus: null, reasonMsg: null, nextOpenTime: null, nextCloseTime: null, fetchedAt: "2026-09-25T12:06:16.554Z" },
     ...overrides,
   };
 }
+
+// statusInfo as the RWA Data API returns it; defaults to the real MSFTB
+// response of 2026-09-25 12:06 UTC.
+function status(overrides: Partial<Extract<MarketStatus, { status: "ok" }>> = {}): MarketStatus {
+  return {
+    status: "ok",
+    openState: true,
+    reasonCode: "TRADING",
+    marketStatus: null,
+    reasonMsg: null,
+    nextOpenTime: null,
+    nextCloseTime: null,
+    fetchedAt: "2026-09-25T12:06:16.554Z",
+    ...overrides,
+  };
+}
+
+describe("marketStatusCheck", () => {
+  it("passes on TRADING (the real MSFTB response)", () => {
+    expect(marketStatusCheck(baseOrder({ marketStatus: status() }))).toEqual({ name: "marketStatus", ok: true });
+  });
+
+  it("passes on MARKET_CLOSED — trading through the underlying's closed hours is the premise", () => {
+    const closed = status({ openState: false, reasonCode: "MARKET_CLOSED", marketStatus: "closed", reasonMsg: "Weekend or Holiday", nextOpenTime: 1790596200000 });
+    expect(marketStatusCheck(baseOrder({ marketStatus: closed })).ok).toBe(true);
+    expect(check(baseOrder({ marketStatus: closed }), { spentTodaySoFarUsd: 0, config }).approved).toBe(true);
+  });
+
+  it("passes on openState true with no reasonCode (documented as returned only when openState=false)", () => {
+    expect(marketStatusCheck(baseOrder({ marketStatus: status({ reasonCode: null }) })).ok).toBe(true);
+  });
+
+  it.each(["ASSET_PAUSED", "ASSET_LIMITED", "UNSUPPORTED", "MARKET_MAINTENANCE", "MARKET_PAUSED"])("blocks on %s", (code) => {
+    expect(MARKET_STATUS_BLOCK_CODES).toContain(code);
+    const order = baseOrder({ marketStatus: status({ openState: false, reasonCode: code, reasonMsg: "stock_split" }) });
+    const result = marketStatusCheck(order);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe(`underlying market status ${code} (Binance: "stock_split")`);
+    const verdict = check(order, { spentTodaySoFarUsd: 0, config });
+    expect(verdict.approved).toBe(false);
+    expect(verdict.blockedBy).toBe("marketStatus");
+  });
+
+  it("blocks — fails closed — when the status couldn't be fetched", () => {
+    const order = baseOrder({
+      marketStatus: { status: "unavailable", reason: "code 40304: Service not available due to compliance restriction", fetchedAt: "2026-09-25T11:46:40.393Z" },
+    });
+    expect(marketStatusCheck(order)).toEqual({
+      name: "marketStatus",
+      ok: false,
+      reason: "underlying market status unavailable: code 40304: Service not available due to compliance restriction",
+    });
+    expect(check(order, { spentTodaySoFarUsd: 0, config }).blockedBy).toBe("marketStatus");
+  });
+
+  it("blocks on a reasonCode outside the documented enum, and on openState false with no code", () => {
+    expect(marketStatusCheck(baseOrder({ marketStatus: status({ reasonCode: "HALTED_NEW_CODE" }) })).reason).toContain("unrecognized");
+    expect(marketStatusCheck(baseOrder({ marketStatus: status({ openState: false, reasonCode: null }) })).reason).toContain("unrecognized");
+  });
+
+  it("decides on reasonCode only — free-text reasonMsg and marketStatus never change the outcome", () => {
+    expect(marketStatusCheck(baseOrder({ marketStatus: status({ reasonMsg: "trading halt", marketStatus: "pause" }) })).ok).toBe(true);
+    expect(
+      marketStatusCheck(baseOrder({ marketStatus: status({ openState: false, reasonCode: "ASSET_PAUSED", reasonMsg: "normal trading", marketStatus: "regular" }) })).ok
+    ).toBe(false);
+  });
+});
 
 describe("sanityAndLiquidityCheck", () => {
   it("passes on normal history with enough readings for both pools", () => {
@@ -241,7 +313,7 @@ describe("check() — composed gate", () => {
   it("no check is ever reported as a plain pass without data: every ok check is either backed by input or marked pending", () => {
     const verdict = check(baseOrder({ simulatedOutputUsd: null }), { spentTodaySoFarUsd: 0, config });
     const plainPasses = verdict.checks.filter((c) => c.ok && !c.pending).map((c) => c.name);
-    expect(plainPasses).toEqual(["sanityAndLiquidity", "referencePrice", "perTradeCap", "dailyCap"]);
+    expect(plainPasses).toEqual(["sanityAndLiquidity", "marketStatus", "referencePrice", "perTradeCap", "dailyCap"]);
   });
 
   it("blocks on the daily cap alone when every other check would pass", () => {
@@ -369,6 +441,8 @@ describe("integration: real MSFTB cross-pool pairing composes with check()", () 
       // 2026-09-24 21:32 UTC) — a different moment from the pool reads
       // above, so this shows a realistic divergence, not a same-instant one.
       reference: { status: "ok", priceUsd: 498.8459, vendor: "LiquidMesh", route: "Rfq Neptunex" },
+      // Real statusInfo shape, MSFTB, 2026-09-25 12:06 UTC (docs/devex-log.md).
+      marketStatus: { status: "ok" as const, openState: true, reasonCode: "TRADING", marketStatus: null, reasonMsg: null, nextOpenTime: null, nextCloseTime: null, fetchedAt: "2026-09-25T12:06:16.554Z" },
       // Both real, registered MSFTB pools (see lib/data/pool-addresses.ts).
       poolPair: {
         cheapPoolAddress: "0x5018b018ceb7645c927c5cf246786f89ebcbe7ea",

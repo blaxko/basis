@@ -3,6 +3,7 @@ import { getRegisteredTickers } from "../data/pool-addresses";
 import { defaultPriceHistory, type PriceHistory } from "../data/price-history";
 import { estimateRoundTripGasUsd, getTargetTokenOnChain, type GasEstimate, type RoundTripGasParams } from "../data/gas-estimate";
 import { fetchAggregatorReference, type ReferenceQuote } from "../data/binance-reference";
+import { fetchMarketStatus, recordLatestMarketStatus, type MarketStatus } from "../data/binance-rwa";
 import { getTradingWalletAddress } from "../execution/agentic-wallet";
 import { feeAdjustedPrice } from "../basis-model/nav-equivalent";
 import { rawSpread, adjustedSpread as computeAdjustedSpread } from "../basis-model/adjusted-spread";
@@ -137,6 +138,28 @@ export const defaultFetchReference: FetchReferenceFn = async ({ cheapPoolAddress
   return fetchAggregatorReference({ stablecoin: BSC_USDT_ADDRESS, targetToken, sizeUsd, userWalletAddress });
 };
 
+// The underlying market's status from Binance's RWA Data API, for the
+// token the cheap pool trades. Never throws: any failure comes back as
+// "unavailable" and the marketStatus guardrail fails closed on it. Also
+// kept as the ticker's latest status for the dashboard header.
+export type FetchMarketStatusFn = (params: { ticker: string; cheapPoolAddress: string }) => Promise<MarketStatus>;
+
+export const defaultFetchMarketStatus: FetchMarketStatusFn = async ({ ticker, cheapPoolAddress }) => {
+  let status: MarketStatus;
+  try {
+    const targetToken = (await getTargetTokenOnChain(cheapPoolAddress, BSC_USDT_ADDRESS)).address;
+    status = await fetchMarketStatus(targetToken);
+  } catch (err) {
+    status = {
+      status: "unavailable",
+      reason: `couldn't resolve the pool's token: ${err instanceof Error ? err.message.split("\n")[0] : String(err)}`,
+      fetchedAt: new Date().toISOString(),
+    };
+  }
+  recordLatestMarketStatus(ticker, status);
+  return status;
+};
+
 // Steps 1–2: pull live per-pool prices and compute the net cross-pool
 // edge per underlying via the Basis Model. Writes nothing — this is what
 // GET /api/opportunities calls, and a GET must never trigger a pipeline
@@ -232,7 +255,8 @@ function constructOrder(
   spread: UnderlyingSpread,
   config: AgentLoopConfig,
   history: PriceHistory,
-  reference: ReferenceQuote
+  reference: ReferenceQuote,
+  marketStatus: MarketStatus
 ): ProposedOrder {
   const poolPair: PoolPair = {
     cheapPoolAddress: spread.cheapPool.address,
@@ -256,6 +280,7 @@ function constructOrder(
     simulatedOutputUsd: null,
     poolPair,
     reference,
+    marketStatus,
   };
 }
 
@@ -265,7 +290,12 @@ export function clearsThreshold(spread: UnderlyingSpread, threshold: number): bo
   return spread.adjustedSpread > Math.max(0, threshold);
 }
 
-function toDetectionSnapshot(spread: UnderlyingSpread, threshold: number, reference: ReferenceQuote): DetectionSnapshot {
+function toDetectionSnapshot(
+  spread: UnderlyingSpread,
+  threshold: number,
+  reference: ReferenceQuote,
+  marketStatus: MarketStatus
+): DetectionSnapshot {
   return {
     ticker: spread.ticker,
     cheapPool: { address: spread.cheapPool.address, feeUnits: spread.cheapPool.feeUnits, priceUsd: spread.cheapPool.priceUsd },
@@ -279,6 +309,7 @@ function toDetectionSnapshot(spread: UnderlyingSpread, threshold: number, refere
     threshold,
     gas: spread.gas,
     reference,
+    marketStatus,
   };
 }
 
@@ -302,6 +333,7 @@ export interface PreviewOpportunitiesDeps {
   fetchPoolQuotesFn?: typeof realFetchPoolQuotes;
   estimateGasFn?: EstimateGasFn;
   fetchReferenceFn?: FetchReferenceFn;
+  fetchMarketStatusFn?: FetchMarketStatusFn;
   narrateProposalFn?: typeof realNarrateProposal;
   priceHistory?: PriceHistory;
 }
@@ -340,13 +372,16 @@ export async function previewOpportunities(deps: PreviewOpportunitiesDeps = {}):
     }
 
     // Only fetched when an order is actually built, so previews don't add
-    // a Binance call per page poll.
-    const reference = await (deps.fetchReferenceFn ?? defaultFetchReference)({
-      ticker: spread.ticker,
-      cheapPoolAddress: spread.cheapPool.address,
-      sizeUsd: agentConfig.orderSizeUsd,
-    });
-    const order = constructOrder(spread, agentConfig, history, reference);
+    // Binance calls per page poll.
+    const [reference, marketStatus] = await Promise.all([
+      (deps.fetchReferenceFn ?? defaultFetchReference)({
+        ticker: spread.ticker,
+        cheapPoolAddress: spread.cheapPool.address,
+        sizeUsd: agentConfig.orderSizeUsd,
+      }),
+      (deps.fetchMarketStatusFn ?? defaultFetchMarketStatus)({ ticker: spread.ticker, cheapPoolAddress: spread.cheapPool.address }),
+    ]);
+    const order = constructOrder(spread, agentConfig, history, reference, marketStatus);
     const verdict = check(order, { spentTodaySoFarUsd: spendTracker.getSpentToday(), config: guardrailConfig });
 
     let narration: string;
@@ -375,6 +410,7 @@ export interface AgentLoopDeps {
   fetchPoolQuotesFn?: typeof realFetchPoolQuotes;
   estimateGasFn?: EstimateGasFn;
   fetchReferenceFn?: FetchReferenceFn;
+  fetchMarketStatusFn?: FetchMarketStatusFn;
   narrateProposalFn?: typeof realNarrateProposal;
   priceHistory?: PriceHistory;
   // Forwarded straight through to runPipeline()'s PipelineDeps — lets
@@ -425,18 +461,23 @@ export async function runAgentLoop(deps: AgentLoopDeps = {}): Promise<AgentLoopR
   const warmingUp: WarmingUpRecord[] = [];
 
   const fetchReferenceFn = deps.fetchReferenceFn ?? defaultFetchReference;
+  const fetchMarketStatusFn = deps.fetchMarketStatusFn ?? defaultFetchMarketStatus;
 
   for (const spread of spreads) {
     try {
       // Every tick, not just when an order is built, so each detection
-      // records the reference (or why it was unavailable) for the
-      // dashboard. An order built this tick reuses it.
-      const reference = await fetchReferenceFn({
-        ticker: spread.ticker,
-        cheapPoolAddress: spread.cheapPool.address,
-        sizeUsd: agentConfig.orderSizeUsd,
-      });
-      const detection = toDetectionSnapshot(spread, agentConfig.adjustedSpreadThreshold, reference);
+      // records the reference and the market status (or why either was
+      // unavailable) for the dashboard. An order built this tick reuses
+      // them.
+      const [reference, marketStatus] = await Promise.all([
+        fetchReferenceFn({
+          ticker: spread.ticker,
+          cheapPoolAddress: spread.cheapPool.address,
+          sizeUsd: agentConfig.orderSizeUsd,
+        }),
+        fetchMarketStatusFn({ ticker: spread.ticker, cheapPoolAddress: spread.cheapPool.address }),
+      ]);
+      const detection = toDetectionSnapshot(spread, agentConfig.adjustedSpreadThreshold, reference, marketStatus);
 
       if (!clearsThreshold(spread, agentConfig.adjustedSpreadThreshold)) {
         const entry = ledger.appendNoOpportunity({ mode, detection });
@@ -451,7 +492,7 @@ export async function runAgentLoop(deps: AgentLoopDeps = {}): Promise<AgentLoopR
         continue;
       }
 
-      const order = constructOrder(spread, agentConfig, history, reference);
+      const order = constructOrder(spread, agentConfig, history, reference, marketStatus);
 
       const ledgerEntry = await runPipeline(
         order,

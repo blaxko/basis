@@ -274,3 +274,50 @@ Failures:
 | 12:02:59.013 | 200 | 9654 | 0 |
 
 - All three took longer than Binance's default 5,000 ms window; with the default they would be at risk of `40103`.
+
+## 2026-09-25 12:06:16.554Z — RWA Data API: `GET /api/v1/dex/market/rwa/underlying-market`, MSFTB
+
+- Client: curl with the app's signing scheme (HMAC over timestamp + `GET` + `/build` path + query), `X-OC-RECV-WINDOW: 15000`. Direct home connection.
+- Query: `binanceChainId=56&tokenContractAddress=0x80106cb3EAD06659A5ad19DF39D9b4733863B9b0`
+- HTTP status: `200`. Total time: 2.04 s. (Friday, 08:06 US Eastern.)
+- Response, verbatim:
+
+```json
+{"code":0,"msg":"success","data":{"binanceChainId":"56","tokenContractAddress":"0x80106cb3ead06659a5ad19df39d9b4733863b9b0","platformId":"bstock","assetType":1,"statusInfo":{"openState":true,"marketStatus":null,"reasonCode":"TRADING","reasonMsg":null,"nextOpenTime":null,"nextCloseTime":null},"marketData":{"referencePrice":null,"high52W":"553.7200","low52W":"349.2000","volumeShares24H":"43328","avgDailyVolume1Y":null,"totalShares":null,"marketCap":"3697401866334.00","turnoverRate":null,"amplitude":null,"dividendYield":"0.00720000","latestDividend":"0.910000","peRatioTTM":"27.6400","pbRatio":"8.3600"}},"timestamp":1790337978945,"success":true}
+```
+
+- `statusInfo`: `openState` `true`, `reasonCode` `"TRADING"` (documented as "Others: TRADING (normal)"). `marketStatus` is `null`, although the schema describes it as one of premarket / regular / postmarket / overnight / closed / pause. `reasonMsg`, `nextOpenTime` and `nextCloseTime` are `null`.
+- `marketData.referencePrice` is `null` here, while `/rwa/price` two seconds later returned one (below).
+
+## 2026-09-25 12:06:19.056Z — RWA Data API: `GET /api/v1/dex/market/rwa/price`, MSFTB
+
+- Query: `binanceChainId=56&tokenContractAddress=0x80106cb3EAD06659A5ad19DF39D9b4733863B9b0&tokenContractAddresses=0x80106cb3EAD06659A5ad19DF39D9b4733863B9b0` (the documented parameter is `tokenContractAddresses`; `tokenContractAddress` was sent by mistake as well).
+- HTTP status: `200`. Total time: 0.98 s.
+- Response, verbatim:
+
+```json
+{"code":0,"msg":"success","data":[{"binanceChainId":"56","tokenContractAddress":"0x80106cb3ead06659a5ad19df39d9b4733863b9b0","platformId":"bstock","tokenPrice":"497.09000000","referencePrice":"496.437698","tokenPriceUpdatedAt":1790337979652}],"timestamp":1790337980345,"success":true}
+```
+
+- `referencePrice / tokenPrice` = 496.437698 / 497.09 = 0.99869. The schema describes `referencePrice` as "A per-share converted price derived from the on-chain token price, not an official quote from the traditional stock market." Not used as an independent price anywhere in the app.
+
+## 2026-09-25 12:29 – 12:37 UTC — App runtime: RWA market status every tick; first `referencePriceCheck` pass
+
+- Production build with `marketStatusCheck`; direct home connection (`loc=NG`). Each scheduler tick now makes two Binance calls in parallel: `GET /api/v1/dex/aggregator/quote` and `GET /api/v1/dex/market/rwa/underlying-market?binanceChainId=56&tokenContractAddress=0x80106cb3EAD06659A5ad19DF39D9b4733863B9b0`.
+- 12:29:38 – 12:34:45 UTC: every call in every tick, both endpoints, `TimeoutError: The operation was aborted due to timeout` (10 s). curl at the same time: 12:30:31 TCP connect 0.10 s, no TLS handshake within 19.3 s; 12:30:54 and 12:31:22, nothing within 25 s. Market status recorded as `unavailable` on those ticks.
+- 12:36:35 UTC onward, both endpoints ok:
+
+| Call start (UTC) | Endpoint | HTTP | Latency ms | Code |
+|---|---|---|---|---|
+| 12:36:35.984 | aggregator/quote | 200 | 1466 | 0 |
+| 12:36:35.986 | rwa/underlying-market | 200 | 1448 | 0 |
+| 12:36:55.957 | aggregator/quote (manual instruction, 200 USDT) | 200 | 960 | 0 |
+| 12:36:55.960 | rwa/underlying-market (manual instruction) | 200 | 874 | 0 |
+| 12:37:07.365 | aggregator/quote | 200 | 2883 | 0 |
+| 12:37:07.367 | rwa/underlying-market | 200 | 2879 | 0 |
+
+- `statusInfo` parsed from every successful underlying-market call: `openState: true, reasonCode: "TRADING", marketStatus: null, reasonMsg: null, nextOpenTime: null, nextCloseTime: null` (same as the first call at 12:06).
+- Manual instruction `POST /api/instruction {"instruction":"Buy $200 of MSFT"}`, HTTP 200 in 4.51 s → ledger `ledger_1790339816918_11` (12:36:56.918Z), mode `simulation`, outcome `no_edge`, verdict approved:
+  - `marketStatus` ok (TRADING).
+  - `referencePrice` ok: buy-leg pool (1% pool) spot $497.0159 vs Binance quote $499.3230 (LiquidMesh, `Rfq Neptunex`), 0.462% apart; limit 2%.
+  - `dryRunFloor` pending. Net edge −0.949%: nothing sent.

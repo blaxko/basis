@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { usePoll } from "./use-poll";
-import type { PipelineMode, StatusResponse } from "./api-types";
+import type { MarketStatus, PipelineMode, StatusResponse } from "./api-types";
 
 const MODES: PipelineMode[] = ["simulation", "dry-run", "live"];
 
@@ -95,6 +95,9 @@ export function Header() {
               label={binanceChipLabel(status.data.binanceWeb3Api)}
               ok={status.data.binanceWeb3Api.configured && (status.data.binanceWeb3Api.calls[0]?.ok ?? false)}
             />
+            {Object.entries(status.data.marketStatus).map(([ticker, market]) => (
+              <StatusChip key={ticker} label={marketChipLabel(ticker, market)} ok={marketChipOk(market)} />
+            ))}
           </div>
 
           <div className="wallet-split">
@@ -121,6 +124,34 @@ function binanceChipLabel(api: StatusResponse["binanceWeb3Api"]): string {
   if (!last) return "Binance Web3 API · no calls yet";
   if (last.ok) return `Binance Web3 API · ${last.latencyMs}ms`;
   return `Binance Web3 API · ${last.httpStatus === null ? "unreachable" : `HTTP ${last.httpStatus}${last.apiCode !== null ? ` code ${last.apiCode}` : ""}`}`;
+}
+
+function fmtUtc(ms: number | null): string | null {
+  return ms === null ? null : new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC";
+}
+
+// The underlying market's status as Binance's RWA Data API last reported
+// it, with the next open/close time when Binance supplies one (it can be
+// null even while trading).
+function marketChipLabel(ticker: string, m: MarketStatus): string {
+  if (m.status !== "ok") return `${ticker} underlying market · status unavailable`;
+  const code = m.reasonCode ?? (m.openState ? "open" : "not tradable");
+  const parts = [`${ticker} underlying market · ${code}`];
+  if (m.marketStatus) parts.push(m.marketStatus);
+  if (m.reasonMsg) parts.push(m.reasonMsg);
+  const nextOpen = fmtUtc(m.nextOpenTime);
+  const nextClose = fmtUtc(m.nextCloseTime);
+  if (nextOpen) parts.push(`opens ${nextOpen}`);
+  if (nextClose) parts.push(`closes ${nextClose}`);
+  return parts.join(" · ");
+}
+
+// Green when the marketStatus guardrail would pass (TRADING, or
+// MARKET_CLOSED — trading through closed hours is intended).
+function marketChipOk(m: MarketStatus): boolean {
+  if (m.status !== "ok") return false;
+  if (m.reasonCode === null) return m.openState;
+  return m.reasonCode === "TRADING" || m.reasonCode === "MARKET_CLOSED";
 }
 
 function StatusChip({ label, ok }: { label: string; ok: boolean }) {

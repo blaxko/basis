@@ -54,11 +54,28 @@ export interface StatusResponse {
   };
   wallet: { tradingCapitalUsd: number | null; operatingBudgetUsd: number | null; reason?: string };
   killswitch: PipelineMode;
+  // Latest underlying-market status per ticker (RWA Data API).
+  marketStatus: Record<string, MarketStatus>;
 }
 
 export type ReferenceQuote =
   | { status: "ok"; priceUsd: number; vendor: string; route: string }
   | { status: "unavailable"; reason: string };
+
+// Mirrors lib/data/binance-rwa.ts: the underlying market's status from
+// the RWA Data API. Decisions use reasonCode only.
+export type MarketStatus =
+  | {
+      status: "ok";
+      openState: boolean;
+      reasonCode: string | null;
+      marketStatus: string | null;
+      reasonMsg: string | null;
+      nextOpenTime: number | null;
+      nextCloseTime: number | null;
+      fetchedAt: string;
+    }
+  | { status: "unavailable"; reason: string; fetchedAt: string };
 
 export interface PoolPair {
   cheapPoolAddress: string;
@@ -80,6 +97,7 @@ export interface ProposedOrder {
   simulatedOutputUsd: number | null;
   poolPair: PoolPair;
   reference: ReferenceQuote;
+  marketStatus: MarketStatus;
 }
 
 export interface GuardrailCheckResult {
@@ -175,6 +193,7 @@ export interface DetectionSnapshot {
   threshold: number;
   gas: { costUsd: number; source: "live" | "fallback" };
   reference: ReferenceQuote;
+  marketStatus: MarketStatus;
 }
 
 export interface PipelineLedgerEntry {
