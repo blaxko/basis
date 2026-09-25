@@ -12,7 +12,13 @@ Built for the BNB Chain Tokenized Stocks hackathon on the **Binance Web3 API**:
 
 - Detection, guardrails, the audit ledger and the dashboard run live.
 - **Live arbitrage is disabled** until two-leg execution exists: in live mode every arbitrage order is refused before any approval or send.
-- **The live send path is proven on BSC mainnet**: on 2026-09-25 a separate, $5-capped execution test ran an MSFTB round trip, four transactions, each simulated by Binance and broadcast through Binance with MEV protection. Hashes and the full record: [`docs/devex-log.md`](docs/devex-log.md), [`docs/PRD.md`](docs/PRD.md) §16.
+- **The live send path is proven on BSC mainnet**: on 2026-09-25 a separate, $5-capped execution test ran an MSFTB round trip, run locally: four transactions, each simulated by Binance and broadcast through Binance with MEV protection, all successful.
+  - USDT approve: [`0x9df5a668…62e7`](https://bscscan.com/tx/0x9df5a668e25b2b7f329a8b4a4200bfe85d98aed878bde8c3ed1d73d2449e62e7)
+  - Buy 5 USDT → MSFTB: [`0x66aa49fd…c5fe`](https://bscscan.com/tx/0x66aa49fdcd676cfc1df23c717bf7530aa5cdf8267255dfb2bc2bfefa40b9c5fe)
+  - MSFTB approve: [`0xa3dc00ab…0493`](https://bscscan.com/tx/0xa3dc00ab5312623e223965e25baf2944cd07decbff1f2f6d64527c42dd3e0493)
+  - Sell MSFTB → 4.975 USDT: [`0xc77ffb10…c1ff`](https://bscscan.com/tx/0xc77ffb104e42303913745f519922af6d61dc3f988f5940c53a9e388e689cc1ff)
+  - Full record: [`docs/devex-log.md`](docs/devex-log.md), [`docs/PRD.md`](docs/PRD.md) §16.
+- **The public demo is read-only**: it holds no wallet key, so Live is greyed out there, and the dashboard says why. See [`docs/how-to-use.md`](docs/how-to-use.md).
 
 ## Run it locally
 

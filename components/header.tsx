@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { usePoll } from "./use-poll";
 import type { MarketStatus, PipelineMode, StatusResponse } from "./api-types";
+import { readOnlyNote } from "./read-only-note";
 
 const MODES: PipelineMode[] = ["simulation", "dry-run", "live"];
 
@@ -40,6 +41,7 @@ export function Header() {
   }
 
   const currentMode = status.data?.killswitch ?? null;
+  const note = readOnlyNote(status.data?.publicReadOnly);
 
   return (
     <header className="header">
@@ -62,12 +64,21 @@ export function Header() {
                 }
                 // Convenience only: the server rejects "live" in read-only mode.
                 disabled={posting || status.loading || (mode === "live" && (status.data?.publicReadOnly ?? true))}
+                title={mode === "live" && note ? note.liveButtonTitle : undefined}
                 onClick={() => setMode(mode)}
               >
                 {mode}
               </button>
             ))}
           </div>
+          {note && (
+            <p className="killswitch-note">
+              {note.text}{" "}
+              <a href={note.linkUrl} target="_blank" rel="noreferrer">
+                {note.linkLabel}
+              </a>
+            </p>
+          )}
         </div>
       </div>
 
