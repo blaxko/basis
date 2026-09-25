@@ -8,6 +8,19 @@ import { checkRateLimit, clientIp, resetRateLimits, INSTRUCTION_RATE_LIMIT } fro
 // never read, "live" is refused server-side, and Binance/Groq-triggering
 // routes are rate-limited per IP.
 
+// /api/status reads the wallet's balances over RPC. These tests point the
+// RPC at a fake host, so the only network step — resolving the MSFTB
+// token — is stubbed to fail at once instead of waiting on DNS (which
+// made the status tests flaky against vitest's 5 s limit). The real
+// readWalletBalances still runs and still resolves the wallet address
+// first, so the "key never read" checks keep covering that path.
+vi.mock("../lib/data/gas-estimate", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/data/gas-estimate")>()),
+  getTargetTokenOnChain: async () => {
+    throw new Error("stubbed in tests: no network");
+  },
+}));
+
 const ROOT = join(__dirname, "..");
 const ADDRESS = "0x0bA556a253D2f1FdCF352aD55A5b44718802BB95";
 const DUMMY_KEY = "1".repeat(64);
