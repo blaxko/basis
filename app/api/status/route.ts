@@ -1,22 +1,32 @@
 import { NextResponse } from "next/server";
 import { getKillswitchMode } from "../../../lib/orchestration/killswitch";
+import { defaultBinanceCallLog, summarizeCalls } from "../../../lib/data/binance-client";
 
-// The only place in this route file that touches process.env — reports
-// whether each credential is configured, never the value itself.
-// These are presence checks, not live network pings: without real
-// credentials a network ping would just be a guaranteed failure, and we
-// don't want this route accidentally making an authenticated call with
-// a dummy key.
+const RECENT_BINANCE_CALLS = 50;
+
+// Reports whether each credential is configured, never the value itself.
+// Presence checks only: this route never makes an authenticated call.
 //
-// Only what the current execution path depends on: Groq (intent
-// parsing), the BSC RPC (pool reads, QuoterV2 simulation, broadcast),
-// and the trading wallet key (local signing). The Binance aggregator
-// and Agentic Wallet are no longer on any live path.
+// What the current path depends on: Groq (intent parsing), the BSC RPC
+// (pool reads, QuoterV2 simulation, nonce and gas for signing), the
+// trading wallet key (local signing), and the Binance Web3 API (the
+// Trading API reference quote on every tick; the Transaction API for
+// simulation and MEV-protected broadcast). `binanceWeb3Api.calls` is the
+// app's own record of its recent Binance calls — status, latency, and
+// verbatim errors — read from memory, not re-fetched.
 export async function GET() {
+  const records = defaultBinanceCallLog.recent();
   return NextResponse.json({
     groq: { configured: Boolean(process.env.GROQ_API_KEY) },
     bscRpc: { configured: Boolean(process.env.BSC_RPC_URL) },
     tradingWallet: { configured: Boolean(process.env.TRADING_WALLET_PRIVATE_KEY) },
+    binanceWeb3Api: {
+      configured: Boolean(
+        process.env.BINANCE_WEB3_API_BASE_URL && process.env.BINANCE_WEB3_API_KEY && process.env.BINANCE_WEB3_API_SECRET
+      ),
+      summary: summarizeCalls(records),
+      calls: records.slice(-RECENT_BINANCE_CALLS).reverse(),
+    },
     wallet: {
       tradingCapitalUsd: null,
       operatingBudgetUsd: null,

@@ -1,5 +1,5 @@
 import { parseUnits, type Address } from "viem";
-import { buildAuthHeaders, getConfig, type BinanceWeb3ApiConfig } from "./quotes";
+import { binanceRequest, defaultBinanceClientDeps, type BinanceClientDeps } from "./binance-client";
 
 // The Binance Web3 aggregator's price for buying the target token with
 // the stablecoin at a given size — an independent reference to
@@ -17,7 +17,6 @@ export type ReferenceQuote =
 // `userWalletAddress` is required for RFQ routes (bStock/Ondo).
 const QUOTE_PATH = "/api/v1/dex/aggregator/quote";
 const STABLECOIN_DECIMALS = 18; // BSC USDT
-const TIMEOUT_MS = 10_000;
 
 interface QuoteRoute {
   vendorName?: string;
@@ -27,20 +26,12 @@ interface QuoteRoute {
   dexRouterList?: Array<{ dexProtocol?: { dexName?: string } }>;
 }
 
-export interface ReferenceDeps {
-  fetchFn: typeof fetch;
-  getConfigFn: () => BinanceWeb3ApiConfig;
-}
-
-const defaultDeps: ReferenceDeps = { fetchFn: (...args) => fetch(...args), getConfigFn: getConfig };
-
 export async function fetchAggregatorReference(
   params: { stablecoin: Address; targetToken: Address; sizeUsd: number; userWalletAddress?: string },
-  deps: ReferenceDeps = defaultDeps
+  deps: BinanceClientDeps = defaultBinanceClientDeps
 ): Promise<ReferenceQuote> {
-  let config: BinanceWeb3ApiConfig;
   try {
-    config = deps.getConfigFn();
+    deps.getConfigFn();
   } catch {
     return { status: "unavailable", reason: "Binance Web3 API credentials not configured" };
   }
@@ -52,17 +43,13 @@ export async function fetchAggregatorReference(
     toTokenAddress: params.targetToken,
   });
   if (params.userWalletAddress) query.set("userWalletAddress", params.userWalletAddress);
-  const url = `${config.baseUrl}${QUOTE_PATH}?${query}`;
 
   try {
-    const res = await deps.fetchFn(url, {
-      method: "GET",
-      headers: buildAuthHeaders(config.apiKey, config.secretKey, "GET", url),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-    if (!res.ok) return { status: "unavailable", reason: `HTTP ${res.status}` };
+    const res = await binanceRequest({ method: "GET", path: QUOTE_PATH, query }, deps);
+    if (res.httpStatus < 200 || res.httpStatus >= 300) return { status: "unavailable", reason: `HTTP ${res.httpStatus}` };
 
-    const body = (await res.json()) as { code?: number; msg?: string; data?: QuoteRoute[] };
+    const body = res.body as { code?: number; msg?: string; data?: QuoteRoute[] } | null;
+    if (!body) return { status: "unavailable", reason: "response was not JSON" };
     if (body.code !== 0) return { status: "unavailable", reason: `code ${body.code}: ${body.msg ?? "no message"}` };
 
     const routes = Array.isArray(body.data) ? body.data : [];

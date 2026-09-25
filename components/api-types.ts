@@ -24,10 +24,32 @@ export type PipelineOutcome =
 
 export type LedgerOutcome = PipelineOutcome | "no_opportunity" | "warming_up";
 
+export interface BinanceCallRecord {
+  at: string;
+  method: "GET" | "POST";
+  path: string;
+  query: string;
+  httpStatus: number | null;
+  latencyMs: number;
+  apiCode: number | null;
+  ok: boolean;
+  error?: string;
+}
+
 export interface StatusResponse {
   groq: { configured: boolean };
   bscRpc: { configured: boolean };
   tradingWallet: { configured: boolean };
+  binanceWeb3Api: {
+    configured: boolean;
+    summary: {
+      count: number;
+      ok: number;
+      failed: number;
+      latencyMs: { p50: number | null; p95: number | null; max: number | null };
+    };
+    calls: BinanceCallRecord[]; // newest first
+  };
   wallet: { tradingCapitalUsd: number | null; operatingBudgetUsd: number | null; reason?: string };
   killswitch: PipelineMode;
 }

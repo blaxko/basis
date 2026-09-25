@@ -80,6 +80,10 @@ export function Header() {
             <StatusChip label="Groq" ok={status.data.groq.configured} />
             <StatusChip label="BSC RPC" ok={status.data.bscRpc.configured} />
             <StatusChip label="Trading wallet key" ok={status.data.tradingWallet.configured} />
+            <StatusChip
+              label={binanceChipLabel(status.data.binanceWeb3Api)}
+              ok={status.data.binanceWeb3Api.configured && (status.data.binanceWeb3Api.calls[0]?.ok ?? false)}
+            />
           </div>
 
           <div className="wallet-split">
@@ -96,6 +100,16 @@ export function Header() {
       )}
     </header>
   );
+}
+
+// Green only when configured AND the most recent call succeeded; the
+// label carries that call's latency, or why it failed.
+function binanceChipLabel(api: StatusResponse["binanceWeb3Api"]): string {
+  const last = api.calls[0];
+  if (!api.configured) return "Binance Web3 API · not configured";
+  if (!last) return "Binance Web3 API · no calls yet";
+  if (last.ok) return `Binance Web3 API · ${last.latencyMs}ms`;
+  return `Binance Web3 API · ${last.httpStatus === null ? "unreachable" : `HTTP ${last.httpStatus}${last.apiCode !== null ? ` code ${last.apiCode}` : ""}`}`;
 }
 
 function StatusChip({ label, ok }: { label: string; ok: boolean }) {
