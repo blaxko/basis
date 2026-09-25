@@ -270,12 +270,12 @@ The layout itself has to argue the thesis: decision and safety are visibly separ
 
 | Criterion | Weight | How this PRD addresses it |
 |---|---|---|
-| Technical implementation | 30% | NAV-adjusted spread model + independent guardrail gate + integrated single-loop execution |
-| Creativity & originality | 25% | Total-return/price-return basis modeling is new to this space, though standard in TradFi ETF arbitrage |
-| Developer Experience Report | 25% | Natural byproduct of integrating three differently-shaped protocols (xStocks/bStocks/Ondo) through one API |
+| Technical implementation | 30% | Fee-adjusted cross-pool spread model with live gas + independent guardrail gate (price sanity with warm-up, Binance reference price, spend caps, dry-run floor, slippage tolerance below the edge, pre-send freshness) + Binance Web3 API Trading API quotes in the live path |
+| Creativity & originality | 25% | Fee-tier fragmentation between pools of the same tokenized stock — the gap Binance's own aggregator erases for normal users — with the aggregator's quote reused as an outside reference for pool prices |
+| Developer Experience Report | 25% | Built from `docs/devex-log.md`: raw facts of every Binance Web3 API interaction (DNS, docs access, verbatim responses, latency) |
 | Product quality & UX | 20% | Plain-English proposals via Groq; visible, explainable guardrail decisions rather than a black box |
 
-Stack awards targeted: **Best Use of Agentic Wallet/Wallet Skills** (isolated wallet + structural guardrails) and **Best Use of BNB Agent Studio** (identity + x402 self-funded operating budget, separated from trading capital).
+Stack awards: not currently targeted. Basis signs locally with its own key rather than through Agentic Wallet/Wallet Skills, and doesn't use BNB Agent Studio or x402. Both are optional under the rules.
 
 ---
 
@@ -283,7 +283,7 @@ Stack awards targeted: **Best Use of Agentic Wallet/Wallet Skills** (isolated wa
 
 **Likely objection:** "This is still just an arbitrage bot — how is the safety framing more than marketing?"
 
-**Answer:** Demonstrate it live — show the naive price-diff signal firing falsely around a dividend date, then show the NAV-adjusted model correctly suppressing it, with the guardrail gate's decision logged and auditable rather than asserted.
+**Answer:** Demonstrate it live. Show a real gap between two pools of the same tokenized stock — the gross line a naive price-diff bot would trade on. Show the net edge after both pools' fees, slippage, and live gas sitting below zero, and the detector declining it. Then send a deliberately oversized order and show the guardrail gate blocking it, with every check and its reason logged and auditable rather than asserted. The system also refuses live execution until both legs of the arbitrage exist: it won't trade half an arbitrage.
 
 ---
 
@@ -299,15 +299,22 @@ Stack awards targeted: **Best Use of Agentic Wallet/Wallet Skills** (isolated wa
 
 **Submission**
 
-The two mandatory items are the project and the Developer Experience Report: "Both are mandatory. Miss either one and you don't get scored."
+Two things are mandatory: the project and the Developer Experience Report ("Both are mandatory. Miss either one and you don't get scored." — blog).
 
-- [ ] **The project:** a public repo with README instructions a judge can follow standalone (no undocumented setup steps), a demo video of four minutes or less, and a deployed link or instructions someone can follow.
-- [ ] **The Developer Experience Report:** specific, actionable, honest; 25% of the score; perfunctory or AI-generated reports are rejected.
-- [ ] **Build requirement:** at least one of bStocks, Ondo, or xStocks is central to the project. Basis uses bStocks MSFTB on PancakeSwap V3.
+- [ ] **The project is built on the Binance Web3 API.** The hackathon page defines it as "A working project built on one or more Binance Web3 API modules, and optionally Agentic Wallet or Wallet Skills." Basis meets this with:
+  - the **Trading API** in the live path: `GET /api/v1/dex/aggregator/quote` on every scheduler tick and for every order, as the `referencePrice` guardrail's reference;
+  - the **Transaction API** (`pre-transaction/simulate`, `pre-transaction/broadcast-transaction`) once it is wired into the direct-pool path.
+- [ ] **A public repo** with README instructions a judge can follow standalone, with no undocumented setup steps.
+- [ ] **A deployed link, or instructions a judge can follow.**
+- [ ] **A demo video, four minutes or less.** The page calls it "strongly recommended but optional"; the blog lists it as part of the mandatory project. We're making one.
+- [ ] **The Developer Experience Report:** specific, actionable, honest; 25% of the score; "Perfunctory or AI-generated reports are not accepted." Raw material is collected in `docs/devex-log.md`.
+- [ ] **Build requirement:** "At least one of bStocks, Ondo or xStocks has to be central to what you submit." Basis uses bStocks MSFTB on PancakeSwap V3.
 
-**Hackathon rules, as recorded** — checked against the official page (bnbchain.org/en/blog/bnb-hack-tokenized-stocks-edition-with-binance-web3-wallet) on 2026-09-24:
+**Hackathon rules, as recorded.** Sources: the hackathon page (bnbchain.org/en/hackathons/tokenized-stocks, "Tracks" tab, checked 2026-09-25) and the blog post (bnbchain.org/en/blog/bnb-hack-tokenized-stocks-edition-with-binance-web3-wallet, checked 2026-09-24).
 
-- Neither the Binance Web3 API nor BNB Agent Studio is a mandatory integration. An earlier version of this section said they were, and that missing either meant not being scored. That was wrong.
-- "BSC mainnet only. Dry-run with the Transaction API while you build, then demo with small live amounts. Teams fund their own wallets." Spot only; perps are out.
-- Scoring: technical implementation 30%, creativity 25%, Developer Experience Report 25%, product quality/UX 20%.
-- "Tie-breaks go on depth of W3W API usage first, then the quality of your feedback report."
+- **Correction history.** An early version of this section said the Binance Web3 API and BNB Agent Studio were mandatory integrations. The next version said neither was, based on the blog alone. The hackathon page settles it: the Web3 API is required (the project must be built on one or more of its modules). BNB Agent Studio is not ("Optional, tied to a special prize").
+- **Agentic Wallet / Wallet Skills:** "Optional, heavily weighted in scoring and tied to a special prize." Basis doesn't use it; it signs locally with its own key.
+- **Execution** (blog): "BSC mainnet only. Dry-run with the Transaction API while you build, then demo with small live amounts. Teams fund their own wallets." Spot only; perps are out.
+- **Scoring** (page): technical implementation 30% ("Does it run, and how deep does the integration go? Modules used, error handling, how it holds up."), creativity 25%, Developer Experience Report 25%, product quality/UX 20%.
+- **Tie-break** (blog): "Tie-breaks go on depth of W3W API usage first, then the quality of your feedback report." Not mentioned on the page.
+- **Dates** (page, UTC): submissions lock Sun 11 Oct, 12:00; judging 12–23 Oct. "Your repo, demo and deployed link must stay accessible through judging."

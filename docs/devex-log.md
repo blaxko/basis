@@ -130,3 +130,69 @@ Keys, secrets, and signature values are never recorded.
 - Method / endpoint: `GET /api/v1/dex/aggregator/quote`, `binanceChainId=56`, `amount=200000000000000000000` (200 USDT), USDT → MSFTB, `userWalletAddress=0x5B281F6E028466CEEB8b8FB6685e35eC2B8f02f7`
 - Result recorded on the ledger entry: `{"status":"ok","priceUsd":497.8385329698283,"vendor":"LiquidMesh","route":"Rfq Neptunex"}`
 - HTTP status / latency: not recorded by the app at this point (per-call recording not yet built).
+
+## 2026-09-25 05:27:33 – 05:32:01 UTC — App runtime, system DNS, $200 quotes
+
+- 10 scheduler calls in the ledger. All 10 returned a usable quote. Per-call HTTP status and latency are not recorded by the app yet.
+
+| Tick (UTC) | Implied USD/MSFTB | `dexName` |
+|---|---|---|
+| 05:27:33 | 497.8385 | Rfq Neptunex |
+| 05:28:01 | 497.8552 | Rfq Neptune |
+| 05:28:31 | 499.1361 | Pancakeswap V3 |
+| 05:29:01 | 498.1786 | Rfq Neptunex |
+| 05:29:31 | 498.1775 | Rfq Neptunex |
+| 05:30:02 | 499.1361 | Pancakeswap V3 |
+| 05:30:31 | 498.1487 | Rfq Neptunex |
+| 05:31:00 | 498.1770 | Rfq Neptunex |
+| 05:31:32 | 498.2755 | Rfq Neptunex |
+| 05:32:01 | 499.0870 | Pancakeswap V3 |
+
+## 2026-09-25 ~05:33 UTC — App runtime, system DNS, manual instruction, $1,000 quote
+
+- `POST /api/instruction` `{"instruction":"buy 1000 dollars of MSFT"}` → HTTP 200 in 2.26 s (includes Groq, pool reads, gas, this quote).
+- Quote result: `{"status":"ok","priceUsd":498.3540166628839,"vendor":"LiquidMesh","route":"Rfq Neptunex"}`
+
+## 2026-09-25 05:38:22.919Z — Transaction API simulate: our exactInputSingle, unfunded wallet
+
+- Method / endpoint: `POST /api/v1/dex/pre-transaction/simulate`
+- Client: `binanceRequest` (`lib/data/binance-client.ts`), HMAC over timestamp + method + path + JSON body. System DNS.
+- Request body, verbatim:
+
+```json
+{"binanceChainId":"56","evmTx":{"from":"0x5B281F6E028466CEEB8b8FB6685e35eC2B8f02f7","to":"0x1b81D678ffb9C0263b24A97847620C99d213eB14","value":"0","data":"0x414bf38900000000000000000000000055d398326f99059ff775485246999027b319795500000000000000000000000080106cb3ead06659a5ad19df39d9b4733863b9b000000000000000000000000000000000000000000000000000000000000009c40000000000000000000000005b281f6e028466ceeb8b8fb6685e35ec2b8f02f7000000000000000000000000000000000000000000000000000000006ab60b260000000000000000000000000000000000000000000000004563918244f400000000000000000000000000000000000000000000000000000023938220a24c340000000000000000000000000000000000000000000000000000000000000000"}}
+```
+
+- Calldata: PancakeSwap V3 SwapRouter `exactInputSingle`, USDT → MSFTB, fee 2500, recipient = trading wallet, `amountIn` 5 USDT, `amountOutMinimum` = QuoterV2 output `10018820697760644` less 0.05%.
+- Wallet state: 0 BNB, 0 USDT, no USDT allowance for the SwapRouter.
+- HTTP status: `200`. Latency: `1423 ms`.
+- Response, verbatim:
+
+```json
+{"code":0,"msg":"success","data":{"status":"FAILED","failReason":"execution reverted: STF","balanceChanges":[],"allowanceChanges":[]},"timestamp":1790314704072,"success":true}
+```
+
+## 2026-09-25 05:38:24.344Z — Transaction API simulate: USDT approve(), unfunded wallet
+
+- Method / endpoint: `POST /api/v1/dex/pre-transaction/simulate`
+- Request body, verbatim:
+
+```json
+{"binanceChainId":"56","evmTx":{"from":"0x5B281F6E028466CEEB8b8FB6685e35eC2B8f02f7","to":"0x55d398326f99059fF775485246999027B3197955","value":"0","data":"0x095ea7b30000000000000000000000001b81d678ffb9c0263b24a97847620c99d213eb140000000000000000000000000000000000000000000000004563918244f40000"}}
+```
+
+- Calldata: USDT `approve(SwapRouter 0x1b81…eB14, 5 USDT)`.
+- HTTP status: `200`. Latency: `760 ms`.
+- Response, verbatim:
+
+```json
+{"code":0,"msg":"success","data":{"status":"SUCCESS","failReason":"","balanceChanges":[],"allowanceChanges":[{"tokenAddress":"0x55d398326f99059ff775485246999027b3197955","owner":"0x5b281f6e028466ceeb8b8fb6685e35ec2b8f02f7","spender":"0x1b81d678ffb9c0263b24a97847620c99d213eb14","preAmount":"0","postAmount":"5000000000000000000"}]},"timestamp":1790314704845,"success":true}
+```
+
+- Observed `status` values: `FAILED`, `SUCCESS`. On `SUCCESS`, `failReason` is `""`; the schema describes it as "Failure reason when `status=FAILED`; otherwise null."
+- The simulation needs no gas balance on the sender (the approve simulated `SUCCESS` from a 0-BNB wallet).
+
+## 2026-09-25 05:38:24 – 10:33 UTC — No Binance Web3 API calls
+
+- The two simulate calls above were the last Binance calls before the 10:33 UTC restart. (An earlier status report said "this round made no new Binance calls"; that was wrong — it meant the later gas and storage-slot probes, which used only the BSC RPC.)
+- 06:21 – 10:33 UTC: a production server ran with `BSC_RPC_URL` empty. Every scheduler tick failed at the pool read (`MSFT: failed — NotImplemented: BSC_RPC_URL is not set`). The reference quote is fetched only after the pool reads, and itself starts with an RPC read, so no tick reached Binance. That server's in-memory call log was lost when it stopped; this is from the code path and the server log, not the call log.

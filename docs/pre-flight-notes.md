@@ -34,7 +34,7 @@ Two moments, both on every take.
 8. **Check the gas source.** Detection rows in the Audit Ledger show `gas $0.0xx (live)`. If they show `FALLBACK`, the live gas estimate is failing (usually the RPC), and costs are being overstated with the old flat $0.21.
 9. **Binance Web3 API must be reachable.** `BINANCE_WEB3_API_BASE_URL=https://web3.binance.com/build`, key and secret set.
    - Every order is checked against Binance's aggregator quote; with no quote, the `referencePrice` guardrail blocks.
-   - **This machine's network DNS (`192.168.0.1`) does not resolve `web3.binance.com`** (see `docs/devex-log.md`). Public DNS (1.1.1.1, 8.8.8.8) does. Before recording, point the machine's DNS at a public resolver, or record from a network where it resolves.
+   - **Run `nslookup web3.binance.com` before recording. It must return addresses.** On 2026-09-24 this machine's network DNS (`192.168.0.1`) didn't resolve it, and every Binance call failed until the machine's DNS was pointed at a public resolver (fixed 2026-09-25; see `docs/devex-log.md`).
    - Check on screen: the Pool Spread Monitor's latest line shows `Binance reference $…`, not `Binance reference unavailable (…)`.
 
 ## Moment A: a live `no_opportunity` evaluation
