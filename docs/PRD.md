@@ -247,7 +247,7 @@ The layout itself has to argue the thesis: decision and safety are visibly separ
 
 ## 13. Repository Expectations
 
-- **Public repo**, matching the hackathon's mandatory submission requirement.
+- **Public repo**, part of the hackathon's mandatory project submission (see §16).
 - **README** covering: one-liner, architecture diagram, setup steps, documented (not filled-in) required env vars, how a judge runs it — including how to switch between Dry-Run and Live — and the demo video link.
 - **Folder structure:**
   ```
@@ -298,8 +298,16 @@ Stack awards targeted: **Best Use of Agentic Wallet/Wallet Skills** (isolated wa
 - [ ] The killswitch demonstrably changes agent behavior across all three states: Simulation (gates only), Dry-Run (full path short of sending), Live (refused as two-leg execution not implemented).
 
 **Submission**
-- [ ] Public repo with README instructions a judge can follow standalone, with no undocumented setup steps.
-- [ ] Demo video, four minutes or less.
-- [ ] A deployed link, or clear fallback instructions if none.
-- [ ] A specific, non-generic Developer Experience Report — this is 25% of score and explicitly rejects vague or AI-generated submissions.
-- [ ] Both mandatory integrations present: Binance Web3 API and BNB Agent Studio. Missing either means the project isn't scored at all.
+
+The two mandatory items are the project and the Developer Experience Report: "Both are mandatory. Miss either one and you don't get scored."
+
+- [ ] **The project:** a public repo with README instructions a judge can follow standalone (no undocumented setup steps), a demo video of four minutes or less, and a deployed link or instructions someone can follow.
+- [ ] **The Developer Experience Report:** specific, actionable, honest; 25% of the score; perfunctory or AI-generated reports are rejected.
+- [ ] **Build requirement:** at least one of bStocks, Ondo, or xStocks is central to the project. Basis uses bStocks MSFTB on PancakeSwap V3.
+
+**Hackathon rules, as recorded** — checked against the official page (bnbchain.org/en/blog/bnb-hack-tokenized-stocks-edition-with-binance-web3-wallet) on 2026-09-24:
+
+- Neither the Binance Web3 API nor BNB Agent Studio is a mandatory integration. An earlier version of this section said they were, and that missing either meant not being scored. That was wrong.
+- "BSC mainnet only. Dry-run with the Transaction API while you build, then demo with small live amounts. Teams fund their own wallets." Spot only; perps are out.
+- Scoring: technical implementation 30%, creativity 25%, Developer Experience Report 25%, product quality/UX 20%.
+- "Tie-breaks go on depth of W3W API usage first, then the quality of your feedback report."
