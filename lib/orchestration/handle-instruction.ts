@@ -9,7 +9,15 @@ import { chatCompletion } from "../llm/groq-client";
 import { narrateProposal as realNarrateProposal } from "../llm/proposal-narrator";
 import { defaultSpendTracker, type SpendTracker } from "./spend-tracker";
 import { getKillswitchMode } from "./killswitch";
-import { computeSpreads, warmUpStatus, DEFAULT_AGENT_LOOP_CONFIG, type AgentLoopConfig, type EstimateGasFn } from "./agent-loop";
+import {
+  computeSpreads,
+  warmUpStatus,
+  defaultFetchReference,
+  DEFAULT_AGENT_LOOP_CONFIG,
+  type AgentLoopConfig,
+  type EstimateGasFn,
+  type FetchReferenceFn,
+} from "./agent-loop";
 
 // The manual path. Free text -> intent-parser.ts -> pool-pair resolution
 // -> (ONLY once both succeed) the same runPipeline() the automatic loop
@@ -66,6 +74,7 @@ export interface HandleInstructionDeps {
   agentConfig?: AgentLoopConfig;
   fetchPoolQuotesFn?: typeof realFetchPoolQuotes;
   estimateGasFn?: EstimateGasFn;
+  fetchReferenceFn?: FetchReferenceFn;
   priceHistory?: PriceHistory;
   chatCompletionFn?: typeof chatCompletion;
   narrateProposalFn?: typeof realNarrateProposal;
@@ -148,6 +157,14 @@ export async function handleInstruction(
     };
   }
 
+  // At the requested size, not the loop's default size: the reference
+  // must describe the same trade the guardrail is judging.
+  const reference = await (deps.fetchReferenceFn ?? defaultFetchReference)({
+    ticker: intent.ticker,
+    cheapPoolAddress: spread.cheapPool.address,
+    sizeUsd: intent.sizeUsd,
+  });
+
   const poolPair: PoolPair = {
     cheapPoolAddress: spread.cheapPool.address,
     cheapPoolFeeUnits: spread.cheapPool.feeUnits,
@@ -172,6 +189,7 @@ export async function handleInstruction(
     // the pipeline checks it against the real QuoterV2 output.
     simulatedOutputUsd: null,
     poolPair,
+    reference,
   };
 
   const mode = getMode();

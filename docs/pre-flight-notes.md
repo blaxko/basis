@@ -32,13 +32,17 @@ Two moments, both on every take.
 6. **Rehearse moment B once, then restart** (step 5 again), so the recorded ledger starts clean.
 7. **Use a dependable RPC endpoint if you have one.** The dashboard shares one live read across panels every 10s, and the scheduler adds its own read, including the live gas estimate, every 30s.
 8. **Check the gas source.** Detection rows in the Audit Ledger show `gas $0.0xx (live)`. If they show `FALLBACK`, the live gas estimate is failing (usually the RPC), and costs are being overstated with the old flat $0.21.
+9. **Binance Web3 API must be reachable.** `BINANCE_WEB3_API_BASE_URL=https://web3.binance.com/build`, key and secret set.
+   - Every order is checked against Binance's aggregator quote; with no quote, the `referencePrice` guardrail blocks.
+   - **This machine's network DNS (`192.168.0.1`) does not resolve `web3.binance.com`** (see `docs/devex-log.md`). Public DNS (1.1.1.1, 8.8.8.8) does. Before recording, point the machine's DNS at a public resolver, or record from a network where it resolves.
+   - Check on screen: the Pool Spread Monitor's latest line shows `Binance reference $…`, not `Binance reference unavailable (…)`.
 
 ## Moment A: a live `no_opportunity` evaluation
 
 **What's on screen.**
 
 - Pool Spread Monitor, tagged LIVE:
-  - the latest reading line (both pool prices, gross gap, net edge, "no opportunity")
+  - the latest reading line (both pool prices, gross gap, net edge, "no opportunity", and Binance's reference price for the same trade)
   - the dashed gross-gap line near zero
   - the solid net-edge line inside the red "doesn't clear costs" band
 - Audit Ledger: consecutive detection evaluations are shown as one summary row: count, time range, net edge range, latest pool prices. Every evaluation is still written to the ledger; only the display is collapsed.
@@ -69,6 +73,7 @@ curl -X POST http://localhost:3000/api/instruction \
 - **Response:** HTTP 200 with `"outcome": "blocked"`, `"verdict": { "blockedBy": "perTradeCap", "reason": "order size $1000 exceeds per-trade cap $500", … }`
 - **Guardrail Gate panel:** BLOCKED.
   - `sanityAndLiquidity` [PASS], now backed by real price history for both pools
+  - `referencePrice` [PASS]: the pool price is within 2% of Binance's live aggregator quote for $1,000. If Binance isn't reachable this is a second [FAIL], which muddies the moment (pre-flight step 9).
   - `perTradeCap` [FAIL]
   - `dailyCap` [PASS]
   - `dryRunFloor` [PENDING]: no simulation runs for a blocked order, so it is honestly not passed

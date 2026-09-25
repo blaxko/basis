@@ -24,6 +24,12 @@ function pools(d: DetectionSnapshot): string {
   }% pool $${d.expensivePool.priceUsd.toFixed(2)}`;
 }
 
+function reference(d: DetectionSnapshot): string {
+  return d.reference.status === "ok"
+    ? `Binance ref $${d.reference.priceUsd.toFixed(2)} (${d.reference.vendor})`
+    : `Binance ref UNAVAILABLE (${d.reference.reason})`;
+}
+
 function gas(d: DetectionSnapshot): string {
   return d.gas.source === "live" ? `gas $${d.gas.costUsd.toFixed(3)} (live)` : `gas $${d.gas.costUsd.toFixed(2)} (FALLBACK — live estimate failed)`;
 }
@@ -76,7 +82,7 @@ function DetectionRow({ entry }: { entry: DetectionLedgerEntry }) {
       </div>
       <div>
         {d.ticker} — detection: {detectionLabel(entry)}. {pools(d)} · gross gap {signedPct(d.grossGap)} · net edge{" "}
-        {signedPct(d.netEdge)} (needs &gt; {signedPct(Math.max(0, d.threshold))}) · {gas(d)}
+        {signedPct(d.netEdge)} (needs &gt; {signedPct(Math.max(0, d.threshold))}) · {gas(d)} · {reference(d)}
         {entry.warmUp && ` · price history ${entry.warmUp.readings} of ${entry.warmUp.required} readings`}
       </div>
     </div>
@@ -89,6 +95,7 @@ function DetectionSummaryRow({ entries }: { entries: DetectionLedgerEntry[] }) {
   const oldest = entries[entries.length - 1]!;
   const edges = entries.map((e) => e.detection.netEdge);
   const fallbacks = entries.filter((e) => e.detection.gas.source === "fallback").length;
+  const noReference = entries.filter((e) => e.detection.reference.status !== "ok").length;
   return (
     <div className="terminal-line">
       <div className="terminal-line-meta">
@@ -97,7 +104,9 @@ function DetectionSummaryRow({ entries }: { entries: DetectionLedgerEntry[] }) {
       <div>
         {latest.detection.ticker} — {entries.length}× detection: {detectionLabel(latest)} · net edge {signedPct(Math.min(...edges))} to{" "}
         {signedPct(Math.max(...edges))} · latest: {pools(latest.detection)}
+        {` · latest ${reference(latest.detection)}`}
         {fallbacks > 0 && ` · ${fallbacks} used FALLBACK gas`}
+        {noReference > 0 && ` · ${noReference} without a Binance reference`}
       </div>
     </div>
   );

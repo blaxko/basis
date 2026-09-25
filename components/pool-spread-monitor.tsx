@@ -13,7 +13,7 @@ import {
   YAxis,
 } from "recharts";
 import { usePoll } from "./use-poll";
-import type { OpportunitiesResponse, SpreadSeries } from "./api-types";
+import type { OpportunitiesResponse, ReferenceQuote, SpreadSeries } from "./api-types";
 
 const POLL_MS = 15_000;
 
@@ -96,6 +96,12 @@ function TickerChart({ ticker, series, threshold }: { ticker: string; series: Sp
         <strong className={clears ? "reading-clears" : "reading-declines"}>{signedPct(latest.adjustedSpread)}</strong>
         {" → "}
         {clears ? "clears threshold" : "no opportunity"}
+        {latest.reference && (
+          <>
+            {" · "}
+            <ReferenceLabel reference={latest.reference} />
+          </>
+        )}
       </p>
 
       <ResponsiveContainer width="100%" height={240}>
@@ -142,6 +148,17 @@ function TickerChart({ ticker, series, threshold }: { ticker: string; series: Sp
       </ResponsiveContainer>
     </div>
   );
+}
+
+function ReferenceLabel({ reference }: { reference: ReferenceQuote }) {
+  if (reference.status === "ok") {
+    return (
+      <span title={`route: ${reference.route}`}>
+        Binance reference ${reference.priceUsd.toFixed(2)} ({reference.vendor})
+      </span>
+    );
+  }
+  return <span className="reading-declines">Binance reference unavailable ({reference.reason})</span>;
 }
 
 // Round tick steps, always including zero, so the break-even line is on

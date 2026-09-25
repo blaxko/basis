@@ -6,6 +6,7 @@ import {
   DEFAULT_AGENT_LOOP_CONFIG,
   type AgentLoopConfig,
   type EstimateGasFn,
+  type FetchReferenceFn,
 } from "./agent-loop";
 import { DailySpendTracker } from "./spend-tracker";
 import { AuditLedger, defaultLedger } from "../execution/audit-ledger";
@@ -90,6 +91,12 @@ const CONFIG: AgentLoopConfig = {
   slippagePctEstimate: 0.0005,
 };
 
+// A Binance reference 0.25% above the cheap pool's spot price — well
+// inside the 2% limit, so it isn't what these tests are about.
+function agreeingReference(cheap: number): FetchReferenceFn {
+  return vi.fn(async () => ({ status: "ok" as const, priceUsd: cheap * 1.0025, vendor: "LiquidMesh", route: "stub" }));
+}
+
 function loopDeps(cheap: number, expensive: number, overrides: Record<string, unknown> = {}) {
   return {
     spendTracker: new DailySpendTracker(),
@@ -99,6 +106,7 @@ function loopDeps(cheap: number, expensive: number, overrides: Record<string, un
     agentConfig: CONFIG,
     fetchPoolQuotesFn: vi.fn().mockResolvedValue(poolQuotes(cheap, expensive)),
     estimateGasFn: pinnedGas,
+    fetchReferenceFn: agreeingReference(cheap),
     priceHistory: warmHistory(),
     fetchFreshPoolPrices: freshPrices(cheap, expensive),
     getWalletAddress,
@@ -361,19 +369,101 @@ describe("previewOpportunities — read-only, never writes the ledger, the price
   });
 
   it("positive edge above threshold after warm-up: one narrated opportunity, dry-run floor pending", async () => {
+    const fetchReferenceFn = agreeingReference(SYNTHETIC_CHEAP);
     const result = await previewOpportunities({
       spendTracker: new DailySpendTracker(),
       agentConfig: CONFIG,
       fetchPoolQuotesFn: vi.fn().mockResolvedValue(poolQuotes(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE)),
       estimateGasFn: pinnedGas,
+      fetchReferenceFn,
       priceHistory: warmHistory(),
     });
 
     expect(result.opportunities).toHaveLength(1);
     const verdict = result.opportunities[0]!.verdict;
     expect(verdict.approved).toBe(true);
+    expect(verdict.checks.find((c) => c.name === "referencePrice")?.ok).toBe(true);
     expect(verdict.checks.find((c) => c.name === "dryRunFloor")?.pending).toBe(true);
     expect(result.opportunities[0]!.narration).toContain("MSFT");
+    expect(fetchReferenceFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("doesn't call Binance when no order is built", async () => {
+    const fetchReferenceFn = agreeingReference(LIVE_CHEAP);
+    await previewOpportunities({
+      spendTracker: new DailySpendTracker(),
+      agentConfig: CONFIG,
+      fetchPoolQuotesFn: vi.fn().mockResolvedValue(poolQuotes(LIVE_CHEAP, LIVE_EXPENSIVE)),
+      estimateGasFn: pinnedGas,
+      fetchReferenceFn,
+      priceHistory: warmHistory(),
+    });
+    expect(fetchReferenceFn).not.toHaveBeenCalled();
+  });
+});
+
+describe("runAgentLoop — Binance reference price", () => {
+  it("fetches the reference every tick at the order size and records it on the detection, even with no order", async () => {
+    const ledger = new AuditLedger();
+    const fetchReferenceFn = vi.fn(async () => ({ status: "ok" as const, priceUsd: 498.8459, vendor: "LiquidMesh", route: "Rfq Neptunex" }));
+
+    await runAgentLoop(loopDeps(LIVE_CHEAP, LIVE_EXPENSIVE, { ledger, fetchReferenceFn }));
+
+    expect(fetchReferenceFn).toHaveBeenCalledWith({ ticker: "MSFT", cheapPoolAddress: POOL_025, sizeUsd: 200 });
+    const entry = ledger.readAll()[0]!;
+    expect(entry.kind === "detection" && entry.detection.reference).toEqual({
+      status: "ok",
+      priceUsd: 498.8459,
+      vendor: "LiquidMesh",
+      route: "Rfq Neptunex",
+    });
+  });
+
+  it("records why the reference was unavailable", async () => {
+    const ledger = new AuditLedger();
+    const fetchReferenceFn = vi.fn(async () => ({ status: "unavailable" as const, reason: "getaddrinfo ENOTFOUND web3.binance.com" }));
+
+    await runAgentLoop(loopDeps(LIVE_CHEAP, LIVE_EXPENSIVE, { ledger, fetchReferenceFn }));
+
+    const entry = ledger.readAll()[0]!;
+    expect(entry.kind === "detection" && entry.detection.reference).toEqual({
+      status: "unavailable",
+      reason: "getaddrinfo ENOTFOUND web3.binance.com",
+    });
+  });
+
+  it("an order built on the tick carries the same reference, and one fetch serves both", async () => {
+    const fetchReferenceFn = agreeingReference(SYNTHETIC_CHEAP);
+    const result = await runAgentLoop(loopDeps(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE, { fetchReferenceFn }));
+
+    expect(fetchReferenceFn).toHaveBeenCalledTimes(1);
+    expect(result.triggered[0]!.order.reference).toEqual(expect.objectContaining({ status: "ok", priceUsd: SYNTHETIC_CHEAP * 1.0025 }));
+    expect(result.triggered[0]!.verdict.checks.find((c) => c.name === "referencePrice")?.ok).toBe(true);
+  });
+
+  it("an unavailable reference blocks the order at the guardrail — no reference, no trade", async () => {
+    const walletClient = mockWalletClient();
+    const result = await runAgentLoop(
+      loopDeps(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE, {
+        walletClient,
+        fetchReferenceFn: vi.fn(async () => ({ status: "unavailable" as const, reason: "HTTP 503" })),
+      })
+    );
+
+    expect(result.triggered[0]!.outcome).toBe("blocked");
+    expect(result.triggered[0]!.verdict.blockedBy).toBe("referencePrice");
+    expect(walletClient.checkAllowance).not.toHaveBeenCalled();
+  });
+
+  it("a pool price far from the reference blocks the order", async () => {
+    const result = await runAgentLoop(
+      loopDeps(SYNTHETIC_CHEAP, SYNTHETIC_EXPENSIVE, {
+        fetchReferenceFn: vi.fn(async () => ({ status: "ok" as const, priceUsd: 530, vendor: "LiquidMesh", route: "stub" })),
+      })
+    );
+
+    expect(result.triggered[0]!.outcome).toBe("blocked");
+    expect(result.triggered[0]!.verdict.reason).toContain("from the Binance reference $530.0000");
   });
 });
 

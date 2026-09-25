@@ -1,5 +1,6 @@
 import { feeAdjustedPrice } from "../basis-model/nav-equivalent";
 import { rawSpread, adjustedSpread } from "../basis-model/adjusted-spread";
+import type { ReferenceQuote } from "./binance-reference";
 
 export interface SpreadHistoryPoint {
   timestamp: string; // ISO 8601 — hourly, not daily (real DEX data has no "trading day" concept)
@@ -9,6 +10,9 @@ export interface SpreadHistoryPoint {
   expensivePoolFeeUnits: number;
   rawSpread: number;
   adjustedSpread: number; // net edge after both pools' fees, slippage, and gas
+  // Binance aggregator reference at the time; null for the seeded
+  // fixture, which predates it.
+  reference: ReferenceQuote | null;
 }
 
 // Seeded demo fixture, not live data — but unlike the old dividend-drift
@@ -71,6 +75,7 @@ function buildMsftbDemoHistory(): SpreadHistoryPoint[] {
       expensivePoolFeeUnits,
       rawSpread: raw,
       adjustedSpread: adjusted,
+      reference: null,
     };
   });
 }

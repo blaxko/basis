@@ -9,6 +9,7 @@ const detection = {
   netEdge: -0.0128,
   threshold: 0.0001,
   gas: { costUsd: 0.21, source: "fallback" as const },
+  reference: { status: "ok" as const, priceUsd: 498.8459, vendor: "LiquidMesh", route: "Rfq Neptunex" },
 };
 
 describe("AuditLedger — detection entries are a different kind from pipeline entries", () => {

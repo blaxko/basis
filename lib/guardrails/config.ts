@@ -29,6 +29,11 @@ export interface GuardrailConfig {
   // strictly below its expected net edge: an on-chain floor looser than
   // the edge can't protect it. See docs/config-rationale.md.
   sendSlippageTolerance: number;
+  // The cheap pool's fee-inclusive buy price may differ from Binance's
+  // aggregator quote for the same token and size by at most this fraction
+  // (0.02 = 2%). An independent reference against corrupted or
+  // manipulated pool reads. See docs/config-rationale.md.
+  maxReferenceDivergencePct: number;
 }
 
 export const DEFAULT_GUARDRAIL_CONFIG: GuardrailConfig = {
@@ -40,4 +45,5 @@ export const DEFAULT_GUARDRAIL_CONFIG: GuardrailConfig = {
   minSpreadRetentionRatio: 0.5,
   minPriceHistoryReadings: 10,
   sendSlippageTolerance: 0.0005,
+  maxReferenceDivergencePct: 0.02,
 };

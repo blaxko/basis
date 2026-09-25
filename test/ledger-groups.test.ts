@@ -19,6 +19,7 @@ function detection(outcome: "no_opportunity" | "warming_up" = "no_opportunity", 
       netEdge: -0.012 - n / 10_000,
       threshold: 0.0001,
       gas: { costUsd: 0.027, source: "live" },
+      reference: { status: "ok", priceUsd: 498.8459, vendor: "LiquidMesh", route: "Rfq Neptunex" },
     },
   };
 }

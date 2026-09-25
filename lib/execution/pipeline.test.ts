@@ -69,6 +69,8 @@ function baseOrder(overrides: Partial<ProposedOrder> = {}): ProposedOrder {
     liquidityDepthUsd: 5000,
     simulatedOutputUsd: null,
     poolPair: POOL_PAIR,
+    // 0.25% above the cheap pool's spot price, well inside the 2% limit.
+    reference: { status: "ok", priceUsd: 491.225, vendor: "LiquidMesh", route: "synthetic" },
     ...overrides,
   };
 }
@@ -426,6 +428,7 @@ describe("runPipeline — detection snapshot pass-through", () => {
       netEdge: netEdge(490, 500),
       threshold: 0.0001,
       gas: { costUsd: FLAT_GAS_USD, source: "fallback" as const },
+      reference: { status: "ok" as const, priceUsd: 491.225, vendor: "LiquidMesh", route: "synthetic" },
     };
     const entry = await runPipeline(baseOrder(), deps({ detection }), "dry-run");
     expect(entry.kind).toBe("pipeline");

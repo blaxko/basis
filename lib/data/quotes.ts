@@ -18,13 +18,13 @@ export function tokenSymbol(protocol: Protocol, underlying: string): string {
   return `${underlying}${SYMBOL_SUFFIX[protocol]}`;
 }
 
-interface BinanceWeb3ApiConfig {
+export interface BinanceWeb3ApiConfig {
   baseUrl: string;
   apiKey: string;
   secretKey: string;
 }
 
-function getConfig(): BinanceWeb3ApiConfig {
+export function getConfig(): BinanceWeb3ApiConfig {
   const baseUrl = process.env.BINANCE_WEB3_API_BASE_URL;
   const apiKey = process.env.BINANCE_WEB3_API_KEY;
   const secretKey = process.env.BINANCE_WEB3_API_SECRET;

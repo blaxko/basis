@@ -1,7 +1,9 @@
 import { fetchPoolQuotes as realFetchPoolQuotes, BSC_USDT_ADDRESS } from "../data/quotes";
 import { getRegisteredTickers } from "../data/pool-addresses";
 import { defaultPriceHistory, type PriceHistory } from "../data/price-history";
-import { estimateRoundTripGasUsd, type GasEstimate, type RoundTripGasParams } from "../data/gas-estimate";
+import { estimateRoundTripGasUsd, getTargetTokenOnChain, type GasEstimate, type RoundTripGasParams } from "../data/gas-estimate";
+import { fetchAggregatorReference, type ReferenceQuote } from "../data/binance-reference";
+import { getTradingWalletAddress } from "../execution/agentic-wallet";
 import { feeAdjustedPrice } from "../basis-model/nav-equivalent";
 import { rawSpread, adjustedSpread as computeAdjustedSpread } from "../basis-model/adjusted-spread";
 import { runPipeline, type WalletClient, type PipelineDeps } from "../execution/pipeline";
@@ -114,6 +116,27 @@ export const DEFAULT_AGENT_LOOP_CONFIG: AgentLoopConfig = {
 
 export type EstimateGasFn = (params: RoundTripGasParams) => Promise<GasEstimate>;
 
+// Binance's aggregator quote for buying the ticker's token with USDT at
+// `sizeUsd`. Never throws: any failure comes back as "unavailable" and
+// the referencePrice guardrail fails closed on it.
+export type FetchReferenceFn = (params: { ticker: string; cheapPoolAddress: string; sizeUsd: number }) => Promise<ReferenceQuote>;
+
+export const defaultFetchReference: FetchReferenceFn = async ({ cheapPoolAddress, sizeUsd }) => {
+  let targetToken;
+  try {
+    targetToken = (await getTargetTokenOnChain(cheapPoolAddress, BSC_USDT_ADDRESS)).address;
+  } catch (err) {
+    return { status: "unavailable", reason: `couldn't resolve the pool's token: ${err instanceof Error ? err.message.split("\n")[0] : String(err)}` };
+  }
+  let userWalletAddress: string | undefined;
+  try {
+    userWalletAddress = getTradingWalletAddress(); // public address; bStock RFQ routes require it
+  } catch {
+    userWalletAddress = undefined;
+  }
+  return fetchAggregatorReference({ stablecoin: BSC_USDT_ADDRESS, targetToken, sizeUsd, userWalletAddress });
+};
+
 // Steps 1–2: pull live per-pool prices and compute the net cross-pool
 // edge per underlying via the Basis Model. Writes nothing — this is what
 // GET /api/opportunities calls, and a GET must never trigger a pipeline
@@ -205,7 +228,12 @@ export function warmUpStatus(spread: UnderlyingSpread, history: PriceHistory, re
 // order refers to. KNOWN SIMPLIFICATION: only this buy leg is built, so
 // live mode refuses to send it (lib/execution/pipeline.ts,
 // "two_leg_execution_not_implemented") until two-leg execution exists.
-function constructOrder(spread: UnderlyingSpread, config: AgentLoopConfig, history: PriceHistory): ProposedOrder {
+function constructOrder(
+  spread: UnderlyingSpread,
+  config: AgentLoopConfig,
+  history: PriceHistory,
+  reference: ReferenceQuote
+): ProposedOrder {
   const poolPair: PoolPair = {
     cheapPoolAddress: spread.cheapPool.address,
     cheapPoolFeeUnits: spread.cheapPool.feeUnits,
@@ -227,6 +255,7 @@ function constructOrder(spread: UnderlyingSpread, config: AgentLoopConfig, histo
     // the pipeline checks it against the real QuoterV2 output.
     simulatedOutputUsd: null,
     poolPair,
+    reference,
   };
 }
 
@@ -236,7 +265,7 @@ export function clearsThreshold(spread: UnderlyingSpread, threshold: number): bo
   return spread.adjustedSpread > Math.max(0, threshold);
 }
 
-function toDetectionSnapshot(spread: UnderlyingSpread, threshold: number): DetectionSnapshot {
+function toDetectionSnapshot(spread: UnderlyingSpread, threshold: number, reference: ReferenceQuote): DetectionSnapshot {
   return {
     ticker: spread.ticker,
     cheapPool: { address: spread.cheapPool.address, feeUnits: spread.cheapPool.feeUnits, priceUsd: spread.cheapPool.priceUsd },
@@ -249,6 +278,7 @@ function toDetectionSnapshot(spread: UnderlyingSpread, threshold: number): Detec
     netEdge: spread.adjustedSpread,
     threshold,
     gas: spread.gas,
+    reference,
   };
 }
 
@@ -271,6 +301,7 @@ export interface PreviewOpportunitiesDeps {
   agentConfig?: AgentLoopConfig;
   fetchPoolQuotesFn?: typeof realFetchPoolQuotes;
   estimateGasFn?: EstimateGasFn;
+  fetchReferenceFn?: FetchReferenceFn;
   narrateProposalFn?: typeof realNarrateProposal;
   priceHistory?: PriceHistory;
 }
@@ -308,7 +339,14 @@ export async function previewOpportunities(deps: PreviewOpportunitiesDeps = {}):
       continue;
     }
 
-    const order = constructOrder(spread, agentConfig, history);
+    // Only fetched when an order is actually built, so previews don't add
+    // a Binance call per page poll.
+    const reference = await (deps.fetchReferenceFn ?? defaultFetchReference)({
+      ticker: spread.ticker,
+      cheapPoolAddress: spread.cheapPool.address,
+      sizeUsd: agentConfig.orderSizeUsd,
+    });
+    const order = constructOrder(spread, agentConfig, history, reference);
     const verdict = check(order, { spentTodaySoFarUsd: spendTracker.getSpentToday(), config: guardrailConfig });
 
     let narration: string;
@@ -336,6 +374,7 @@ export interface AgentLoopDeps {
   agentConfig?: AgentLoopConfig;
   fetchPoolQuotesFn?: typeof realFetchPoolQuotes;
   estimateGasFn?: EstimateGasFn;
+  fetchReferenceFn?: FetchReferenceFn;
   narrateProposalFn?: typeof realNarrateProposal;
   priceHistory?: PriceHistory;
   // Forwarded straight through to runPipeline()'s PipelineDeps — lets
@@ -385,9 +424,19 @@ export async function runAgentLoop(deps: AgentLoopDeps = {}): Promise<AgentLoopR
   const noOpportunities: NoOpportunityRecord[] = [];
   const warmingUp: WarmingUpRecord[] = [];
 
+  const fetchReferenceFn = deps.fetchReferenceFn ?? defaultFetchReference;
+
   for (const spread of spreads) {
     try {
-      const detection = toDetectionSnapshot(spread, agentConfig.adjustedSpreadThreshold);
+      // Every tick, not just when an order is built, so each detection
+      // records the reference (or why it was unavailable) for the
+      // dashboard. An order built this tick reuses it.
+      const reference = await fetchReferenceFn({
+        ticker: spread.ticker,
+        cheapPoolAddress: spread.cheapPool.address,
+        sizeUsd: agentConfig.orderSizeUsd,
+      });
+      const detection = toDetectionSnapshot(spread, agentConfig.adjustedSpreadThreshold, reference);
 
       if (!clearsThreshold(spread, agentConfig.adjustedSpreadThreshold)) {
         const entry = ledger.appendNoOpportunity({ mode, detection });
@@ -402,7 +451,7 @@ export async function runAgentLoop(deps: AgentLoopDeps = {}): Promise<AgentLoopR
         continue;
       }
 
-      const order = constructOrder(spread, agentConfig, history);
+      const order = constructOrder(spread, agentConfig, history, reference);
 
       const ledgerEntry = await runPipeline(
         order,

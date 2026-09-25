@@ -1,5 +1,8 @@
 import { priceSanityCheck, liquidityDepthCheck } from "../basis-model/sanity-checks";
+import type { ReferenceQuote } from "../data/binance-reference";
 import { DEFAULT_GUARDRAIL_CONFIG, type GuardrailConfig } from "./config";
+
+export type { ReferenceQuote } from "../data/binance-reference";
 
 export type Side = "buy" | "sell";
 
@@ -38,6 +41,9 @@ export interface ProposedOrder {
   // real simulated output before any send.
   simulatedOutputUsd: number | null;
   poolPair: PoolPair;
+  // Binance's aggregator quote for buying the same token at the same
+  // size, fetched by the order builder. check() never fetches it.
+  reference: ReferenceQuote;
 }
 
 // Caller-supplied context the gate needs but must not compute itself,
@@ -111,6 +117,34 @@ export function sanityAndLiquidityCheck(
     return { name: "sanityAndLiquidity", ok: false, reason: liquidityResult.reason };
   }
   return { name: "sanityAndLiquidity", ok: true };
+}
+
+// Named check 1b: the buy-leg (cheap) pool's spot price against the
+// Binance aggregator's quote-implied price for the same token and size.
+// A pool reading far from an independent quote is treated as bad data.
+// Spot, not fee-inclusive: a pool's own fee isn't a price error, and
+// adding it would spend most of the budget on the 1% pool before any
+// data error (measured 2026-09-25: 0.13% spot vs 0.87% fee-inclusive;
+// docs/devex-log.md). No reference, no trade: an unavailable quote
+// fails closed.
+export function referencePriceCheck(order: ProposedOrder, config: GuardrailConfig): GuardrailCheckResult {
+  if (order.reference.status !== "ok") {
+    return {
+      name: "referencePrice",
+      ok: false,
+      reason: `no Binance reference quote: ${order.reference.reason}`,
+    };
+  }
+  const reference = order.reference.priceUsd;
+  const divergence = Math.abs(order.price - reference) / reference;
+  if (!Number.isFinite(divergence) || divergence > config.maxReferenceDivergencePct) {
+    return {
+      name: "referencePrice",
+      ok: false,
+      reason: `buy-leg pool price $${order.price.toFixed(4)} is ${(divergence * 100).toFixed(2)}% from the Binance reference $${reference.toFixed(4)} (${order.reference.vendor}), over the ${(config.maxReferenceDivergencePct * 100).toFixed(2)}% limit`,
+    };
+  }
+  return { name: "referencePrice", ok: true };
 }
 
 // Named check 2: hard per-trade spend cap.
@@ -234,6 +268,7 @@ export function check(order: ProposedOrder, deps: GuardrailDeps): GuardrailVerdi
   try {
     const checks: GuardrailCheckResult[] = [
       sanityAndLiquidityCheck(order, config),
+      referencePriceCheck(order, config),
       perTradeCapCheck(order, config),
       dailyCapCheck(order, deps, config),
       dryRunFloorCheck(order, config),

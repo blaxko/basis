@@ -153,7 +153,8 @@ export async function getBnbUsdOnChain(): Promise<number> {
 
 const targetTokenCache = new Map<string, { address: Address; decimals: number }>();
 
-async function getTargetTokenOnChain(poolAddress: string, stablecoin: Address): Promise<{ address: Address; decimals: number }> {
+// The non-stablecoin side of a pool, read on-chain once and cached.
+export async function getTargetTokenOnChain(poolAddress: string, stablecoin: Address): Promise<{ address: Address; decimals: number }> {
   const key = poolAddress.toLowerCase();
   const cached = targetTokenCache.get(key);
   if (cached) return cached;

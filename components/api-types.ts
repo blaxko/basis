@@ -32,6 +32,10 @@ export interface StatusResponse {
   killswitch: PipelineMode;
 }
 
+export type ReferenceQuote =
+  | { status: "ok"; priceUsd: number; vendor: string; route: string }
+  | { status: "unavailable"; reason: string };
+
 export interface PoolPair {
   cheapPoolAddress: string;
   cheapPoolFeeUnits: number;
@@ -51,6 +55,7 @@ export interface ProposedOrder {
   liquidityDepthUsd: number;
   simulatedOutputUsd: number | null;
   poolPair: PoolPair;
+  reference: ReferenceQuote;
 }
 
 export interface GuardrailCheckResult {
@@ -104,6 +109,7 @@ export interface SpreadHistoryPoint {
   expensivePoolFeeUnits: number;
   rawSpread: number;
   adjustedSpread: number;
+  reference: ReferenceQuote | null;
 }
 
 // "live": every automatic evaluation the scheduler recorded in the audit
@@ -144,6 +150,7 @@ export interface DetectionSnapshot {
   netEdge: number;
   threshold: number;
   gas: { costUsd: number; source: "live" | "fallback" };
+  reference: ReferenceQuote;
 }
 
 export interface PipelineLedgerEntry {

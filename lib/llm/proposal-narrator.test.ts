@@ -54,6 +54,8 @@ describe("narrateProposal — real MSFTB cross-pool scenario (declined-trade cas
       expensiveRecentTicks: tenOf(expensivePriceUsd),
       liquidityDepthUsd: 100_000,
       simulatedOutputUsd: 199,
+      // Real Binance quote from docs/devex-log.md (different moment, 0.5% from this pool's spot).
+      reference: { status: "ok", priceUsd: 498.8459, vendor: "LiquidMesh", route: "Rfq Neptunex" },
       poolPair: {
         cheapPoolAddress: "0x5018b018ceb7645c927c5cf246786f89ebcbe7ea",
         cheapPoolFeeUnits: 2500,
@@ -85,6 +87,7 @@ describe("narrateProposal — real MSFTB cross-pool scenario (declined-trade cas
       liquidityDepthUsd: 5000,
       simulatedOutputUsd: 199,
       poolPair: SYNTHETIC_POOL_PAIR,
+      reference: { status: "ok", priceUsd: 101.2525, vendor: "LiquidMesh", route: "synthetic" },
     };
 
     const verdict = check(order, { spentTodaySoFarUsd: 1900, config: DEFAULT_GUARDRAIL_CONFIG });
@@ -111,6 +114,7 @@ describe("narrateProposal — real MSFTB cross-pool scenario (declined-trade cas
       liquidityDepthUsd: 5000,
       simulatedOutputUsd: 99,
       poolPair: SYNTHETIC_POOL_PAIR,
+      reference: { status: "ok", priceUsd: 200.5, vendor: "LiquidMesh", route: "synthetic" },
     };
 
     const verdict = check(order, { spentTodaySoFarUsd: 0, config: DEFAULT_GUARDRAIL_CONFIG });

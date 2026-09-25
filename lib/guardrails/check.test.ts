@@ -7,6 +7,7 @@ import {
   dryRunFloorCheck,
   spreadFreshnessCheck,
   slippageToleranceCheck,
+  referencePriceCheck,
   type ProposedOrder,
 } from "./check";
 import { DEFAULT_GUARDRAIL_CONFIG } from "./config";
@@ -46,6 +47,8 @@ function baseOrder(overrides: Partial<ProposedOrder> = {}): ProposedOrder {
     liquidityDepthUsd: 5000,
     simulatedOutputUsd: 199,
     poolPair: SYNTHETIC_POOL_PAIR,
+    // 0.25% above the cheap pool's spot price, well inside the 2% limit.
+    reference: { status: "ok", priceUsd: 101.2525, vendor: "LiquidMesh", route: "synthetic" },
     ...overrides,
   };
 }
@@ -95,6 +98,53 @@ describe("sanityAndLiquidityCheck", () => {
     const result = sanityAndLiquidityCheck(baseOrder({ liquidityDepthUsd: 10 }), config);
     expect(result.ok).toBe(false);
     expect(result.reason).toBeDefined();
+  });
+});
+
+describe("referencePriceCheck", () => {
+  it("passes when the buy-leg pool's spot price is within the limit of the Binance reference", () => {
+    // 101 vs 101.5: 0.49% apart.
+    const result = referencePriceCheck(baseOrder({ reference: { status: "ok", priceUsd: 101.5, vendor: "LiquidMesh", route: "x" } }), config);
+    expect(result.ok).toBe(true);
+  });
+
+  it("compares spot, not fee-inclusive: a 1% pool's own fee isn't counted as a data error", () => {
+    // Against 99.2: spot 101 is 1.81% off (a pass); spot × 1.01 would be 2.83% off (a block).
+    const order = baseOrder({
+      poolPair: { ...SYNTHETIC_POOL_PAIR, cheapPoolFeeUnits: 10000 },
+      reference: { status: "ok", priceUsd: 99.2, vendor: "v", route: "x" },
+    });
+    expect(Math.abs(101 * 1.01 - 99.2) / 99.2).toBeGreaterThan(config.maxReferenceDivergencePct);
+    expect(referencePriceCheck(order, config).ok).toBe(true);
+  });
+
+  it("passes on the real same-moment reading (2026-09-25): 1% pool $497.0062 vs Binance $497.6310", () => {
+    const order = baseOrder({ price: 497.0062, reference: { status: "ok", priceUsd: 497.631, vendor: "LiquidMesh", route: "Rfq Neptune" } });
+    expect(referencePriceCheck(order, config).ok).toBe(true);
+  });
+
+  it("blocks when the pool price diverges from the reference beyond the limit", () => {
+    const result = referencePriceCheck(baseOrder({ reference: { status: "ok", priceUsd: 110, vendor: "LiquidMesh", route: "x" } }), config);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain("buy-leg pool price $101.0000 is 8.18% from the Binance reference $110.0000 (LiquidMesh)");
+    expect(result.reason).toContain("over the 2.00% limit");
+  });
+
+  it("blocks when the reference is unavailable — no reference, no trade", () => {
+    const result = referencePriceCheck(baseOrder({ reference: { status: "unavailable", reason: "HTTP 503" } }), config);
+    expect(result.ok).toBe(false);
+    expect(result.pending).toBeUndefined();
+    expect(result.reason).toBe("no Binance reference quote: HTTP 503");
+  });
+
+  it("check() blocks on it, and shows it on the verdict, when every other check passes", () => {
+    const verdict = check(baseOrder({ reference: { status: "unavailable", reason: "getaddrinfo ENOTFOUND web3.binance.com" } }), {
+      spentTodaySoFarUsd: 0,
+      config,
+    });
+    expect(verdict.approved).toBe(false);
+    expect(verdict.blockedBy).toBe("referencePrice");
+    expect(verdict.checks.map((c) => c.name)).toContain("referencePrice");
   });
 });
 
@@ -191,7 +241,7 @@ describe("check() — composed gate", () => {
   it("no check is ever reported as a plain pass without data: every ok check is either backed by input or marked pending", () => {
     const verdict = check(baseOrder({ simulatedOutputUsd: null }), { spentTodaySoFarUsd: 0, config });
     const plainPasses = verdict.checks.filter((c) => c.ok && !c.pending).map((c) => c.name);
-    expect(plainPasses).toEqual(["sanityAndLiquidity", "perTradeCap", "dailyCap"]);
+    expect(plainPasses).toEqual(["sanityAndLiquidity", "referencePrice", "perTradeCap", "dailyCap"]);
   });
 
   it("blocks on the daily cap alone when every other check would pass", () => {
@@ -315,6 +365,10 @@ describe("integration: real MSFTB cross-pool pairing composes with check()", () 
       // simply should never be constructed by the caller in the first
       // place (lib/orchestration/agent-loop.ts's job, not check()'s).
       simulatedOutputUsd: 199,
+      // The real Binance aggregator quote from docs/devex-log.md (10 USDT,
+      // 2026-09-24 21:32 UTC) — a different moment from the pool reads
+      // above, so this shows a realistic divergence, not a same-instant one.
+      reference: { status: "ok", priceUsd: 498.8459, vendor: "LiquidMesh", route: "Rfq Neptunex" },
       // Both real, registered MSFTB pools (see lib/data/pool-addresses.ts).
       poolPair: {
         cheapPoolAddress: "0x5018b018ceb7645c927c5cf246786f89ebcbe7ea",

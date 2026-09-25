@@ -1,5 +1,6 @@
 import { appendFileSync } from "node:fs";
 import type { GuardrailVerdict } from "../guardrails/check";
+import type { ReferenceQuote } from "../data/binance-reference";
 
 export type PipelineMode = "simulation" | "dry-run" | "live";
 
@@ -46,6 +47,9 @@ export interface DetectionSnapshot {
   // The round-trip gas figure used in netEdge, and whether it came from
   // a live estimate or the flat fallback.
   gas: { costUsd: number; source: "live" | "fallback" };
+  // Binance aggregator quote for buying the target at the order size,
+  // fetched on the same tick — or why it couldn't be.
+  reference: ReferenceQuote;
 }
 
 // One row per pipeline run (PRD rule 8: every decision — approved,

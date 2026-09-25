@@ -5,7 +5,7 @@ import { AuditLedger } from "../execution/audit-ledger";
 import { BoundedPriceHistory } from "../data/price-history";
 import type { PoolQuote } from "../data/types";
 import type { WalletClient, FreshPoolPrices } from "../execution/pipeline";
-import type { EstimateGasFn } from "./agent-loop";
+import type { EstimateGasFn, FetchReferenceFn } from "./agent-loop";
 import type { chatCompletion, GroqChatResult } from "../llm/groq-client";
 
 const POOL_025 = "0x5018b018ceb7645c927c5cf246786f89ebcbe7ea";
@@ -14,6 +14,11 @@ const POOL_1 = "0x58e44c2e5b17ef40915b4b3ae8451b6b87285b44";
 // Gas pinned to the old flat $0.21 so the documented −1.28% stays
 // reproducible; the live estimator has its own tests.
 const pinnedGas: EstimateGasFn = async () => ({ gasCostUsd: 200_000 * 1.5e-9 * 700, source: "fallback" });
+
+// A Binance reference 0.25% above the cheap pool's spot price
+// (496.3821 × 1.0025) — well inside the 2% limit.
+const agreeingReference = () =>
+  vi.fn<FetchReferenceFn>(async () => ({ status: "ok", priceUsd: 497.6231, vendor: "LiquidMesh", route: "stub" }));
 
 // What the scheduler would have recorded after `count` ticks.
 function historyWith(count: number): BoundedPriceHistory {
@@ -164,6 +169,7 @@ describe("handleInstruction — valid instruction composes to a correctly-declin
       chatCompletionFn,
       fetchPoolQuotesFn,
       estimateGasFn: pinnedGas,
+      fetchReferenceFn: agreeingReference(),
       priceHistory: historyWith(10),
       walletClient,
       fetchFreshPoolPrices: fakeFetchFreshPoolPrices,
@@ -202,6 +208,7 @@ describe("handleInstruction — valid instruction composes to a correctly-declin
       chatCompletionFn,
       fetchPoolQuotesFn: vi.fn().mockResolvedValue(msftPoolQuotes()),
       estimateGasFn: pinnedGas,
+      fetchReferenceFn: agreeingReference(),
       priceHistory: historyWith(10),
       walletClient,
       fetchFreshPoolPrices: fakeFetchFreshPoolPrices,
@@ -225,6 +232,49 @@ describe("handleInstruction — valid instruction composes to a correctly-declin
   });
 });
 
+describe("handleInstruction — Binance reference price", () => {
+  const base = () => ({
+    fetchPoolQuotesFn: vi.fn().mockResolvedValue(msftPoolQuotes()),
+    estimateGasFn: pinnedGas,
+    priceHistory: historyWith(10),
+    walletClient: mockWalletClient(),
+    fetchFreshPoolPrices: fakeFetchFreshPoolPrices,
+    getWalletAddress: () => "0x1234567890123456789012345678901234567890",
+    ledger: new AuditLedger(),
+    spendTracker: new DailySpendTracker(),
+  });
+
+  it("fetches the reference at the instruction's own size", async () => {
+    const fetchReferenceFn = agreeingReference();
+    await handleInstruction("buy 300 dollars of msft", {
+      ...base(),
+      chatCompletionFn: mockChat({ ok: true, content: '{"ticker":"MSFT","side":"buy","sizeUsd":300}' }),
+      fetchReferenceFn,
+    });
+    expect(fetchReferenceFn).toHaveBeenCalledWith({ ticker: "MSFT", cheapPoolAddress: POOL_025, sizeUsd: 300 });
+  });
+
+  it("an unavailable reference blocks at the guardrail", async () => {
+    const result = await handleInstruction("buy 200 dollars of msft", {
+      ...base(),
+      chatCompletionFn: mockChat({ ok: true, content: '{"ticker":"MSFT","side":"buy","sizeUsd":200}' }),
+      fetchReferenceFn: vi.fn<FetchReferenceFn>(async () => ({ status: "unavailable", reason: "getaddrinfo ENOTFOUND web3.binance.com" })),
+    });
+    expect(result.ok && result.outcome).toBe("blocked");
+    expect(result.ok && result.verdict.blockedBy).toBe("referencePrice");
+  });
+
+  it("moment B with no reference fails two checks, so the runbook needs Binance reachable", async () => {
+    const result = await handleInstruction("buy 1000 dollars of msft", {
+      ...base(),
+      chatCompletionFn: mockChat({ ok: true, content: '{"ticker":"MSFT","side":"buy","sizeUsd":1000}' }),
+      fetchReferenceFn: vi.fn<FetchReferenceFn>(async () => ({ status: "unavailable", reason: "HTTP 503" })),
+    });
+    const failed = result.ok ? result.verdict.checks.filter((c) => !c.ok).map((c) => c.name) : [];
+    expect(failed).toEqual(["referencePrice", "perTradeCap"]);
+  });
+});
+
 describe("handleInstruction — no order during price-history warm-up", () => {
   it("returns a typed warming_up rejection before building any order, and writes nothing", async () => {
     const chatCompletionFn = mockChat({ ok: true, content: '{"ticker":"MSFT","side":"buy","sizeUsd":1000}' });
@@ -236,6 +286,7 @@ describe("handleInstruction — no order during price-history warm-up", () => {
       chatCompletionFn,
       fetchPoolQuotesFn: vi.fn().mockResolvedValue(msftPoolQuotes()),
       estimateGasFn: pinnedGas,
+      fetchReferenceFn: agreeingReference(),
       priceHistory: history,
       walletClient,
       ledger,

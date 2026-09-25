@@ -85,5 +85,6 @@ function toHistoryPoint(entry: AuditLedgerEntry): SpreadHistoryPoint {
     expensivePoolFeeUnits: detection.expensivePool.feeUnits,
     rawSpread: detection.grossGap,
     adjustedSpread: detection.netEdge,
+    reference: detection.reference,
   };
 }
