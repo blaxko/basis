@@ -160,6 +160,64 @@ h3 {
   background: var(--color-approved);
 }
 
+/* --- Start here (public demo, dismissible) --- */
+
+.start-here {
+  min-height: 0;
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--color-accent);
+}
+
+.start-here-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.start-here-top .panel-title {
+  flex: 1;
+}
+
+.start-here-dismiss {
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border: var(--border-width) solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-ink);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.start-here-text {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.start-here-subtitle {
+  margin: 0;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+}
+
+.start-here-steps {
+  margin: 0;
+  padding-left: 1.4rem;
+  line-height: 1.5;
+}
+
+.start-here-pending {
+  color: var(--color-muted);
+  font-style: italic;
+}
+
+.start-here-nosignup {
+  font-weight: 700;
+}
+
 /* --- Instruction box --- */
 
 .instruction-panel {

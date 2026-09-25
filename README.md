@@ -1,5 +1,21 @@
 # Basis
 
+## For judges: start here
+
+**Live demo: https://basis-production-c229.up.railway.app** (no wallet, deposit or sign-up needed)
+
+Basis watches the two PancakeSwap pools where MSFTB (tokenized Microsoft stock) trades on BNB Chain, and would only trade when the price gap between them beats every cost: both pools' fees, slippage and gas. Most of the time the gap is far smaller than those costs, so Basis correctly says no, and records why.
+
+**Try it**
+
+1. In the **Give an instruction** box, click an example instruction, then **Send**.
+2. Watch the **Guardrail Gate** and the **Audit Ledger** update, about 10 seconds later.
+3. Try **Buy $1000 of MSFT** to see a safety block: it's over the $500 per-trade limit.
+
+**This demo can't trade, on purpose. See the real trade:** demo video (link coming soon) and the four transactions of the $5 mainnet round trip, listed under [Status](#status). A plain-language guide to every panel: [`docs/how-to-use.md`](docs/how-to-use.md).
+
+## What Basis is
+
 An autonomous agent that watches the two PancakeSwap V3 pools for **MSFTB** (bStocks' tokenized Microsoft) on BNB Smart Chain and decides whether the price gap between them is worth trading, after every cost: both pools' fees, slippage and live gas. Every decision, including "no", goes through a guardrail gate and into an audit ledger.
 
 Built for the BNB Chain Tokenized Stocks hackathon on the **Binance Web3 API**:
