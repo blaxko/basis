@@ -7,7 +7,7 @@ import {
   getTradingWalletAddress,
   buildTransactionApiAuthHeaders,
   type SwapRequest,
-  type TradingWalletClient,
+  type SendDeps,
 } from "./agentic-wallet";
 
 function swapRequest(overrides: Partial<SwapRequest> = {}): SwapRequest {
@@ -259,13 +259,15 @@ describe("approvalCheck (mocked) — needs-approval and already-approved branche
   });
 });
 
-describe("send — signs locally via an injected trading wallet client and broadcasts", () => {
+describe("send — Binance simulate, sign locally, Binance MEV-protected broadcast, wait for receipt", () => {
   const originalRpcUrl = process.env.BSC_RPC_URL;
   const originalPrivateKey = process.env.TRADING_WALLET_PRIVATE_KEY;
+  const KEY = ("0x" + "1".repeat(64)) as `0x${string}`;
+  const TX_HASH = "0x" + "ab".repeat(32);
 
   beforeEach(() => {
     process.env.BSC_RPC_URL = "https://bsc-dataseed.example";
-    process.env.TRADING_WALLET_PRIVATE_KEY = "0x" + "1".repeat(64);
+    process.env.TRADING_WALLET_PRIVATE_KEY = KEY;
   });
 
   afterEach(() => {
@@ -273,43 +275,76 @@ describe("send — signs locally via an injected trading wallet client and broad
     process.env.TRADING_WALLET_PRIVATE_KEY = originalPrivateKey;
   });
 
-  it("signs and broadcasts the unsigned transaction, returning its hash as txId", async () => {
-    const mockWalletClient: TradingWalletClient = {
-      sendTransaction: vi.fn().mockResolvedValue("0xtxhash123"),
+  function steps(overrides: Partial<SendDeps> = {}) {
+    const calls: string[] = [];
+    const deps = {
+      simulate: vi.fn(async () => {
+        calls.push("simulate");
+        return { result: "succeeded" as const, status: "SUCCESS", balanceChanges: [], allowanceChanges: [] };
+      }),
+      prepareAndSign: vi.fn(async () => {
+        calls.push("sign");
+        return "0xsigned" as `0x${string}`;
+      }),
+      broadcast: vi.fn(async () => {
+        calls.push("broadcast");
+        return { txHash: TX_HASH, orderId: "order-1" };
+      }),
+      waitForReceipt: vi.fn(async () => {
+        calls.push("receipt");
+        return { status: "success" as const };
+      }),
+      ...overrides,
     };
+    return { deps, calls };
+  }
 
-    const result = await send({ to: "0xRouter", data: "0xdeadbeef", value: "1000" }, { walletClient: mockWalletClient });
+  it("simulates, signs, broadcasts, then waits — in that order — and returns the broadcast hash", async () => {
+    const { deps, calls } = steps();
+    const result = await send({ to: "0xRouter", data: "0xdeadbeef", value: "1000" }, deps);
 
-    expect(result.txId).toBe("0xtxhash123");
-    expect(mockWalletClient.sendTransaction).toHaveBeenCalledWith({
-      to: "0xRouter",
-      data: "0xdeadbeef",
-      value: 1000n,
-    });
+    expect(calls).toEqual(["simulate", "sign", "broadcast", "receipt"]);
+    expect(result.txId).toBe(TX_HASH);
+    const from = getTradingWalletAddress();
+    expect(deps.simulate).toHaveBeenCalledWith({ from, to: "0xRouter", value: "1000", data: "0xdeadbeef" });
+    expect(deps.prepareAndSign).toHaveBeenCalledWith({ to: "0xRouter", data: "0xdeadbeef", value: 1000n });
+    expect(deps.broadcast).toHaveBeenCalledWith({ signedTransaction: "0xsigned", address: from });
   });
 
-  it("omits value when the unsigned transaction doesn't specify one", async () => {
-    const mockWalletClient: TradingWalletClient = {
-      sendTransaction: vi.fn().mockResolvedValue("0xtxhash456"),
-    };
-
-    await send({ to: "0xRouter", data: "0xdeadbeef" }, { walletClient: mockWalletClient });
-
-    expect(mockWalletClient.sendTransaction).toHaveBeenCalledWith({
-      to: "0xRouter",
-      data: "0xdeadbeef",
-      value: undefined,
-    });
+  it("defaults value to 0 when the unsigned transaction doesn't specify one", async () => {
+    const { deps } = steps();
+    await send({ to: "0xRouter", data: "0xdeadbeef" }, deps);
+    expect(deps.simulate).toHaveBeenCalledWith(expect.objectContaining({ value: "0" }));
+    expect(deps.prepareAndSign).toHaveBeenCalledWith(expect.objectContaining({ value: 0n }));
   });
 
-  it("propagates a broadcast failure rather than returning a fake transaction ID", async () => {
-    const mockWalletClient: TradingWalletClient = {
-      sendTransaction: vi.fn().mockRejectedValue(new Error("insufficient funds")),
-    };
+  it("signs and sends nothing when Binance predicts the transaction fails", async () => {
+    const { deps } = steps({
+      simulate: vi.fn(async () => ({ result: "failed" as const, status: "FAILED", failReason: "execution reverted: STF" })),
+    });
+    await expect(send({ to: "0xRouter", data: "0xdead" }, deps)).rejects.toThrow("not sent: Binance simulation did not predict success (FAILED: execution reverted: STF)");
+    expect(deps.prepareAndSign).not.toHaveBeenCalled();
+    expect(deps.broadcast).not.toHaveBeenCalled();
+  });
 
-    await expect(send({ to: "0xRouter", data: "0xdead" }, { walletClient: mockWalletClient })).rejects.toThrow(
-      "insufficient funds"
-    );
+  it("signs and sends nothing when the simulation is unavailable — no prediction is not a pass", async () => {
+    const { deps } = steps({ simulate: vi.fn(async () => ({ result: "unavailable" as const, reason: "HTTP 503" })) });
+    await expect(send({ to: "0xRouter", data: "0xdead" }, deps)).rejects.toThrow("HTTP 503");
+    expect(deps.prepareAndSign).not.toHaveBeenCalled();
+    expect(deps.broadcast).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the Binance broadcast fails — no retry, no other route", async () => {
+    const { deps, calls } = steps({ broadcast: vi.fn(async () => Promise.reject(new Error("Binance broadcast failed: HTTP 502"))) });
+    await expect(send({ to: "0xRouter", data: "0xdead" }, deps)).rejects.toThrow("Binance broadcast failed: HTTP 502");
+    expect(deps.broadcast).toHaveBeenCalledTimes(1);
+    expect(deps.waitForReceipt).not.toHaveBeenCalled();
+    expect(calls).toEqual(["simulate", "sign"]);
+  });
+
+  it("throws when the transaction is mined but reverts", async () => {
+    const { deps } = steps({ waitForReceipt: vi.fn(async () => ({ status: "reverted" as const })) });
+    await expect(send({ to: "0xRouter", data: "0xdead" }, deps)).rejects.toThrow(`transaction ${TX_HASH} was mined but reverted`);
   });
 });
 

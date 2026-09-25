@@ -93,6 +93,21 @@ export async function getErc20Decimals(tokenAddress: Address): Promise<number> {
   return client.readContract({ address: tokenAddress, abi: ERC20_DECIMALS_ABI, functionName: "decimals" });
 }
 
+const ERC20_BALANCE_ABI = [
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
+] as const;
+
+export async function getErc20Balance(tokenAddress: Address, owner: Address): Promise<bigint> {
+  const client = getPublicClient();
+  return client.readContract({ address: tokenAddress, abi: ERC20_BALANCE_ABI, functionName: "balanceOf", args: [owner] });
+}
+
 export interface AllowanceCheckResult {
   sufficient: boolean;
   currentAllowance: bigint;

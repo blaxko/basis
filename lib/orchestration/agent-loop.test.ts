@@ -79,6 +79,7 @@ function mockWalletClient(): WalletClient {
     checkAllowance: vi.fn().mockResolvedValue({ sufficient: true, currentAllowance: 10n ** 30n }),
     simulateSwap: vi.fn().mockResolvedValue({ outputUsd: 199, amountOut: 199_000_000_000_000_000_000n, gasEstimate: 150_000n }),
     send: vi.fn().mockResolvedValue({ txId: "0xdeadbeef", raw: {} }),
+    simulateWithBinance: vi.fn().mockResolvedValue({ result: "succeeded", status: "SUCCESS", balanceChanges: [], allowanceChanges: [] }),
   };
 }
 
@@ -258,7 +259,7 @@ describe("runAgentLoop — a positive net edge above threshold, after warm-up, p
 
     const entry = ledger.readAll()[0]!;
     expect(entry.kind).toBe("pipeline");
-    expect(entry.detection?.netEdge).toBeCloseTo(opportunity.order.adjustedSpread, 10);
+    expect(entry.kind === "pipeline" && entry.detection?.netEdge).toBeCloseTo(opportunity.order.adjustedSpread, 10);
   });
 
   it("in live mode the same order is refused as two_leg_execution_not_implemented — nothing is sent", async () => {

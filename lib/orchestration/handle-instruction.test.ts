@@ -53,6 +53,7 @@ function mockWalletClient(): WalletClient {
     checkAllowance: vi.fn().mockResolvedValue({ sufficient: true, currentAllowance: 10n ** 30n }),
     simulateSwap: vi.fn().mockResolvedValue({ outputUsd: 199, amountOut: 199_000_000_000_000_000_000n, gasEstimate: 150_000n }),
     send: vi.fn().mockResolvedValue({ txId: "0xdeadbeef", raw: {} }),
+    simulateWithBinance: vi.fn().mockResolvedValue({ result: "succeeded", status: "SUCCESS", balanceChanges: [], allowanceChanges: [] }),
   };
 }
 

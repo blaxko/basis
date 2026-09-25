@@ -1,6 +1,7 @@
 import { appendFileSync } from "node:fs";
 import type { GuardrailVerdict } from "../guardrails/check";
 import type { ReferenceQuote } from "../data/binance-reference";
+import type { TxSimulation } from "../data/binance-transaction";
 
 export type PipelineMode = "simulation" | "dry-run" | "live";
 
@@ -75,6 +76,10 @@ export interface PipelineLedgerEntry {
   // the wallet.
   approval?: { needed: boolean; txId?: string; error?: string };
   dryRun?: { outputUsd: number; ok: boolean; reason?: string };
+  // Binance Transaction API simulation of our own exactInputSingle
+  // calldata from the trading wallet, run after the QuoterV2 floor
+  // passes. Present only for runs that reached it.
+  transactionSimulation?: TxSimulation;
   send?: { txId: string } | { error: string };
 }
 
@@ -94,7 +99,48 @@ export interface DetectionLedgerEntry {
   warmUp?: { readings: number; required: number };
 }
 
-export type AuditLedgerEntry = PipelineLedgerEntry | DetectionLedgerEntry;
+// One leg of the manual execution test (lib/execution/execution-test.ts).
+// Amounts are integer strings in each token's smallest unit.
+export interface ExecutionTestLeg {
+  side: "buy" | "sell";
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: string;
+  // QuoterV2's simulated output and the on-chain minimum sent with the swap.
+  quotedAmountOut?: string;
+  amountOutMinimum?: string;
+  approval?: { needed: boolean; txId?: string };
+  // Binance Transaction API simulation of the swap, as send() saw it.
+  transactionSimulation?: TxSimulation;
+  txId?: string;
+  // Balance delta of tokenOut measured on-chain after the swap.
+  received?: string;
+  error?: string;
+}
+
+// A manual execution test — NOT an arbitrage. A deliberately separate
+// `kind` with no verdict or detection, so it can't be mistaken for, or
+// counted as, a pipeline decision.
+//   "refused"     — a precondition failed; nothing was sent.
+//   "buy_failed"  — the buy leg (or its approval) failed.
+//   "sell_failed" — the buy completed; the sell leg failed, so the
+//                   wallet still holds the bought tokens.
+//   "completed"   — both legs mined.
+export interface ExecutionTestLedgerEntry {
+  kind: "execution_test";
+  id: string;
+  timestamp: number;
+  mode: PipelineMode;
+  outcome: "refused" | "buy_failed" | "sell_failed" | "completed";
+  sizeUsd: number;
+  pool: { address: string; feeUnits: number };
+  reason?: string;
+  legs: ExecutionTestLeg[];
+  // USD recorded against the shared daily spend tracker by this run.
+  spendRecordedUsd: number;
+}
+
+export type AuditLedgerEntry = PipelineLedgerEntry | DetectionLedgerEntry | ExecutionTestLedgerEntry;
 export type LedgerOutcome = AuditLedgerEntry["outcome"];
 
 // Append-only writer. No update/delete is exposed on purpose — the only
@@ -122,6 +168,10 @@ export class AuditLedger {
     warmUp: { readings: number; required: number };
   }): DetectionLedgerEntry {
     return this.write({ kind: "detection", id: this.nextId(), timestamp: Date.now(), outcome: "warming_up", ...entry });
+  }
+
+  appendExecutionTest(entry: Omit<ExecutionTestLedgerEntry, "id" | "timestamp" | "kind">): ExecutionTestLedgerEntry {
+    return this.write({ kind: "execution_test", id: this.nextId(), timestamp: Date.now(), ...entry });
   }
 
   private nextId(): string {

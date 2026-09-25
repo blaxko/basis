@@ -40,7 +40,7 @@ describe("groupLedgerRows — display-only collapse of consecutive detection ent
   it("never merges across a guardrail block, which stays its own visible row", () => {
     const entries: AuditLedgerEntry[] = [detection(), detection(), pipeline(), detection(), detection()];
     const groups = groupLedgerRows(entries);
-    expect(groups.map((g) => (g.type === "pipeline" ? "pipeline" : `detection×${g.entries.length}`))).toEqual([
+    expect(groups.map((g) => (g.type === "detection" ? `detection×${g.entries.length}` : g.type))).toEqual([
       "detection×2",
       "pipeline",
       "detection×2",
@@ -54,7 +54,7 @@ describe("groupLedgerRows — display-only collapse of consecutive detection ent
 
   it("drops nothing: every entry appears exactly once, in order", () => {
     const entries: AuditLedgerEntry[] = [detection(), pipeline(), detection(), detection("warming_up"), detection(), pipeline()];
-    const flattened = groupLedgerRows(entries).flatMap((g): AuditLedgerEntry[] => (g.type === "pipeline" ? [g.entry] : g.entries));
+    const flattened = groupLedgerRows(entries).flatMap((g): AuditLedgerEntry[] => (g.type === "detection" ? g.entries : [g.entry]));
     expect(flattened).toEqual(entries);
   });
 });

@@ -1,7 +1,14 @@
 "use client";
 
 import { usePoll } from "./use-poll";
-import type { DetectionLedgerEntry, DetectionSnapshot, LedgerResponse, PipelineLedgerEntry } from "./api-types";
+import type {
+  DetectionLedgerEntry,
+  DetectionSnapshot,
+  ExecutionTestLedgerEntry,
+  LedgerResponse,
+  PipelineLedgerEntry,
+  TxSimulation,
+} from "./api-types";
 import { groupLedgerRows } from "./ledger-groups";
 
 const POLL_MS = 10_000;
@@ -58,6 +65,8 @@ export function AuditLedger() {
         {groups.map((group) =>
           group.type === "pipeline" ? (
             <PipelineRow key={group.entry.id} entry={group.entry} />
+          ) : group.type === "execution_test" ? (
+            <ExecutionTestRow key={group.entry.id} entry={group.entry} />
           ) : group.entries.length === 1 ? (
             <DetectionRow key={group.entries[0]!.id} entry={group.entries[0]!} />
           ) : (
@@ -154,8 +163,41 @@ function PipelineRow({ entry }: { entry: PipelineLedgerEntry }) {
           {entry.dryRun.reason ? ` (${entry.dryRun.reason})` : ""}
         </div>
       )}
+      {entry.transactionSimulation && <div>{binanceSimulation(entry.transactionSimulation)}</div>}
       {entry.send && "txId" in entry.send && <div>tx: {entry.send.txId}</div>}
       {entry.send && "error" in entry.send && <div>send failed: {entry.send.error}</div>}
     </div>
   );
+}
+
+// Labeled as a test on every line so it can't be read as an arbitrage.
+function ExecutionTestRow({ entry }: { entry: ExecutionTestLedgerEntry }) {
+  return (
+    <div className="terminal-line">
+      <div className="terminal-line-meta">
+        {fmtTime(entry.timestamp)} · mode={entry.mode} · kind=execution_test · outcome={entry.outcome}
+      </div>
+      <div>
+        EXECUTION TEST (not arbitrage) — ${entry.sizeUsd} round trip on the {entry.pool.feeUnits / 10_000}% pool · $
+        {entry.spendRecordedUsd.toFixed(2)} counted toward the daily cap
+        {entry.reason ? ` · ${entry.reason}` : ""}
+      </div>
+      {entry.legs.map((leg) => (
+        <div key={leg.side}>
+          {leg.side}: in {leg.amountIn}
+          {leg.approval?.needed && ` · approval ${leg.approval.txId ?? "not sent"}`}
+          {leg.amountOutMinimum && ` · min out ${leg.amountOutMinimum}`}
+          {leg.txId && ` · tx ${leg.txId}`}
+          {leg.received && ` · received ${leg.received}`}
+          {leg.error && ` · FAILED: ${leg.error}`}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function binanceSimulation(sim: TxSimulation): string {
+  if (sim.result === "succeeded") return `Binance simulate: ${sim.status} — predicts the swap succeeds`;
+  if (sim.result === "failed") return `Binance simulate: ${sim.status} — ${sim.failReason}`;
+  return `Binance simulate: UNAVAILABLE (${sim.reason})`;
 }

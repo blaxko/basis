@@ -75,11 +75,17 @@ function baseOrder(overrides: Partial<ProposedOrder> = {}): ProposedOrder {
   };
 }
 
+// Shape of the real SUCCESS response logged in docs/devex-log.md.
+const BINANCE_SIM_OK = { result: "succeeded" as const, status: "SUCCESS", balanceChanges: [], allowanceChanges: [] };
+// The real FAILED response for our swap from the unfunded wallet.
+const BINANCE_SIM_STF = { result: "failed" as const, status: "FAILED", failReason: "execution reverted: STF" };
+
 function mockWalletClient(overrides: Partial<WalletClient> = {}): WalletClient {
   return {
     checkAllowance: vi.fn().mockResolvedValue({ sufficient: true, currentAllowance: 10n ** 30n }),
     simulateSwap: vi.fn().mockResolvedValue({ outputUsd: 199, amountOut: 199_000_000_000_000_000_000n, gasEstimate: 150_000n }),
     send: vi.fn().mockResolvedValue({ txId: "0xdeadbeef", raw: {} }),
+    simulateWithBinance: vi.fn().mockResolvedValue(BINANCE_SIM_OK),
     ...overrides,
   };
 }
@@ -216,6 +222,50 @@ describe("runPipeline — mode gating (dry-run and simulation unchanged)", () =>
   });
 });
 
+describe("runPipeline — dry-run: Binance Transaction API simulation of our own swap", () => {
+  it("simulates the exact exactInputSingle calldata from the trading wallet and records the result", async () => {
+    const walletClient = mockWalletClient();
+    const entry = await runPipeline(baseOrder(), deps({ walletClient }));
+
+    expect(entry.outcome).toBe("dry_run_only");
+    expect(entry.transactionSimulation).toEqual(BINANCE_SIM_OK);
+    const evmTx = vi.mocked(walletClient.simulateWithBinance).mock.calls[0]![0];
+    expect(evmTx.from).toBe(getWalletAddress());
+    expect(evmTx.to.toLowerCase()).toBe("0x1b81d678ffb9c0263b24a97847620c99d213eb14");
+    expect(evmTx.value).toBe("0");
+    const decoded = decodeFunctionData({ abi: V3_SWAP_ROUTER_ABI, data: evmTx.data as `0x${string}` });
+    expect(decoded.functionName).toBe("exactInputSingle");
+    expect(decoded.args[0].amountIn).toBe(200n * 10n ** 18n);
+    expect(decoded.args[0].amountOutMinimum).toBe(applySlippageTolerance(199_000_000_000_000_000_000n, config.sendSlippageTolerance));
+  });
+
+  it("stops as dry_run_failed with Binance's verbatim reason when it predicts a revert (the real unfunded-wallet result)", async () => {
+    const walletClient = mockWalletClient({ simulateWithBinance: vi.fn().mockResolvedValue(BINANCE_SIM_STF) });
+    const entry = await runPipeline(baseOrder(), deps({ walletClient }));
+
+    expect(entry.outcome).toBe("dry_run_failed");
+    expect(entry.dryRun?.ok).toBe(true); // QuoterV2 floor passed; Binance is what failed
+    expect(entry.transactionSimulation).toEqual(BINANCE_SIM_STF);
+  });
+
+  it("stops as dry_run_failed when the simulation is unavailable — no prediction is not a pass", async () => {
+    const unavailable = { result: "unavailable" as const, reason: "HTTP 503: service unavailable" };
+    const walletClient = mockWalletClient({ simulateWithBinance: vi.fn().mockResolvedValue(unavailable) });
+    const entry = await runPipeline(baseOrder(), deps({ walletClient }));
+
+    expect(entry.outcome).toBe("dry_run_failed");
+    expect(entry.transactionSimulation).toEqual(unavailable);
+  });
+
+  it("is not called when the QuoterV2 floor already failed", async () => {
+    const walletClient = mockWalletClient({
+      simulateSwap: vi.fn().mockResolvedValue({ outputUsd: 50, amountOut: 50_000_000_000_000_000_000n, gasEstimate: 150_000n }),
+    });
+    await runPipeline(baseOrder(), deps({ walletClient }));
+    expect(walletClient.simulateWithBinance).not.toHaveBeenCalled();
+  });
+});
+
 describe("runPipeline — spreadFreshnessCheck (MEV/front-running mitigation)", () => {
   it("blocks as spread_closed when the edge decayed below the retention floor", async () => {
     const walletClient = mockWalletClient();
@@ -288,11 +338,15 @@ describe("executeDirectSwap — the built, unwired single-leg send path", () => 
         calls.push("send");
         return { txId: "0xdeadbeef", raw: {} };
       }),
+      simulateWithBinance: vi.fn().mockImplementation(async () => {
+        calls.push("simulateWithBinance");
+        return BINANCE_SIM_OK;
+      }),
     };
 
     const entry = await executeDirectSwap(baseOrder(), deps({ walletClient }));
 
-    expect(calls).toEqual(["checkAllowance", "simulateSwap", "send"]);
+    expect(calls).toEqual(["checkAllowance", "simulateSwap", "simulateWithBinance", "send"]);
     expect(entry.outcome).toBe("executed");
     expect(entry.approval).toEqual({ needed: false });
     expect(entry.send).toEqual({ txId: "0xdeadbeef" });
@@ -313,11 +367,15 @@ describe("executeDirectSwap — the built, unwired single-leg send path", () => 
         calls.push(tx.data === "0xapprove" ? "send:approve" : "send:swap");
         return { txId: tx.data === "0xapprove" ? "0xapprovaltx" : "0xswaptx" };
       }),
+      simulateWithBinance: vi.fn().mockImplementation(async () => {
+        calls.push("simulateWithBinance");
+        return BINANCE_SIM_OK;
+      }),
     };
 
     const entry = await executeDirectSwap(baseOrder(), deps({ walletClient }));
 
-    expect(calls).toEqual(["checkAllowance", "send:approve", "simulateSwap", "send:swap"]);
+    expect(calls).toEqual(["checkAllowance", "send:approve", "simulateSwap", "simulateWithBinance", "send:swap"]);
     expect(entry.approval).toEqual({ needed: true, txId: "0xapprovaltx" });
     expect(entry.send).toEqual({ txId: "0xswaptx" });
   });
@@ -327,6 +385,7 @@ describe("executeDirectSwap — the built, unwired single-leg send path", () => 
       checkAllowance: vi.fn().mockResolvedValue({ sufficient: false, currentAllowance: 0n, approveTransaction: { to: "0xToken", data: "0xapprove" } }),
       simulateSwap: vi.fn(),
       send: vi.fn().mockRejectedValue(new Error("insufficient gas")),
+      simulateWithBinance: vi.fn(),
     };
 
     const entry = await executeDirectSwap(baseOrder(), deps({ walletClient }));
@@ -359,6 +418,15 @@ describe("executeDirectSwap — the built, unwired single-leg send path", () => 
 
     const decoded = decodeFunctionData({ abi: V3_SWAP_ROUTER_ABI, data: swapData as `0x${string}` });
     expect(decoded.args[0].amountOutMinimum).toBe(applySlippageTolerance(199_000_000_000_000_000_000n, config.sendSlippageTolerance));
+  });
+
+  it("never sends the swap when Binance predicts it reverts", async () => {
+    const walletClient = mockWalletClient({ simulateWithBinance: vi.fn().mockResolvedValue(BINANCE_SIM_STF) });
+    const entry = await executeDirectSwap(baseOrder(), deps({ walletClient }));
+
+    expect(entry.outcome).toBe("dry_run_failed");
+    expect(entry.transactionSimulation).toEqual(BINANCE_SIM_STF);
+    expect(walletClient.send).not.toHaveBeenCalled();
   });
 
   it("still runs every gate first: a guardrail block never reaches the wallet", async () => {

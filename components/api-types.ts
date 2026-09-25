@@ -186,8 +186,16 @@ export interface PipelineLedgerEntry {
   freshness?: { freshSpread: number; ok: boolean; reason?: string };
   approval?: { needed: boolean; txId?: string; error?: string };
   dryRun?: { outputUsd: number; ok: boolean; reason?: string };
+  transactionSimulation?: TxSimulation;
   send?: { txId: string } | { error: string };
 }
+
+// Mirrors lib/data/binance-transaction.ts's TxSimulation (balance and
+// allowance change shapes kept loose; the UI only counts them).
+export type TxSimulation =
+  | { result: "succeeded"; status: string; balanceChanges: unknown[]; allowanceChanges: unknown[] }
+  | { result: "failed"; status: string; failReason: string }
+  | { result: "unavailable"; reason: string };
 
 export interface DetectionLedgerEntry {
   kind: "detection";
@@ -199,7 +207,35 @@ export interface DetectionLedgerEntry {
   warmUp?: { readings: number; required: number };
 }
 
-export type AuditLedgerEntry = PipelineLedgerEntry | DetectionLedgerEntry;
+export interface ExecutionTestLeg {
+  side: "buy" | "sell";
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: string;
+  quotedAmountOut?: string;
+  amountOutMinimum?: string;
+  approval?: { needed: boolean; txId?: string };
+  transactionSimulation?: TxSimulation;
+  txId?: string;
+  received?: string;
+  error?: string;
+}
+
+// The manual execution test — never an arbitrage decision.
+export interface ExecutionTestLedgerEntry {
+  kind: "execution_test";
+  id: string;
+  timestamp: number;
+  mode: PipelineMode;
+  outcome: "refused" | "buy_failed" | "sell_failed" | "completed";
+  sizeUsd: number;
+  pool: { address: string; feeUnits: number };
+  reason?: string;
+  legs: ExecutionTestLeg[];
+  spendRecordedUsd: number;
+}
+
+export type AuditLedgerEntry = PipelineLedgerEntry | DetectionLedgerEntry | ExecutionTestLedgerEntry;
 
 export interface LedgerResponse {
   entries: AuditLedgerEntry[];

@@ -1,5 +1,12 @@
 import { createHmac } from "node:crypto";
-import { createWalletClient, http } from "viem";
+import { createPublicClient, createWalletClient, http } from "viem";
+import {
+  simulateEvmTransaction,
+  broadcastWithMevProtection,
+  type EvmTxToSimulate,
+  type TxSimulation,
+  type BroadcastResult,
+} from "../data/binance-transaction";
 import { privateKeyToAccount } from "viem/accounts";
 import { bsc } from "viem/chains";
 
@@ -108,16 +115,17 @@ interface TradingWalletConfig {
 // a plain, self-funded BSC private key we hold directly — not Binance
 // custody, not Agentic Wallet's MPC-keyless coordination (that product
 // has no confirmed headless API; see the note on getTransactionApiConfig
-// above). send() below signs locally with this key via viem and
-// broadcasts directly, rather than calling any Binance execution endpoint.
+// above). send() below signs locally with this key and broadcasts
+// through the Binance Transaction API with MEV protection. The key never
+// leaves this process.
 function getTradingWalletConfig(): TradingWalletConfig {
   const rpcUrl = process.env.BSC_RPC_URL;
   const privateKey = process.env.TRADING_WALLET_PRIVATE_KEY;
   if (!rpcUrl || !privateKey) {
     throw new Error(
       "NotImplemented: BSC_RPC_URL / TRADING_WALLET_PRIVATE_KEY are not set. " +
-        "send() signs the unsigned transaction locally via viem and broadcasts " +
-        "it directly — no live credentials configured yet. See .env.example."
+        "send() signs locally (the RPC supplies nonce and gas) and broadcasts " +
+        "through Binance — no live credentials configured yet. See .env.example."
     );
   }
   return { rpcUrl, privateKey: privateKey as `0x${string}` };
@@ -234,37 +242,68 @@ export async function dryRun(request: SwapRequest): Promise<DryRunResult> {
   return { outputUsd, unsignedTransaction, raw: data };
 }
 
-// Injectable so tests never need to mock the viem module directly —
-// same dependency-injection pattern as everywhere else in this codebase
-// (e.g. lib/execution/pipeline.ts's WalletClient). Defaults to a real
-// viem wallet client signing with the trading wallet's private key.
-export interface TradingWalletClient {
-  sendTransaction(tx: { to: `0x${string}`; data: `0x${string}`; value?: bigint }): Promise<string>;
+// Each step is injectable so tests never touch a chain, an RPC, or
+// Binance. The defaults are the real implementations.
+export interface SendDeps {
+  simulate: (evmTx: EvmTxToSimulate) => Promise<TxSimulation>;
+  // Uses the RPC only to READ nonce, gas, and fees; signs locally. Never broadcasts.
+  prepareAndSign: (tx: { to: `0x${string}`; data: `0x${string}`; value: bigint }) => Promise<`0x${string}`>;
+  broadcast: (params: { signedTransaction: string; address: string }) => Promise<BroadcastResult>;
+  waitForReceipt: (txHash: `0x${string}`) => Promise<{ status: "success" | "reverted" }>;
 }
 
-function createDefaultTradingWalletClient(rpcUrl: string, privateKey: `0x${string}`): TradingWalletClient {
+const RECEIPT_TIMEOUT_MS = 90_000;
+
+function defaultSendDeps(rpcUrl: string, privateKey: `0x${string}`): SendDeps {
   const account = privateKeyToAccount(privateKey);
-  const client = createWalletClient({ account, chain: bsc, transport: http(rpcUrl) });
-  return { sendTransaction: (tx) => client.sendTransaction(tx) };
+  const walletClient = createWalletClient({ account, chain: bsc, transport: http(rpcUrl) });
+  const publicClient = createPublicClient({ chain: bsc, transport: http(rpcUrl) });
+  return {
+    simulate: (evmTx) => simulateEvmTransaction(evmTx),
+    prepareAndSign: async (tx) => {
+      const request = await walletClient.prepareTransactionRequest({ ...tx, account, chain: bsc });
+      return walletClient.signTransaction(request);
+    },
+    broadcast: (params) => broadcastWithMevProtection(params),
+    waitForReceipt: async (hash) => {
+      const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS });
+      return { status: receipt.status };
+    },
+  };
 }
 
-// Signs an unsigned transaction (from dryRun() or approvalCheck())
-// locally and broadcasts it via BSC_RPC_URL — no Binance execution
-// endpoint is called at all. Never returns a fabricated transaction ID:
-// if credentials aren't configured, or the transaction can't be sent,
-// it throws rather than faking success.
-export async function send(
-  unsignedTransaction: UnsignedTransaction,
-  deps: { walletClient?: TradingWalletClient } = {}
-): Promise<SendResult> {
+// The only send path. In order:
+//   1. Binance Transaction API simulation of the exact unsigned
+//      transaction — it must predict SUCCESS, or nothing is signed.
+//   2. Local signing with the trading wallet's key (the RPC is used only
+//      to read nonce, gas, and fees).
+//   3. Broadcast through Binance with MEV protection (private mempool).
+//      If it fails, this throws. There is deliberately no fallback to the
+//      public RPC: that would silently drop MEV protection.
+//   4. Wait for the receipt; a revert throws.
+// Never returns a fabricated transaction ID.
+export async function send(unsignedTransaction: UnsignedTransaction, deps: Partial<SendDeps> = {}): Promise<SendResult> {
   const { rpcUrl, privateKey } = getTradingWalletConfig();
-  const walletClient = deps.walletClient ?? createDefaultTradingWalletClient(rpcUrl, privateKey);
+  const steps = { ...defaultSendDeps(rpcUrl, privateKey), ...deps };
+  const from = privateKeyToAccount(privateKey).address;
+  const value = unsignedTransaction.value ?? "0";
 
-  const txId = await walletClient.sendTransaction({
+  const simulation = await steps.simulate({ from, to: unsignedTransaction.to, value, data: unsignedTransaction.data });
+  if (simulation.result !== "succeeded") {
+    const why = simulation.result === "failed" ? `${simulation.status}: ${simulation.failReason}` : simulation.reason;
+    throw new Error(`not sent: Binance simulation did not predict success (${why})`);
+  }
+
+  const signedTransaction = await steps.prepareAndSign({
     to: unsignedTransaction.to as `0x${string}`,
     data: unsignedTransaction.data as `0x${string}`,
-    value: unsignedTransaction.value !== undefined ? BigInt(unsignedTransaction.value) : undefined,
+    value: BigInt(value),
   });
 
-  return { txId, raw: unsignedTransaction };
+  const { txHash, orderId } = await steps.broadcast({ signedTransaction, address: from });
+
+  const receipt = await steps.waitForReceipt(txHash as `0x${string}`);
+  if (receipt.status !== "success") throw new Error(`transaction ${txHash} was mined but reverted`);
+
+  return { txId: txHash, raw: { orderId, simulation } };
 }

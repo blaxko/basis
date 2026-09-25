@@ -21,6 +21,7 @@ import {
   type AllowanceCheckResult,
 } from "../data/pancakeswap-v3";
 import { BSC_USDT_ADDRESS } from "../data/quotes";
+import { simulateEvmTransaction, type EvmTxToSimulate, type TxSimulation } from "../data/binance-transaction";
 import { AuditLedger, type PipelineLedgerEntry, type DetectionSnapshot, type PipelineMode } from "./audit-ledger";
 
 export type { PipelineMode } from "./audit-ledger";
@@ -145,6 +146,8 @@ export interface WalletClient {
   // approveTransaction or send()'s own built transaction), not the
   // original order — same shape/reasoning as before.
   send(unsignedTransaction: UnsignedTransaction): Promise<SendResult>;
+  // Binance Transaction API simulate on the exact unsigned swap we'd send.
+  simulateWithBinance(evmTx: EvmTxToSimulate): Promise<TxSimulation>;
 }
 
 async function defaultSimulateSwap(params: DirectSwapParams): Promise<SimulateSwapResult> {
@@ -167,6 +170,7 @@ const defaultWalletClient: WalletClient = {
   checkAllowance,
   simulateSwap: defaultSimulateSwap,
   send,
+  simulateWithBinance: (evmTx) => simulateEvmTransaction(evmTx),
 };
 
 export interface PipelineDeps {
@@ -216,8 +220,11 @@ export interface PipelineDeps {
 //                  (fails closed as "spread_closed" if the edge decayed
 //                  or inverted since detection), then checks allowance
 //                  and simulates via QuoterV2, re-checking the dry-run
-//                  floor on the real output — but never calls send(),
-//                  not even for a needed approval. This is the default.
+//                  floor on the real output, then has Binance's
+//                  Transaction API simulate the exact swap transaction
+//                  from our wallet ("dry_run_failed" unless it predicts
+//                  success) — but never calls send(), not even for a
+//                  needed approval. This is the default.
 //   "live"       — refuses as "two_leg_execution_not_implemented" before
 //                  any re-read, approval, or send. Only the buy leg is
 //                  built; a single leg alone doesn't capture the spread,
@@ -369,17 +376,6 @@ async function runSteps(
     });
   }
 
-  if (!allowSend) {
-    return record({
-      mode,
-      outcome: "dry_run_only",
-      verdict,
-      freshness: { freshSpread, ok: true },
-      approval: approvalInfo,
-      dryRun: { outputUsd: simulated.outputUsd, ok: true },
-    });
-  }
-
   const unsignedTransaction = buildExactInputSingleTransaction({
     tokenIn: swapParams.tokenIn,
     tokenOut: swapParams.tokenOut,
@@ -389,6 +385,43 @@ async function runSteps(
     amountOutMinimum: applySlippageTolerance(simulated.amountOut, config.sendSlippageTolerance),
   });
 
+  // QuoterV2 prices the pool; Binance simulates the actual transaction
+  // from our wallet (balance, allowance, minimum-output floor). Only a
+  // predicted success passes. Binance simulates one transaction at a
+  // time, so while an approval is still needed the swap is predicted to
+  // revert ("STF") — reported as it is, not skipped.
+  const transactionSimulation = await walletClient.simulateWithBinance({
+    from: walletAddress,
+    to: unsignedTransaction.to,
+    value: unsignedTransaction.value ?? "0",
+    data: unsignedTransaction.data,
+  });
+  const dryRun = { outputUsd: simulated.outputUsd, ok: true };
+
+  if (transactionSimulation.result !== "succeeded") {
+    return record({
+      mode,
+      outcome: "dry_run_failed",
+      verdict,
+      freshness: { freshSpread, ok: true },
+      approval: approvalInfo,
+      dryRun,
+      transactionSimulation,
+    });
+  }
+
+  if (!allowSend) {
+    return record({
+      mode,
+      outcome: "dry_run_only",
+      verdict,
+      freshness: { freshSpread, ok: true },
+      approval: approvalInfo,
+      dryRun,
+      transactionSimulation,
+    });
+  }
+
   try {
     const sendResult = await walletClient.send(unsignedTransaction);
     return record({
@@ -397,7 +430,8 @@ async function runSteps(
       verdict,
       freshness: { freshSpread, ok: true },
       approval: approvalInfo,
-      dryRun: { outputUsd: simulated.outputUsd, ok: true },
+      dryRun,
+      transactionSimulation,
       send: { txId: sendResult.txId },
     });
   } catch (err) {
@@ -407,7 +441,8 @@ async function runSteps(
       verdict,
       freshness: { freshSpread, ok: true },
       approval: approvalInfo,
-      dryRun: { outputUsd: simulated.outputUsd, ok: true },
+      dryRun,
+      transactionSimulation,
       send: { error: err instanceof Error ? err.message : String(err) },
     });
   }
