@@ -34,7 +34,8 @@ function describeDecision(verdict: GuardrailVerdict, proposedSizeUsd: number): s
   return `BLOCKED (${verdict.reason})`;
 }
 
-// Produces the plain-English line for the LLM Advisory Feed. Text only:
+// Produces the plain-English line for the Advisory Feed from a fixed
+// template (no AI is involved). Text only:
 // the return type is `string`, deliberately not overlapping with
 // OrderIntent or ProposedOrder — there is no way to get an executable
 // order back out of this function.

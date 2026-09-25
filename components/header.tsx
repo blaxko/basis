@@ -7,10 +7,6 @@ import { readOnlyNote } from "./read-only-note";
 
 const MODES: PipelineMode[] = ["simulation", "dry-run", "live"];
 
-function fmtUsd(value: number | null): string {
-  return value === null ? "n/a" : `$${value.toLocaleString()}`;
-}
-
 export function Header() {
   const status = usePoll<StatusResponse>("/api/status", 5000);
   const [posting, setPosting] = useState(false);
@@ -117,17 +113,6 @@ export function Header() {
             {Object.entries(status.data.marketStatus).map(([ticker, market]) => (
               <StatusChip key={ticker} label={marketChipLabel(ticker, market)} ok={marketChipOk(market)} />
             ))}
-          </div>
-
-          <div className="wallet-split">
-            <div className="wallet-card">
-              <div className="wallet-card-label">Trading Capital</div>
-              <div className="wallet-card-value">{fmtUsd(status.data.wallet.tradingCapitalUsd)}</div>
-            </div>
-            <div className="wallet-card">
-              <div className="wallet-card-label">Operating Budget</div>
-              <div className="wallet-card-value">{fmtUsd(status.data.wallet.operatingBudgetUsd)}</div>
-            </div>
           </div>
         </>
       )}

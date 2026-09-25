@@ -160,26 +160,108 @@ h3 {
   background: var(--color-approved);
 }
 
-.wallet-split {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+/* --- Instruction box --- */
+
+.instruction-panel {
+  grid-column: 1 / -1;
+  min-height: 0;
 }
 
-.wallet-card {
-  border: 2px solid var(--color-bg);
-  padding: 8px 12px;
+.instruction-help {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-muted);
 }
 
-.wallet-card-label {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  opacity: 0.7;
+.instruction-form {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.wallet-card-value {
-  font-size: 1.1rem;
+.instruction-input {
+  flex: 1 1 260px;
+  font: inherit;
+  padding: 8px 10px;
+  border: var(--border-width) solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.instruction-send {
+  font: inherit;
   font-weight: 700;
+  padding: 8px 18px;
+  border: var(--border-width) solid var(--color-border);
+  background: var(--color-accent);
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.instruction-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.instruction-examples {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+}
+
+.instruction-example {
+  font: inherit;
+  padding: 3px 8px;
+  border: 1px dashed var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.instruction-result {
+  border-left: 6px solid var(--color-muted);
+  padding: 8px 12px;
+  background: var(--color-bg);
+}
+
+.instruction-result--approved {
+  border-left-color: var(--color-approved);
+}
+
+.instruction-result--blocked {
+  border-left-color: var(--color-blocked);
+}
+
+.instruction-result--info {
+  border-left-color: var(--color-warn);
+}
+
+.instruction-result--error {
+  border-left-color: var(--color-blocked);
+}
+
+.instruction-headline {
+  margin: 0;
+  font-weight: 700;
+}
+
+.instruction-detail {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+}
+
+.instruction-raw {
+  margin-top: 6px;
+  font-size: 0.75rem;
+}
+
+.instruction-raw pre {
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
   font-family: "Courier New", Consolas, monospace;
 }
 

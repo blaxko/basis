@@ -3,14 +3,11 @@
 import { usePoll } from "./use-poll";
 import type { OpportunitiesResponse } from "./api-types";
 
-// Polls /api/opportunities rather than streaming: narration is a
-// server-side Groq call (Phase 4), so it must come from the server's
-// already-narrated `opportunities[]` — re-narrating client-side from raw
-// spreads would mean either shipping a Groq key to the browser or
-// duplicating the LLM call path outside lib/llm/'s own boundary, both
-// wrong. No SSE/websocket infra exists in this stack yet, and the route
-// is cheap (pure computation, no I/O side effects), so a ~10s poll is
-// indistinguishable from live for a demo.
+// Shows the server's already-narrated `opportunities[]`. The narration is
+// a fixed text template (lib/llm/proposal-narrator.ts) filled from the
+// Basis Model's numbers and the guardrail verdict — no AI writes it. The
+// AI (Groq) is only used to read typed instructions. Polls every ~10 s,
+// which is indistinguishable from live for a demo.
 const POLL_MS = 10_000;
 
 export function AdvisoryFeed() {
@@ -19,7 +16,8 @@ export function AdvisoryFeed() {
 
   return (
     <section className="panel panel--terminal">
-      <h2 className="panel-title mono">LLM Advisory Feed</h2>
+      <h2 className="panel-title mono">Advisory Feed</h2>
+      <p className="state-message mono">generated from fixed templates, not written by the AI</p>
 
       {poll.loading && !poll.data && <p className="state-message mono">connecting…</p>}
       {poll.error && <p className="state-message state-message--error mono">feed unavailable: {poll.error}</p>}

@@ -50,11 +50,6 @@ export async function GET(request: Request) {
       summary: summarizeCalls(records),
       calls: records.slice(-RECENT_BINANCE_CALLS).reverse(),
     },
-    wallet: {
-      tradingCapitalUsd: null,
-      operatingBudgetUsd: null,
-      reason: "not_implemented: no balance-query endpoint wired yet",
-    },
     killswitch: getKillswitchMode(),
     // Latest underlying-market status per ticker, as the scheduler last
     // fetched it (RWA Data API). Read from memory, not re-fetched.

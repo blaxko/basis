@@ -52,7 +52,6 @@ export interface StatusResponse {
     };
     calls: BinanceCallRecord[]; // newest first
   };
-  wallet: { tradingCapitalUsd: number | null; operatingBudgetUsd: number | null; reason?: string };
   killswitch: PipelineMode;
   // Latest underlying-market status per ticker (RWA Data API).
   marketStatus: Record<string, MarketStatus>;
