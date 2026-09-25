@@ -379,3 +379,10 @@ Whole run: first simulate 13:23:30.998 → ledger entry written 13:24:32.442 (61
 - Buy swap logs include USDT's `Approval(wallet, SwapRouter, 0)`, emitted by USDT's `transferFrom`; the buy swap's simulation reported `allowanceChanges` 5e18 → 0.
 - Sell swap logs have no `Approval` event from MSFTB (only `Transfer` and one other MSFTB event, topic0 `0x0226a2f5…`). MSFTB's storage uses OpenZeppelin v5's namespaced ERC20 layout (found 2026-09-25, storage-slot probe), and OZ v5 does not emit `Approval` when `transferFrom` spends an allowance.
 - So the simulation omitted a change that did happen. Inferred: `allowanceChanges` is derived from `Approval` events. Not confirmed from Binance's docs.
+
+## 2026-09-25 20:21:13 UTC — First Binance calls from the hosted deployment (Railway, Singapore)
+
+- Deployment: Railway, `basis-production-c229.up.railway.app`, set up in the dashboard per `docs/railway-dashboard-checklist.md`. Serving zone reported by Railway (`X-Railway-Debug: 1` → `x-railway-upstream-zone`): `railway/asia-southeast1-eqsg3a`. `PUBLIC_READ_ONLY=true`, no trading key.
+- First call (the hosted server's own call log, `/api/status`): `GET /api/v1/dex/market/rwa/underlying-market?binanceChainId=56&tokenContractAddress=0x80106cb3EAD06659A5ad19DF39D9b4733863B9b0`, started 20:21:13.835Z, HTTP 200, code 0, 117 ms. Same tick: `GET /api/v1/dex/aggregator/quote` (200 USDT → MSFTB, `userWalletAddress=0x0bA556a253D2f1FdCF352aD55A5b44718802BB95`), started 20:21:13.833Z, HTTP 200, code 0, 121 ms.
+- First 14 calls, 20:21:13 – 20:24:13 UTC (7 ticks × quote + underlying-market): 14 ok, 0 failed; latency p50 121 ms, p95 147 ms, max 147 ms, min 109 ms. No `40301`–`40304`. (From the home connection on the same day: 0.9–9.9 s per call when reachable.)
+- Reference quotes recorded on the first 9 detection entries: $517.7496 – $518.7200 (`Rfq Neptunex` ×7, `Rfq Neptune` ×1, `Pancakeswap V3` ×1); 1% pool $514.8746, 0.25% pool $517.3816; quote 0.56–0.75% above the cheaper pool. `statusInfo` on every tick: `openState: true, reasonCode: "TRADING"`, other fields null.
