@@ -60,7 +60,8 @@ export function Header() {
                   (currentMode === mode ? " killswitch-button--active" : "") +
                   (mode === "live" ? " killswitch-button--live" : "")
                 }
-                disabled={posting || status.loading}
+                // Convenience only: the server rejects "live" in read-only mode.
+                disabled={posting || status.loading || (mode === "live" && (status.data?.publicReadOnly ?? true))}
                 onClick={() => setMode(mode)}
               >
                 {mode}
@@ -77,6 +78,7 @@ export function Header() {
       {status.data && (
         <>
           <div className="status-row">
+            {status.data.publicReadOnly && <StatusChip label="Public read-only: no sending" ok={true} />}
             <StatusChip label="Groq" ok={status.data.groq.configured} />
             <StatusChip label="BSC RPC" ok={status.data.bscRpc.configured} />
             <StatusChip

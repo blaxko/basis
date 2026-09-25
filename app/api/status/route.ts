@@ -2,13 +2,17 @@ import { NextResponse } from "next/server";
 import { getKillswitchMode } from "../../../lib/orchestration/killswitch";
 import { defaultBinanceCallLog, summarizeCalls } from "../../../lib/data/binance-client";
 import { getTradingWalletAddress } from "../../../lib/execution/agentic-wallet";
+import { isPublicReadOnly } from "../../../lib/config/deployment";
+import { clientIp } from "../../../lib/config/rate-limit";
 
 const RECENT_BINANCE_CALLS = 50;
 
 // The derived PUBLIC address, or why the key can't be used. The key
-// itself never leaves getTradingWalletAddress().
+// itself never leaves getTradingWalletAddress(). In PUBLIC_READ_ONLY mode
+// the address comes from TRADING_WALLET_ADDRESS and the key variable is
+// not even checked for presence.
 function tradingWalletStatus(): { configured: boolean; address: string | null; error?: string } {
-  if (!process.env.TRADING_WALLET_PRIVATE_KEY) return { configured: false, address: null };
+  if (!isPublicReadOnly() && !process.env.TRADING_WALLET_PRIVATE_KEY) return { configured: false, address: null };
   try {
     return { configured: true, address: getTradingWalletAddress() };
   } catch (err) {
@@ -26,9 +30,12 @@ function tradingWalletStatus(): { configured: boolean; address: string | null; e
 // simulation and MEV-protected broadcast). `binanceWeb3Api.calls` is the
 // app's own record of its recent Binance calls — status, latency, and
 // verbatim errors — read from memory, not re-fetched.
-export async function GET() {
+export async function GET(request: Request) {
   const records = defaultBinanceCallLog.recent();
   return NextResponse.json({
+    publicReadOnly: isPublicReadOnly(),
+    // The caller's own IP as the rate limiter sees it (see clientIp()).
+    requestClientIp: clientIp(request),
     groq: { configured: Boolean(process.env.GROQ_API_KEY) },
     bscRpc: { configured: Boolean(process.env.BSC_RPC_URL) },
     tradingWallet: tradingWalletStatus(),

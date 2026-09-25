@@ -37,6 +37,8 @@ export interface BinanceCallRecord {
 }
 
 export interface StatusResponse {
+  publicReadOnly: boolean;
+  requestClientIp: string;
   groq: { configured: boolean };
   bscRpc: { configured: boolean };
   tradingWallet: { configured: boolean; address: string | null; error?: string };

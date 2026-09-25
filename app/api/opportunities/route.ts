@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { previewOpportunities, DEFAULT_AGENT_LOOP_CONFIG } from "../../../lib/orchestration/agent-loop";
 import { getDemoHistory, type SpreadHistoryPoint } from "../../../lib/data/demo-history";
 import { defaultLedger, type AuditLedgerEntry } from "../../../lib/execution/audit-ledger";
+import { isPublicReadOnly } from "../../../lib/config/deployment";
+import { checkRateLimit, clientIp, OPPORTUNITIES_RATE_LIMIT } from "../../../lib/config/rate-limit";
 
 // About an hour of scheduler ticks at the default 30s interval.
 const MAX_LIVE_POINTS = 120;
@@ -42,7 +44,19 @@ function getPreview(): Promise<Preview> {
 //   - "historical": the seeded fixture in lib/data/demo-history.ts
 //     (dated 2026-09-18 → 09-21), used only when no live evaluation
 //     exists yet, e.g. BSC_RPC_URL isn't configured.
-export async function GET() {
+export async function GET(request: Request) {
+  // The live preview fetches a Binance quote (through the 10 s cache
+  // above). Limited per IP on a public (PUBLIC_READ_ONLY) deployment.
+  if (isPublicReadOnly()) {
+    const limit = checkRateLimit(OPPORTUNITIES_RATE_LIMIT, clientIp(request));
+    if (!limit.ok) {
+      return NextResponse.json(
+        { error: `rate limited (${limit.scope}); retry in ${limit.retryAfterSeconds}s` },
+        { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } }
+      );
+    }
+  }
+
   const history: Record<string, { source: "live" | "historical"; points: SpreadHistoryPoint[] }> = {};
   const entries = defaultLedger.readAll();
 

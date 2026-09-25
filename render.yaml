@@ -1,0 +1,43 @@
+# Render Blueprint for the PUBLIC, read-only deployment. Not yet created
+# as a service — this file only pins how it will be built.
+#
+# Region: Binance Web3 API checks the server's location against
+# web3.binance.com/en/dev-docs/web3-api-prohibited-regions (US and its
+# territories, CA, NL, IR, CU, KP, Crimea/DPR/LPR, GB; JP conditional).
+# Render's default region when `region` is omitted is oregon (US), and a
+# service's region can't be changed after creation — so it is pinned here.
+#
+# One always-on instance: the 30 s scheduler runs in-process
+# (instrumentation.ts) and the ledger, killswitch and spend tracker are in
+# memory. The free plan spins down after 15 minutes without inbound
+# traffic, which would stop the scheduler, so a paid plan is required.
+#
+# The trading key is deliberately NOT listed: PUBLIC_READ_ONLY=true never
+# reads it. Do not add TRADING_WALLET_PRIVATE_KEY to this service. The
+# live execution test runs locally only (see docs/pre-flight-notes.md).
+services:
+  - type: web
+    name: basis
+    runtime: node
+    region: singapore
+    plan: 0.5c-512mb   # legacy name "Starter": 0.5 CPU / 512 MB, $7/month (render.com/pricing, 2026-09-25)
+    numInstances: 1
+    buildCommand: npm ci && npx next build
+    startCommand: npx next start -H 0.0.0.0 -p $PORT
+    healthCheckPath: /api/status
+    envVars:
+      - key: PUBLIC_READ_ONLY
+        value: "true"
+      - key: TRADING_WALLET_ADDRESS
+        value: "0x0bA556a253D2f1FdCF352aD55A5b44718802BB95"
+      - key: BINANCE_WEB3_API_BASE_URL
+        value: https://web3.binance.com/build
+      # Prompted for at Blueprint creation (sync: false), never committed.
+      - key: BINANCE_WEB3_API_KEY
+        sync: false
+      - key: BINANCE_WEB3_API_SECRET
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: BSC_RPC_URL
+        sync: false

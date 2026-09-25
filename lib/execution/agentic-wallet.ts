@@ -8,6 +8,7 @@ import {
   type BroadcastResult,
 } from "../data/binance-transaction";
 import { privateKeyToAccount } from "viem/accounts";
+import { isPublicReadOnly, getReadOnlyWalletAddress, ReadOnlyModeError } from "../config/deployment";
 import { bsc } from "viem/chains";
 
 // Real request shape for Binance Web3 Transaction API's DEX aggregator,
@@ -118,7 +119,11 @@ interface TradingWalletConfig {
 // above). send() below signs locally with this key and broadcasts
 // through the Binance Transaction API with MEV protection. The key never
 // leaves this process.
+//
+// The only place that reads TRADING_WALLET_PRIVATE_KEY. In PUBLIC_READ_ONLY
+// mode it refuses before touching the variable.
 function getTradingWalletConfig(): TradingWalletConfig {
+  if (isPublicReadOnly()) throw new ReadOnlyModeError("reading the trading key");
   const rpcUrl = process.env.BSC_RPC_URL;
   const privateKey = process.env.TRADING_WALLET_PRIVATE_KEY;
   if (!rpcUrl || !privateKey) {
@@ -146,8 +151,11 @@ export function normalizePrivateKey(value: string): `0x${string}` {
 }
 
 // Derives and returns only the wallet's public address — never the key
-// itself — for use as SwapRequest.userWalletAddress. Safe to log.
+// itself — for use as SwapRequest.userWalletAddress. Safe to log. In
+// PUBLIC_READ_ONLY mode it comes from TRADING_WALLET_ADDRESS instead, and
+// the key is never read.
 export function getTradingWalletAddress(): string {
+  if (isPublicReadOnly()) return getReadOnlyWalletAddress();
   const { privateKey } = getTradingWalletConfig();
   return privateKeyToAccount(privateKey).address;
 }
@@ -297,6 +305,8 @@ function defaultSendDeps(rpcUrl: string, privateKey: `0x${string}`): SendDeps {
 //   4. Wait for the receipt; a revert throws.
 // Never returns a fabricated transaction ID.
 export async function send(unsignedTransaction: UnsignedTransaction, deps: Partial<SendDeps> = {}): Promise<SendResult> {
+  // First statement, before any dependency or credential is touched.
+  if (isPublicReadOnly()) throw new ReadOnlyModeError("sending transactions");
   const { rpcUrl, privateKey } = getTradingWalletConfig();
   const steps = { ...defaultSendDeps(rpcUrl, privateKey), ...deps };
   const from = privateKeyToAccount(privateKey).address;

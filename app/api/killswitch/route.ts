@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getKillswitchMode, setKillswitchMode } from "../../../lib/orchestration/killswitch";
+import { ReadOnlyModeError } from "../../../lib/config/deployment";
 
 const BodySchema = z.object({
   mode: z.enum(["simulation", "dry-run", "live"]),
@@ -25,6 +26,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "body must be { mode: 'simulation' | 'dry-run' | 'live' }" }, { status: 400 });
   }
 
-  setKillswitchMode(parsed.data.mode);
+  try {
+    setKillswitchMode(parsed.data.mode);
+  } catch (err) {
+    if (err instanceof ReadOnlyModeError) {
+      return NextResponse.json({ error: err.message, mode: getKillswitchMode() }, { status: 403 });
+    }
+    throw err;
+  }
   return NextResponse.json({ mode: getKillswitchMode() });
 }

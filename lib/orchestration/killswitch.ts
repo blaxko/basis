@@ -1,4 +1,5 @@
 import type { PipelineMode } from "../execution/audit-ledger";
+import { isPublicReadOnly, ReadOnlyModeError } from "../config/deployment";
 
 export type { PipelineMode } from "../execution/audit-ledger";
 
@@ -25,6 +26,9 @@ export function getKillswitchMode(): PipelineMode {
   return state().mode;
 }
 
+// In PUBLIC_READ_ONLY mode "live" is refused here, server-side — not only
+// in the UI — so no request can put a public deployment into live mode.
 export function setKillswitchMode(next: PipelineMode): void {
+  if (next === "live" && isPublicReadOnly()) throw new ReadOnlyModeError('setting the killswitch to "live"');
   state().mode = next;
 }

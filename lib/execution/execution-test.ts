@@ -14,6 +14,7 @@ import {
 import { getPoolsForTicker } from "../data/pool-addresses";
 import { BSC_USDT_ADDRESS } from "../data/quotes";
 import { DEFAULT_GUARDRAIL_CONFIG } from "../guardrails/config";
+import { isPublicReadOnly } from "../config/deployment";
 import { send, getTradingWalletAddress, type SendResult, type UnsignedTransaction } from "./agentic-wallet";
 import { applySlippageTolerance } from "./pipeline";
 import {
@@ -95,6 +96,7 @@ export async function runExecutionTest(request: ExecutionTestRequest, deps: Exec
   const refuse = (reason: string) => ledger.appendExecutionTest({ ...base, outcome: "refused", reason, legs: [], spendRecordedUsd: 0 });
   const perDayCapUsd = deps.perDayCapUsd ?? DEFAULT_GUARDRAIL_CONFIG.perDayCapUsd;
 
+  if (isPublicReadOnly()) return refuse("PUBLIC_READ_ONLY: the execution test runs locally only, never on a public deployment");
   if (!Number.isFinite(sizeUsd) || sizeUsd <= 0) return refuse(`sizeUsd must be a positive number (got ${sizeUsd})`);
   if (sizeUsd > EXECUTION_TEST_HARD_CAP_USD_PER_LEG) {
     return refuse(`sizeUsd $${sizeUsd} exceeds the hard cap of $${EXECUTION_TEST_HARD_CAP_USD_PER_LEG} per leg`);

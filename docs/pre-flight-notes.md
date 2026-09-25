@@ -13,13 +13,13 @@ Two moments, both on every take.
 
 ## Pre-flight
 
-1. **`BSC_RPC_URL` in `.env.local`.** It is currently empty.
-   - Tested with `https://bsc-dataseed1.defibit.io/`. The `bsc-dataseed.binance.org` endpoint timed out from this machine.
+1. **`BSC_RPC_URL` in `.env.local`.** Must be set; with it empty every scheduler tick fails at the pool read.
+   - Tested with `https://bsc-dataseed1.defibit.io/` (2026-09-24) and `https://bsc-dataseed.bnbchain.org` (2026-09-25). The `bsc-dataseed.binance.org` endpoint timed out from this machine.
    - Header chip "BSC RPC" should be green.
    - The Pool Spread Monitor tag must say **LIVE**, not "HISTORICAL FIXTURE".
 2. **`GROQ_API_KEY`.** Header chip "Groq" green.
    - Model: `openai/gpt-oss-120b`. The previous `llama-3.3-70b-versatile` returns 404 for this key.
-3. **`TRADING_WALLET_PRIVATE_KEY`.** Not needed for either moment. Nothing is signed or sent.
+3. **`TRADING_WALLET_PRIVATE_KEY`.** Not needed for either moment. Nothing is signed or sent. If set, the header shows the derived address (`0x0bA5…BB95` since 2026-09-25).
 4. **Record against a production build.**
    - Run `npx next build`, then `npx next start`. Tested on 2026-09-24: routes answer in about 0.05–1s.
    - Don't use `next dev`. On this machine it compiles on demand (~80s for the page, ~40s per route), and under that load the public RPC timed out.
@@ -36,6 +36,18 @@ Two moments, both on every take.
    - Every order is checked against Binance's aggregator quote; with no quote, the `referencePrice` guardrail blocks.
    - **Run `nslookup web3.binance.com` before recording. It must return addresses.** On 2026-09-24 this machine's network DNS (`192.168.0.1`) didn't resolve it, and every Binance call failed until the machine's DNS was pointed at a public resolver (fixed 2026-09-25; see `docs/devex-log.md`).
    - Check on screen: the Pool Spread Monitor's latest line shows `Binance reference $…`, not `Binance reference unavailable (…)`.
+   - **Resolving is not enough: the header chip must read `Binance Web3 API · Nms`, green.** On 2026-09-25 from 10:54 UTC, on a network whose DNS server was `172.20.10.1` (a phone hotspot), the name resolved but every TLS handshake to `web3.binance.com` was reset, and the app's calls timed out. `/api/status` → `binanceWeb3Api.calls` shows each call's status and verbatim error.
+   - Don't record through a VPN or proxy: Binance answers `40302` ("Proxy or VPN detected").
+
+## Execution test and deployment rules
+
+- **The live execution test (`POST /api/execution-test`) runs locally only.** Never on the deployed instance: there, `PUBLIC_READ_ONLY=true` returns 403 and the server holds no trading key.
+- **Never run the local server and the hosted one against Binance at the same time.** Binance answers `40303` ("Unusual IP activity detected") to "frequent location switching or concurrent multi-region access". Stop one before starting the other.
+- The deployment is pinned by `render.yaml` to `region: singapore` (Render's default, oregon, is in the US, which Binance restricts; the region can't be changed after the service is created). Before creating it, re-check web3.binance.com/en/dev-docs/web3-api-prohibited-regions.
+- Plan `0.5c-512mb` (legacy name *Starter*): 0.5 CPU / 512 MB, $7/month of compute on a Hobby workspace ($0/month), per render.com/pricing on 2026-09-25. Not the free plan, which spins down after 15 idle minutes and would stop the scheduler.
+- After the first deploy:
+  - Confirm one Binance call succeeds from the host (a `40301` means the host's IP is treated as restricted).
+  - Check the client IP the rate limiter uses. It is the FIRST `X-Forwarded-For` entry, per a Render staff reply ("we set the first IP in the list to the real client IP", feedback.render.com/features/p/send-the-correct-xforwardedfor, 2021-05-28), not formal docs. Run `curl -s https://<host>/api/status -H "X-Forwarded-For: 1.2.3.4"` and read `requestClientIp`: it must be your real IP, not `1.2.3.4`. If it shows `1.2.3.4`, per-IP limits are spoofable (the global cap still holds); fix `clientIp()` in `lib/config/rate-limit.ts` before relying on them.
 
 ## Moment A: a live `no_opportunity` evaluation
 

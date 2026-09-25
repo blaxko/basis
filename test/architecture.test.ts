@@ -91,6 +91,8 @@ describe("architecture: who may reach the send path", () => {
       join("lib", "execution", "execution-test.test.ts"),
       join("app", "api", "execution-test", "route.ts"),
       join("test", "architecture.test.ts"),
+      // Calls it only to prove it refuses in PUBLIC_READ_ONLY mode.
+      join("test", "read-only-mode.test.ts"),
     ]);
     const offenders = sourceFiles()
       .map((f) => relative(ROOT, f))
