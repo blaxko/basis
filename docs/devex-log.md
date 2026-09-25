@@ -196,3 +196,42 @@ Keys, secrets, and signature values are never recorded.
 
 - The two simulate calls above were the last Binance calls before the 10:33 UTC restart. (An earlier status report said "this round made no new Binance calls"; that was wrong — it meant the later gas and storage-slot probes, which used only the BSC RPC.)
 - 06:21 – 10:33 UTC: a production server ran with `BSC_RPC_URL` empty. Every scheduler tick failed at the pool read (`MSFT: failed — NotImplemented: BSC_RPC_URL is not set`). The reference quote is fetched only after the pool reads, and itself starts with an RPC read, so no tick reached Binance. That server's in-memory call log was lost when it stopped; this is from the code path and the server log, not the call log.
+
+## 2026-09-25 ~10:33 UTC — Trading wallet changed
+
+- Entries before this point used the trading wallet `0x5B281F6E028466CEEB8b8FB6685e35eC2B8f02f7` (as `userWalletAddress` in quotes and `from` in simulations).
+- Entries from here on use `0x0bA556a253D2f1FdCF352aD55A5b44718802BB95`.
+- Balances of the new wallet at BSC block 123933693 (10:34:08 UTC, read through the configured `BSC_RPC_URL`): 0.00292984 BNB, 5 USDT.
+
+## 2026-09-25 10:34:05 – 11:07:34 UTC — App runtime, first calls with per-call status and latency
+
+- Client: the app's scheduler (`GET /api/v1/dex/aggregator/quote`, 200 USDT → MSFTB, `userWalletAddress=0x0bA556a253D2f1FdCF352aD55A5b44718802BB95`), production build, recorded by `lib/data/binance-client.ts`, read from `/api/status`.
+- 45 calls: 8 ok, 37 failed. Latency over calls that got an HTTP response: p50 2979 ms, p95 8969 ms, max 8969 ms.
+
+Successful calls (HTTP 200, code 0):
+
+| Call start (UTC) | Latency ms | Implied USD/MSFTB | `dexName` |
+|---|---|---|---|
+| 10:34:05.088 | 1343 | 498.0904 | Rfq Neptunex |
+| 10:34:33.735 | 773 | 498.8453 | Pancakeswap V3 |
+| 10:35:03.142 | 913 | 498.8453 | Pancakeswap V3 |
+| 10:36:42.212 | 3411 | 498.0430 | Rfq Neptunex |
+| 10:43:11.743 | 1431 | 498.1434 | Rfq Neptunex |
+| 10:47:05.117 | 2979 | 498.8453 | Pancakeswap V3 |
+| 10:50:23.174 | 6325 | 498.0493 | Rfq Neptunex |
+| 10:51:02.497 | 1712 | 498.8453 | Pancakeswap V3 |
+
+Failures:
+
+- 3 × HTTP 401, code 40103, verbatim:
+  - call 10:35:59.026Z, 8969 ms: `{"msg":"Timestamp outside recv_window. serverTime=2026-09-25T10:36:06.720933596Z","timestamp":1790332566721,"code":40103,"data":""}`
+  - call 10:42:43.058Z, 5262 ms: `{"msg":"Timestamp outside recv_window. serverTime=2026-09-25T10:42:48.125488273Z","timestamp":1790332968125,"code":40103,"data":""}`
+  - call 10:47:40.422Z, 7779 ms: `{"msg":"Timestamp outside recv_window. serverTime=2026-09-25T10:47:46.494557150Z","timestamp":1790333266494,"code":40103,"data":""}`
+  - Local clock checked at 11:05:43 UTC against `www.google.com`'s `Date` header: identical to the second. `X-OC-TIMESTAMP` is set when the request is built; these requests took 5.3–9.0 s end to end, past the default 5000 ms `X-OC-RECV-WINDOW` (docs: default 5000, max 60000). The app does not send `X-OC-RECV-WINDOW`.
+- 34 × no HTTP response: `TimeoutError: The operation was aborted due to timeout` (the app's 10 s limit). Continuous from 10:54:03 onward.
+- Network at the time:
+  - `nslookup web3.binance.com` → server `172.20.10.1`; `dnsu8oml1p86w.cloudfront.net`, `108.156.221.91`. (Earlier today, on the system resolver: `3.173.161.x`.)
+  - `curl -sv https://web3.binance.com/build/api/v1/dex/aggregator/supported/chain` at ~11:05 UTC: TCP connect in 0.069 s, then `Recv failure: Connection was reset` / `schannel: failed to receive handshake, SSL/TLS connection failed`.
+  - 5 further attempts 11:05:59 – 11:07:08 UTC: all `exit 28` (timeout at 12 s), no TLS handshake completed.
+  - `https://www.google.com` from the same machine at the same time: HTTP response received.
+- Effect in the app: the manual instruction at 11:04:22 UTC ("Buy $200 of MSFT", ledger `ledger_1790334272923_38`) was blocked by `referencePriceCheck`: `no Binance reference quote: The operation was aborted due to timeout`. Fail-closed, as designed.
