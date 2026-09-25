@@ -9,7 +9,18 @@ Two moments, both on every take.
 - no pre-seeded ledger or price history
 - no replayed takes presented as live
 
-**No live trade in this demo.** Live on-chain arbitrage is disabled until two-leg execution exists. Only the buy leg is built, and a single leg alone doesn't capture the spread. The earlier "Moment C: a real executed trade" is removed. If the killswitch is set to LIVE, every order is refused as `two_leg_execution_not_implemented` before any approval or send.
+**No live arbitrage in this demo.** Live on-chain arbitrage is disabled until two-leg execution exists. Only the buy leg is built, and a single leg alone doesn't capture the spread. The earlier "Moment C: a real executed trade" is removed. If the killswitch is set to LIVE, every arbitrage order is refused as `two_leg_execution_not_implemented` before any approval or send.
+
+**The live send path is proven on mainnet — as a past, recorded event.** On 2026-09-25 13:23–13:24 UTC the execution test ran a $5 MSFTB round trip (ledger `ledger_1790342672442_26`, outcome `completed`). All four transactions succeeded at 0.05 gwei, each simulated by Binance first and broadcast through Binance with MEV protection:
+
+| Tx | Hash | Block |
+|---|---|---|
+| USDT approve | `0x9df5a668e25b2b7f329a8b4a4200bfe85d98aed878bde8c3ed1d73d2449e62e7` | 123956296 |
+| buy swap | `0x66aa49fdcd676cfc1df23c717bf7530aa5cdf8267255dfb2bc2bfefa40b9c5fe` | 123956355 |
+| MSFTB approve | `0xa3dc00ab5312623e223965e25baf2944cd07decbff1f2f6d64527c42dd3e0493` | 123956388 |
+| sell swap | `0xc77ffb104e42303913745f519922af6d61dc3f988f5940c53a9e388e689cc1ff` | 123956404 |
+
+If the video shows these, show them as what they are: the BscScan pages of a run made on 2026-09-25, not a live moment of the recording. The in-memory ledger entry is gone after any restart; the durable record is BscScan and `docs/devex-log.md`.
 
 ## Pre-flight
 
@@ -42,6 +53,9 @@ Two moments, both on every take.
 ## Execution test and deployment rules
 
 - **The live execution test (`POST /api/execution-test`) runs locally only.** Never on the deployed instance: there, `PUBLIC_READ_ONLY=true` returns 403 and the server holds no trading key.
+- **Procedure used for the 2026-09-25 run** (it worked as written): confirm the last three Binance calls are ok and under 5 s (`/api/status` → `binanceWeb3Api.calls`; the test's health gate refuses otherwise) and `walletBalances` shows MSFTB 0; `POST /api/killswitch {"mode":"live"}`; `POST /api/execution-test {"sizeUsd":5,"confirm":true}` (≈ 61 s for four transactions); `POST /api/killswitch {"mode":"simulation"}` immediately after. If the outcome is `sell_failed`, check any `pendingTxId` on BscScan first, then recover with `{"action":"sell_only","confirm":true}` in live mode.
+- **After a run, both router allowances should read 0** (the test approves exact amounts). On 2026-09-25 they did. Binance's simulation of the sell swap listed no MSFTB allowance change even though the allowance was spent: MSFTB emits no `Approval` event on `transferFrom`, so check allowances on-chain, not from the simulation.
+- **Wallet after the run:** 0.00290496885 BNB, 4.975031264553765393 USDT, 0 MSFTB. Another round trip needs `sizeUsd` ≤ 4.97 or a USDT top-up (the buy leg checks the balance and stops as `buy_failed`, sending nothing, if short); gas left covers well over 50 more runs at 0.05 gwei.
 - **Never run the local server and the hosted one against Binance at the same time.** Binance answers `40303` ("Unusual IP activity detected") to "frequent location switching or concurrent multi-region access". Stop one before starting the other.
 - The deployment is pinned by `render.yaml` to `region: singapore` (Render's default, oregon, is in the US, which Binance restricts; the region can't be changed after the service is created). Before creating it, re-check web3.binance.com/en/dev-docs/web3-api-prohibited-regions.
 - Plan `0.5c-512mb` (legacy name *Starter*): 0.5 CPU / 512 MB, $7/month of compute on a Hobby workspace ($0/month), per render.com/pricing on 2026-09-25. Not the free plan, which spins down after 15 idle minutes and would stop the scheduler.

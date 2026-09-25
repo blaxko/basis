@@ -293,8 +293,16 @@ Stack awards: not currently targeted. Basis signs locally with its own key rathe
 - [ ] Live pool prices render for each independently-verified fee-tier pool of the confirmed underlying(s) within the dashboard at an acceptable refresh latency.
 - [ ] The fee-adjusted spread calculation demonstrably identifies at least one documented case where a real raw cross-pool gap does not clear trading costs (fees, slippage, gas) — a case a naive raw-diff bot would have flagged as a false signal.
 - [ ] The guardrail gate visibly blocks at least one deliberately-triggered violation (e.g., an oversized order) live, not just in a unit test.
-- [ ] The execution path (pre-send re-read → allowance/approval → QuoterV2 simulation → sign → send) is built and covered by tests. **Live on-chain arbitrage is disabled until two-leg execution exists**, so no live trade is demonstrated: live mode refuses every order before any approval or send, and that refusal is itself tested and logged. The demo shows real detection declining a real gap that doesn't clear costs, and a deliberate guardrail block — neither staged.
-- [ ] The audit ledger shows the complete chain for every decision: detection (pool prices, gross gap, net edge, gas and its source) → guardrail check → outcome. There is no TxID while live execution is disabled.
+- [ ] The execution path (pre-send re-read → allowance/approval → QuoterV2 simulation → Binance Transaction API simulate → local sign → Binance MEV-protected broadcast → receipt) is built and covered by tests.
+- [x] **The live send path is proven on BSC mainnet.** On 2026-09-25 the manual execution test (`POST /api/execution-test`, killswitch `live`, `confirm: true`, $5 hard cap) ran a $5 MSFTB round trip on the 0.25% pool, ledger entry `ledger_1790342672442_26`, outcome `completed`. Four transactions, all mined with status success at 0.05 gwei, each simulated by Binance first and broadcast through Binance with `enableMevProtection: true`:
+  - USDT approve `0x9df5a668e25b2b7f329a8b4a4200bfe85d98aed878bde8c3ed1d73d2449e62e7` (block 123956296)
+  - buy swap `0x66aa49fdcd676cfc1df23c717bf7530aa5cdf8267255dfb2bc2bfefa40b9c5fe` (block 123956355)
+  - MSFTB approve `0xa3dc00ab5312623e223965e25baf2944cd07decbff1f2f6d64527c42dd3e0493` (block 123956388)
+  - sell swap `0xc77ffb104e42303913745f519922af6d61dc3f988f5940c53a9e388e689cc1ff` (block 123956404)
+
+  Result: 5 USDT → 0.009987 MSFTB → 4.975031 USDT, 497,423 gas, 0.00002487 BNB in fees. Full record and on-chain verification in `docs/devex-log.md`.
+- [ ] **Live on-chain arbitrage stays disabled until two-leg execution exists.** Live mode refuses every arbitrage order before any approval or send (`two_leg_execution_not_implemented`), and that refusal is itself tested and logged. The execution test is not arbitrage: a separate route, never reachable from the scheduler or the arbitrage path, ledgered as its own kind (`execution_test`). The demo shows real detection declining a real gap that doesn't clear costs, and a deliberate guardrail block — neither staged.
+- [ ] The audit ledger shows the complete chain for every decision: detection (pool prices, gross gap, net edge, gas and its source, Binance reference, underlying market status) → guardrail check → outcome. Arbitrage entries have no TxID while live arbitrage is disabled; the execution test's entry carries its four.
 - [ ] The killswitch demonstrably changes agent behavior across all three states: Simulation (gates only), Dry-Run (full path short of sending), Live (refused as two-leg execution not implemented).
 
 **Submission**
@@ -303,7 +311,8 @@ Two things are mandatory: the project and the Developer Experience Report ("Both
 
 - [ ] **The project is built on the Binance Web3 API.** The hackathon page defines it as "A working project built on one or more Binance Web3 API modules, and optionally Agentic Wallet or Wallet Skills." Basis meets this with:
   - the **Trading API** in the live path: `GET /api/v1/dex/aggregator/quote` on every scheduler tick and for every order, as the `referencePrice` guardrail's reference;
-  - the **Transaction API** (`pre-transaction/simulate`, `pre-transaction/broadcast-transaction`) once it is wired into the direct-pool path.
+  - the **Transaction API** in the direct-pool path: `pre-transaction/simulate` on our own `exactInputSingle` calldata in every dry-run and before every send, and `pre-transaction/broadcast-transaction` with `enableMevProtection: true` as the only broadcast (no public-RPC fallback). Proven on mainnet by the execution test above;
+  - the **Market API, RWA Data** module: `GET /api/v1/dex/market/rwa/underlying-market` on every scheduler tick and for every order, feeding the `marketStatus` guardrail.
 - [ ] **A public repo** with README instructions a judge can follow standalone, with no undocumented setup steps.
 - [ ] **A deployed link, or instructions a judge can follow.**
 - [ ] **A demo video, four minutes or less.** The page calls it "strongly recommended but optional"; the blog lists it as part of the mandatory project. We're making one.
@@ -314,7 +323,7 @@ Two things are mandatory: the project and the Developer Experience Report ("Both
 
 - **Correction history.** An early version of this section said the Binance Web3 API and BNB Agent Studio were mandatory integrations. The next version said neither was, based on the blog alone. The hackathon page settles it: the Web3 API is required (the project must be built on one or more of its modules). BNB Agent Studio is not ("Optional, tied to a special prize").
 - **Agentic Wallet / Wallet Skills:** "Optional, heavily weighted in scoring and tied to a special prize." Basis doesn't use it; it signs locally with its own key.
-- **Execution** (blog): "BSC mainnet only. Dry-run with the Transaction API while you build, then demo with small live amounts. Teams fund their own wallets." Spot only; perps are out.
+- **Execution** (blog): "BSC mainnet only. Dry-run with the Transaction API while you build, then demo with small live amounts. Teams fund their own wallets." Spot only; perps are out. Met: Transaction API dry-runs throughout, then the $5 live round trip on 2026-09-25 from a self-funded wallet.
 - **Scoring** (page): technical implementation 30% ("Does it run, and how deep does the integration go? Modules used, error handling, how it holds up."), creativity 25%, Developer Experience Report 25%, product quality/UX 20%.
 - **Tie-break** (blog): "Tie-breaks go on depth of W3W API usage first, then the quality of your feedback report." Not mentioned on the page.
 - **Dates** (page, UTC): submissions lock Sun 11 Oct, 12:00; judging 12–23 Oct. "Your repo, demo and deployed link must stay accessible through judging."

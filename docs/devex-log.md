@@ -321,3 +321,61 @@ Failures:
   - `marketStatus` ok (TRADING).
   - `referencePrice` ok: buy-leg pool (1% pool) spot $497.0159 vs Binance quote $499.3230 (LiquidMesh, `Rfq Neptunex`), 0.462% apart; limit 2%.
   - `dryRunFloor` pending. Net edge −0.949%: nothing sent.
+
+## 2026-09-25 13:23:30 – 13:24:32 UTC — First live execution on BSC mainnet: $5 MSFTB round trip (execution test)
+
+Run by the user: killswitch set to `live`, `POST /api/execution-test {"sizeUsd":5,"confirm":true}`, killswitch back to `simulation`. Production build, direct home connection. Trading wallet `0x0bA556a253D2f1FdCF352aD55A5b44718802BB95`, 0.25% MSFTB/USDT pool `0x5018b018ceb7645c927c5cf246786f89ebcbe7ea`, PancakeSwap V3 SwapRouter `0x1b81D678ffb9C0263b24A97847620C99d213eB14`.
+
+**Health gate at start.** The last three calls in the app's call log before the run, all HTTP 200, code 0:
+
+| Call start (UTC) | Endpoint | Latency ms |
+|---|---|---|
+| 13:22:40.560 | aggregator/quote | 2887 |
+| 13:23:13.619 | aggregator/quote | 2502 |
+| 13:23:13.628 | rwa/underlying-market | 2486 |
+
+**Transaction API calls made by the run** (app call log; each HTTP 200, code 0):
+
+| Call start (UTC) | Endpoint | For | Latency ms |
+|---|---|---|---|
+| 13:23:30.998 | `POST /api/v1/dex/pre-transaction/simulate` | USDT approve | 3367 |
+| 13:23:38.746 | `POST /api/v1/dex/pre-transaction/broadcast-transaction` (`enableMevProtection: true`) | USDT approve | 8307 |
+| 13:23:53.003 | simulate | buy swap | 5003 |
+| 13:24:04.955 | broadcast-transaction | buy swap | 3567 |
+| 13:24:14.623 | simulate | MSFTB approve | 697 |
+| 13:24:20.857 | broadcast-transaction | MSFTB approve | 2926 |
+| 13:24:25.456 | simulate | sell swap | 1087 |
+| 13:24:30.302 | broadcast-transaction | sell swap | 1021 |
+
+Whole run: first simulate 13:23:30.998 → ledger entry written 13:24:32.442 (61.4 s), including four receipt waits.
+
+**Route response** (the route returns the ledger entry; verbatim):
+
+```json
+{"kind":"execution_test","id":"ledger_1790342672442_26","timestamp":1790342672442,"action":"round_trip","mode":"live","sizeUsd":5,"pool":{"address":"0x5018b018ceb7645c927c5cf246786f89ebcbe7ea","feeUnits":2500},"outcome":"completed","legs":[{"side":"buy","tokenIn":"0x55d398326f99059fF775485246999027B3197955","tokenOut":"0x80106cb3EAD06659A5ad19DF39D9b4733863B9b0","amountIn":"5000000000000000000","approval":{"needed":true,"txId":"0x9df5a668e25b2b7f329a8b4a4200bfe85d98aed878bde8c3ed1d73d2449e62e7"},"quotedAmountOut":"9987029532613962","amountOutMinimum":"9982036017847656","txId":"0x66aa49fdcd676cfc1df23c717bf7530aa5cdf8267255dfb2bc2bfefa40b9c5fe","transactionSimulation":{"result":"succeeded","status":"SUCCESS","balanceChanges":[{"contractAddress":"0x55d398326f99059fF775485246999027B3197955","tokenType":"Erc20","change":"-5000000000000000000","owner":"0x0ba556a253d2f1fdcf352ad55a5b44718802bb95"},{"contractAddress":"0x80106cb3EAD06659A5ad19DF39D9b4733863B9b0","tokenType":"Erc20","change":"9987029532613962","owner":"0x0ba556a253d2f1fdcf352ad55a5b44718802bb95"}],"allowanceChanges":[{"tokenAddress":"0x55d398326f99059ff775485246999027b3197955","owner":"0x0ba556a253d2f1fdcf352ad55a5b44718802bb95","spender":"0x1b81d678ffb9c0263b24a97847620c99d213eb14","preAmount":"5000000000000000000","postAmount":"0"}]},"received":"9987029532613962"},{"side":"sell","tokenIn":"0x80106cb3EAD06659A5ad19DF39D9b4733863B9b0","tokenOut":"0x55d398326f99059fF775485246999027B3197955","amountIn":"9987029532613962","approval":{"needed":true,"txId":"0xa3dc00ab5312623e223965e25baf2944cd07decbff1f2f6d64527c42dd3e0493"},"quotedAmountOut":"4975031264553765393","amountOutMinimum":"4972543748921488511","txId":"0xc77ffb104e42303913745f519922af6d61dc3f988f5940c53a9e388e689cc1ff","transactionSimulation":{"result":"succeeded","status":"SUCCESS","balanceChanges":[{"contractAddress":"0x55d398326f99059fF775485246999027B3197955","tokenType":"Erc20","change":"4975031264553765393","owner":"0x0ba556a253d2f1fdcf352ad55a5b44718802bb95"},{"contractAddress":"0x80106cb3EAD06659A5ad19DF39D9b4733863B9b0","tokenType":"Erc20","change":"-9987029532613962","owner":"0x0ba556a253d2f1fdcf352ad55a5b44718802bb95"}],"allowanceChanges":[]},"received":"4975031264553765393"}],"spendRecordedUsd":9.987505836103352,"targetBalanceAfter":"0"}
+```
+
+**On-chain verification** (read through `BSC_RPC_URL` = `bsc-dataseed.bnbchain.org` at ~13:34 UTC):
+
+| Tx | Hash | Status | Block (time UTC) | Nonce | Gas limit | Gas used | Gas price | Fee (BNB) |
+|---|---|---|---|---|---|---|---|---|
+| USDT approve | `0x9df5a668e25b2b7f329a8b4a4200bfe85d98aed878bde8c3ed1d73d2449e62e7` | success | 123956296 (13:23:42) | 0 | 46,576 | 46,194 | 0.05 gwei | 0.0000023097 |
+| buy swap | `0x66aa49fdcd676cfc1df23c717bf7530aa5cdf8267255dfb2bc2bfefa40b9c5fe` | success | 123956355 (13:24:08) | 1 | 213,656 | 195,618 | 0.05 gwei | 0.0000097809 |
+| MSFTB approve | `0xa3dc00ab5312623e223965e25baf2944cd07decbff1f2f6d64527c42dd3e0493` | success | 123956388 (13:24:23) | 2 | 55,231 | 54,432 | 0.05 gwei | 0.0000027216 |
+| sell swap | `0xc77ffb104e42303913745f519922af6d61dc3f988f5940c53a9e388e689cc1ff` | success | 123956404 (13:24:31) | 3 | 219,305 | 201,179 | 0.05 gwei | 0.00001005895 |
+| **Total** | | | | | | **497,423** | | **0.00002487115** |
+
+- All four are type-2 (EIP-1559) transactions with `maxFeePerGas` = `maxPriorityFeePerGas` = 0.05 gwei; block `baseFeePerGas` 0. The gas price was set locally from the RPC (`prepareTransactionRequest`); Binance's MEV-protected broadcast accepted it (HTTP 200, code 0, txHash returned) and each was included at exactly 0.05 gwei. Each block timestamp falls within the broadcast call's own response time (e.g. USDT approve: broadcast started 13:23:38.746, took 8,307 ms; mined in the 13:23:42 block).
+- Private-mempool routing itself is not observable on-chain; what is verified is that Binance accepted the `enableMevProtection: true` broadcasts and the transactions were mined. The app does not yet store the broadcast's `orderId` on the ledger entry.
+- Pre-run gas estimate (2026-09-25 05:54, state-override `eth_estimateGas`): 534,815. Actual: 497,423.
+- Wallet nonce after the run: 4 — these four are the only transactions the wallet has sent.
+- Amounts: QuoterV2's `quotedAmountOut` equals the amount received on both legs (9,987,029,532,613,962 MSFTB units; 4,975,031,264,553,765,393 USDT units), and so do the swap simulations' `balanceChanges`.
+- Balances (latest block 123957446): BNB 0.00290496885 (0.00292984 − 0.00002487115, exact), USDT 4.975031264553765393 (−0.024968735446234607 USDT: the two 0.25% pool fees and price impact), MSFTB 0. `/api/status` `walletBalances` shows the same.
+
+**Allowances after the run.** `allowance(wallet, SwapRouter)` at block 123957446: USDT `0`, MSFTB `0`. Historical `eth_call` at the approve/sell blocks: `Missing or invalid parameters.` (the RPC keeps no historical state).
+
+**Why the sell swap's simulation reported no MSFTB allowance change.**
+- The MSFTB approve emitted `Approval(wallet, SwapRouter, 9987029532613962)`. The sell swap spent exactly 9,987,029,532,613,962 and the allowance is now 0: the approval was fully consumed. No approval was left behind.
+- Buy swap logs include USDT's `Approval(wallet, SwapRouter, 0)`, emitted by USDT's `transferFrom`; the buy swap's simulation reported `allowanceChanges` 5e18 → 0.
+- Sell swap logs have no `Approval` event from MSFTB (only `Transfer` and one other MSFTB event, topic0 `0x0226a2f5…`). MSFTB's storage uses OpenZeppelin v5's namespaced ERC20 layout (found 2026-09-25, storage-slot probe), and OZ v5 does not emit `Approval` when `transferFrom` spends an allowance.
+- So the simulation omitted a change that did happen. Inferred: `allowanceChanges` is derived from `Approval` events. Not confirmed from Binance's docs.
