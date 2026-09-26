@@ -7,5 +7,8 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { start } = await import("./lib/orchestration/scheduler");
     start();
+    // Read-only cross-issuer recorder (bStocks vs xStocks vs Ondo MSFT).
+    const { startCrossIssuerRecorder } = await import("./lib/issuers/start");
+    startCrossIssuerRecorder();
   }
 }

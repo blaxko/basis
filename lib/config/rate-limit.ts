@@ -79,3 +79,7 @@ export const INSTRUCTION_RATE_LIMIT: RateLimitRule = { name: "instruction", perI
 // (~16 requests a minute per open tab), so the per-IP limit leaves room
 // for a couple of tabs.
 export const OPPORTUNITIES_RATE_LIMIT: RateLimitRule = { name: "opportunities", perIp: 40, global: 600, windowMs: 60_000 };
+
+// /api/issuers: read from memory only, but the response can be large (up to
+// 24 h of readings), so it's limited on every deployment.
+export const ISSUERS_RATE_LIMIT: RateLimitRule = { name: "issuers", perIp: 6, global: 60, windowMs: 60_000 };
