@@ -5,6 +5,7 @@ import { usePoll } from "./use-poll";
 import type { MarketStatus, PipelineMode, StatusResponse } from "./api-types";
 import { readOnlyNote, revertLabel } from "./read-only-note";
 import { healthChip, type ChipState } from "./health-chip";
+import { walletChipLabel } from "./format-balance";
 
 const MODES: PipelineMode[] = ["simulation", "dry-run", "live"];
 
@@ -110,7 +111,7 @@ export function Header() {
             <StatusChip
               label={
                 status.data.walletBalances.status === "ok"
-                  ? `Wallet · ${status.data.walletBalances.bnb} BNB · ${status.data.walletBalances.usdt} USDT · ${status.data.walletBalances.msftb} MSFTB`
+                  ? walletChipLabel(status.data.walletBalances)
                   : "Wallet balances unavailable"
               }
               ok={status.data.walletBalances.status === "ok"}

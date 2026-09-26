@@ -139,7 +139,7 @@ h3 {
   border: 2px solid var(--color-border);
   padding: 4px 10px;
   font-size: 0.8rem;
-  text-transform: uppercase;
+  /* Not uppercased: chips carry hex addresses ("0x0bA5…") and units ("ms"). */
   letter-spacing: 0.03em;
 }
 
