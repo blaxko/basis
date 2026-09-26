@@ -1,6 +1,7 @@
 import { runAgentLoop, DEFAULT_AGENT_LOOP_CONFIG } from "./agent-loop";
 import { getKillswitchMode } from "./killswitch";
 import { defaultLedger, type AuditLedger, type PipelineMode } from "../execution/audit-ledger";
+import { logServerError, safeDetail } from "../errors/public-error";
 
 export const DEFAULT_SCHEDULER_INTERVAL_MS = 30_000;
 
@@ -48,7 +49,8 @@ export async function runTick(options: SchedulerOptions = {}): Promise<TickResul
         `  ${ticker}: ok, ${result.triggered.length} triggered, ${result.noOpportunities.length} no_opportunity, ${result.warmingUp.length} warming_up`
       );
     } catch (err) {
-      const error = err instanceof Error ? err.message : "unknown error";
+      const error = safeDetail(err);
+      logServerError(`scheduler tick for ${ticker} failed`, err);
       results.push({ ticker, ok: false, error });
       log(`  ${ticker}: failed — ${error}`);
     }

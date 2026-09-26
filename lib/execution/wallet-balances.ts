@@ -4,6 +4,7 @@ import { getTargetTokenOnChain } from "../data/gas-estimate";
 import { getPoolsForTicker } from "../data/pool-addresses";
 import { BSC_USDT_ADDRESS } from "../data/quotes";
 import { getTradingWalletAddress } from "./agentic-wallet";
+import { logServerError, plainNetworkReason } from "../errors/public-error";
 
 // The trading wallet's on-chain balances, for /api/status: BNB (gas),
 // USDT, and MSFTB — the token the execution test buys and sells, so a
@@ -73,6 +74,7 @@ export async function readWalletBalances(deps: WalletBalanceDeps = defaultDeps):
     cacheHolder[CACHE_KEY] = { at: deps.now(), value };
     return value;
   } catch (err) {
-    return { status: "unavailable", reason: err instanceof Error ? err.message.split("\n")[0]! : String(err), readAt };
+    logServerError("reading wallet balances failed", err);
+    return { status: "unavailable", reason: `BNB Chain RPC: ${plainNetworkReason(err)}`, readAt };
   }
 }

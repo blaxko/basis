@@ -9,6 +9,8 @@ import { chatCompletion } from "../llm/groq-client";
 import { narrateProposal as realNarrateProposal } from "../llm/proposal-narrator";
 import { defaultSpendTracker, type SpendTracker } from "./spend-tracker";
 import { getKillswitchMode } from "./killswitch";
+import { getRegisteredTickers } from "../data/pool-addresses";
+import { logServerError, plainNetworkReason } from "../errors/public-error";
 import {
   computeSpreads,
   warmUpStatus,
@@ -32,14 +34,23 @@ import {
 // to import both.
 
 // A second, distinct failure mode from IntentParseError: the LLM's
-// intent parsed fine (a real ticker/side/size), but no live cheap/expensive
-// pool pair could be resolved for that ticker right now (e.g. fewer than
-// two confirmed pools registered in lib/data/pool-addresses.ts, or an RPC
-// failure reading them). Same posture as an intent-parser failure: return
-// a typed rejection to the caller rather than constructing an incomplete
-// order — there is no ProposedOrder without a poolPair, ever.
+// intent parsed fine (a real ticker/side/size), but the ticker has fewer
+// than two verified pools registered in lib/data/pool-addresses.ts. Same
+// posture as an intent-parser failure: return a typed rejection rather
+// than constructing an incomplete order — there is no ProposedOrder
+// without a poolPair, ever.
 export interface PoolResolutionError {
   kind: "pool_resolution_failed";
+  ticker: string;
+  message: string;
+}
+
+// The ticker's pools are registered, but reading them live failed (the
+// BSC RPC timed out or didn't answer). Temporary, and not the same thing
+// as "no pools": the message says so, and carries no raw error (the full
+// error goes to the server log, redacted).
+export interface PriceDataUnavailableError {
+  kind: "price_data_unavailable";
   ticker: string;
   message: string;
 }
@@ -65,7 +76,7 @@ export type InstructionResult =
       outcome: PipelineOutcome;
       ledgerEntryId: string;
     }
-  | { ok: false; error: IntentParseError | PoolResolutionError | WarmingUpError };
+  | { ok: false; error: IntentParseError | PoolResolutionError | PriceDataUnavailableError | WarmingUpError };
 
 export interface HandleInstructionDeps {
   spendTracker?: SpendTracker;
@@ -109,11 +120,18 @@ export async function handleInstruction(
   const narrateProposalFn = deps.narrateProposalFn ?? realNarrateProposal;
   const history = deps.priceHistory ?? defaultPriceHistory;
 
-  // Pool-pair resolution step: live-reads the ticker's cheapest and most
-  // expensive known pool via the same computeSpreads() the automatic loop
-  // uses. Any failure here (NotImplemented from an unregistered ticker in
-  // lib/data/pool-addresses.ts, an RPC error, fewer than 2 pools) becomes
-  // a typed rejection — never a partially-built order.
+  // Pool-pair resolution step. A ticker without two verified pools is
+  // refused before any read; otherwise the ticker's cheapest and most
+  // expensive pool are live-read via the same computeSpreads() the
+  // automatic loop uses, and a failed read (RPC down or slow) is a typed,
+  // temporary rejection — never a partially-built order.
+  if (!getRegisteredTickers().includes(intent.ticker)) {
+    return {
+      ok: false,
+      error: { kind: "pool_resolution_failed", ticker: intent.ticker, message: `no verified PancakeSwap V3 pools for ${intent.ticker}` },
+    };
+  }
+
   let spread;
   try {
     const spreads = await computeSpreads({
@@ -127,12 +145,13 @@ export async function handleInstruction(
     });
     spread = spreads[0];
   } catch (err) {
+    logServerError(`live pool read for ${intent.ticker} failed`, err);
     return {
       ok: false,
       error: {
-        kind: "pool_resolution_failed",
+        kind: "price_data_unavailable",
         ticker: intent.ticker,
-        message: err instanceof Error ? err.message : String(err),
+        message: `live pool prices for ${intent.ticker} are temporarily unavailable (BNB Chain RPC: ${plainNetworkReason(err)})`,
       },
     };
   }
@@ -227,7 +246,8 @@ export async function handleInstruction(
       ledgerEntry.verdict
     );
   } catch (err) {
-    narration = `(narration unavailable: ${err instanceof Error ? err.message : "unknown error"})`;
+    logServerError("narration failed", err);
+    narration = "(narration unavailable)";
   }
 
   return {

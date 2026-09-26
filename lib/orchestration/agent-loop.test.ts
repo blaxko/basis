@@ -340,7 +340,8 @@ describe("runAgentLoop — narrator failures never change the constructed order 
     expect(failingRun.triggered[0]!.order).toEqual(successfulRun.triggered[0]!.order);
     expect(failingRun.triggered[0]!.verdict.approved).toBe(successfulRun.triggered[0]!.verdict.approved);
     expect(failingRun.triggered[0]!.outcome).toBe(successfulRun.triggered[0]!.outcome);
-    expect(failingRun.triggered[0]!.narration).toContain("narrator exploded");
+    // The narrator's own error goes to the server log, not the page.
+    expect(failingRun.triggered[0]!.narration).toBe("(narration unavailable)");
   });
 });
 

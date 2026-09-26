@@ -1,5 +1,6 @@
 import { parseUnits, type Address } from "viem";
 import { binanceRequest, defaultBinanceClientDeps, type BinanceClientDeps } from "./binance-client";
+import { logServerError, plainNetworkReason, safeDetail } from "../errors/public-error";
 
 // The Binance Web3 aggregator's price for buying the target token with
 // the stablecoin at a given size — an independent reference to
@@ -50,7 +51,7 @@ export async function fetchAggregatorReference(
 
     const body = res.body as { code?: number; msg?: string; data?: QuoteRoute[] } | null;
     if (!body) return { status: "unavailable", reason: "response was not JSON" };
-    if (body.code !== 0) return { status: "unavailable", reason: `code ${body.code}: ${body.msg ?? "no message"}` };
+    if (body.code !== 0) return { status: "unavailable", reason: `code ${body.code}: ${safeDetail(body.msg ?? "no message")}` };
 
     const routes = Array.isArray(body.data) ? body.data : [];
     const best = routes.find((r) => r.isBest) ?? routes[0];
@@ -66,6 +67,7 @@ export async function fetchAggregatorReference(
     const route = (best.dexRouterList ?? []).map((d) => d.dexProtocol?.dexName ?? "?").join(" + ") || "unknown";
     return { status: "ok", priceUsd, vendor: best.vendorName ?? "unknown", route };
   } catch (err) {
-    return { status: "unavailable", reason: err instanceof Error ? err.message.split("\n")[0]! : String(err) };
+    logServerError("Binance aggregator quote failed", err);
+    return { status: "unavailable", reason: `Binance: ${plainNetworkReason(err)}` };
   }
 }

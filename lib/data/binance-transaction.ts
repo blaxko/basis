@@ -1,4 +1,5 @@
 import { binanceRequest, defaultBinanceClientDeps, type BinanceClientDeps } from "./binance-client";
+import { logServerError, plainNetworkReason } from "../errors/public-error";
 
 // Binance Web3 Transaction API, per the OpenAPI schema
 // (web3.binance.com/en/dev-docs/catalog/web3-wallet/api/rest-api/1.0.0/schema.json,
@@ -66,7 +67,8 @@ export async function simulateEvmTransaction(
     }
     return { result: "unavailable", reason: `unrecognized simulation status "${status}"` };
   } catch (err) {
-    return { result: "unavailable", reason: err instanceof Error ? err.message : String(err) };
+    logServerError("Binance transaction simulate failed", err);
+    return { result: "unavailable", reason: `Binance: ${plainNetworkReason(err)}` };
   }
 }
 

@@ -20,6 +20,7 @@ import { check, type ProposedOrder, type GuardrailVerdict, type PoolPair } from 
 import { narrateProposal as realNarrateProposal } from "../llm/proposal-narrator";
 import { defaultSpendTracker, type SpendTracker } from "./spend-tracker";
 import { getKillswitchMode } from "./killswitch";
+import { logServerError, plainNetworkReason } from "../errors/public-error";
 
 // This is the one module allowed to import across lib/llm/, lib/guardrails/,
 // and lib/execution/ in the same file (Phase 5a only) — it sits above all
@@ -127,7 +128,8 @@ export const defaultFetchReference: FetchReferenceFn = async ({ cheapPoolAddress
   try {
     targetToken = (await getTargetTokenOnChain(cheapPoolAddress, BSC_USDT_ADDRESS)).address;
   } catch (err) {
-    return { status: "unavailable", reason: `couldn't resolve the pool's token: ${err instanceof Error ? err.message.split("\n")[0] : String(err)}` };
+    logServerError("reading the pool's token for the Binance reference failed", err);
+    return { status: "unavailable", reason: `couldn't read the pool's token from BNB Chain (${plainNetworkReason(err)})` };
   }
   let userWalletAddress: string | undefined;
   try {
@@ -150,9 +152,10 @@ export const defaultFetchMarketStatus: FetchMarketStatusFn = async ({ ticker, ch
     const targetToken = (await getTargetTokenOnChain(cheapPoolAddress, BSC_USDT_ADDRESS)).address;
     status = await fetchMarketStatus(targetToken);
   } catch (err) {
+    logServerError("reading the pool's token for the market status failed", err);
     status = {
       status: "unavailable",
-      reason: `couldn't resolve the pool's token: ${err instanceof Error ? err.message.split("\n")[0] : String(err)}`,
+      reason: `couldn't read the pool's token from BNB Chain (${plainNetworkReason(err)})`,
       fetchedAt: new Date().toISOString(),
     };
   }
@@ -391,7 +394,8 @@ export async function previewOpportunities(deps: PreviewOpportunitiesDeps = {}):
         verdict
       );
     } catch (err) {
-      narration = `(narration unavailable: ${err instanceof Error ? err.message : "unknown error"})`;
+      logServerError("narration failed", err);
+      narration = "(narration unavailable)";
     }
 
     opportunities.push({ ticker: spread.ticker, order, narration, verdict });
@@ -522,7 +526,8 @@ export async function runAgentLoop(deps: AgentLoopDeps = {}): Promise<AgentLoopR
           ledgerEntry.verdict
         );
       } catch (err) {
-        narration = `(narration unavailable: ${err instanceof Error ? err.message : "unknown error"})`;
+        logServerError("narration failed", err);
+      narration = "(narration unavailable)";
       }
 
       triggered.push({

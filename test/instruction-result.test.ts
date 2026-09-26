@@ -85,7 +85,7 @@ describe("describeInstructionResult — rate limit, warm-up and errors", () => {
   });
 
   it("network failure → couldn't reach the server", () => {
-    expect(describeInstructionResult(null, { message: "Failed to fetch" })).toEqual({ tone: "error", headline: "Couldn't reach the server.", detail: "Failed to fetch" });
+    expect(describeInstructionResult(null, null)).toEqual({ tone: "error", headline: "Couldn't reach the server.", detail: "Check your connection and try again." });
   });
 
   it("other approved outcomes are named, never shown as sent", () => {

@@ -106,10 +106,10 @@ describe("fetchAggregatorReference", () => {
     expect(result.status === "unavailable" && result.reason).toContain(reason);
   });
 
-  it("returns unavailable when the request itself fails (e.g. DNS), and records the verbatim error", async () => {
+  it("returns unavailable when the request itself fails (e.g. DNS), and records the verbatim error in the call log only", async () => {
     const d = deps(new Error("getaddrinfo ENOTFOUND web3.binance.com"));
     const result = await fetchAggregatorReference(params, d);
-    expect(result).toEqual({ status: "unavailable", reason: "getaddrinfo ENOTFOUND web3.binance.com" });
+    expect(result).toEqual({ status: "unavailable", reason: "Binance: network error" });
     expect(d.callLog.recent()[0]).toEqual(
       expect.objectContaining({ httpStatus: null, ok: false, error: "Error: getaddrinfo ENOTFOUND web3.binance.com" })
     );

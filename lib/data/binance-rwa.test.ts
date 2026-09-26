@@ -66,20 +66,21 @@ describe("fetchMarketStatus", () => {
       { status: 200, text: '{"code":40304,"msg":"Service not available due to compliance restriction"}' },
       "code 40304: Service not available due to compliance restriction",
     ],
-    ["an HTTP error", { status: 502, text: "bad gateway" }, "HTTP 502: bad gateway"],
+    // The body goes to the Binance call log, not the reason the dashboard shows.
+    ["an HTTP error", { status: 502, text: "bad gateway" }, "HTTP 502"],
     [
       "a response without statusInfo.openState",
       { status: 200, text: '{"code":0,"data":{"statusInfo":{"reasonCode":"TRADING"}}}' },
       "response has no statusInfo.openState",
     ],
-    ["a non-JSON body", { status: 200, text: "<html>" }, "response was not JSON: <html>"],
+    ["a non-JSON body", { status: 200, text: "<html>" }, "response was not JSON"],
   ])("is unavailable — never a status — for %s", async (_label, response, reason) => {
     expect(await fetchMarketStatus(MSFTB, deps(response))).toEqual({ status: "unavailable", reason, fetchedAt: expect.any(String) });
   });
 
   it("is unavailable when the request fails outright", async () => {
     const result = await fetchMarketStatus(MSFTB, deps(new Error("The operation was aborted due to timeout")));
-    expect(result).toMatchObject({ status: "unavailable", reason: "The operation was aborted due to timeout" });
+    expect(result).toMatchObject({ status: "unavailable", reason: "Binance: timed out" });
   });
 
   it("keeps the latest status per ticker for the dashboard", () => {

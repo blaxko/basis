@@ -1,4 +1,5 @@
 import { binanceRequest, defaultBinanceClientDeps, type BinanceClientDeps } from "./binance-client";
+import { logServerError, plainNetworkReason, safeDetail } from "../errors/public-error";
 
 // Binance Web3 API, RWA Data: the underlying market's trading status for a
 // tokenized stock, from GET /api/v1/dex/market/rwa/underlying-market
@@ -50,9 +51,11 @@ export async function fetchMarketStatus(
       },
       deps
     );
-    if (res.httpStatus < 200 || res.httpStatus >= 300) return { status: "unavailable", reason: `HTTP ${res.httpStatus}: ${res.text.slice(0, 300)}`, fetchedAt };
-    if (!res.body) return { status: "unavailable", reason: `response was not JSON: ${res.text.slice(0, 300)}`, fetchedAt };
-    if (res.body.code !== 0) return { status: "unavailable", reason: `code ${res.body.code}: ${res.body.msg ?? "no message"}`, fetchedAt };
+    // The response body itself is in the Binance call log (/api/status),
+    // not in this reason, which the dashboard shows.
+    if (res.httpStatus < 200 || res.httpStatus >= 300) return { status: "unavailable", reason: `HTTP ${res.httpStatus}`, fetchedAt };
+    if (!res.body) return { status: "unavailable", reason: "response was not JSON", fetchedAt };
+    if (res.body.code !== 0) return { status: "unavailable", reason: `code ${res.body.code}: ${safeDetail(res.body.msg ?? "no message")}`, fetchedAt };
 
     const info = (res.body.data as { statusInfo?: Record<string, unknown> } | undefined)?.statusInfo;
     if (!info || typeof info.openState !== "boolean") {
@@ -69,7 +72,8 @@ export async function fetchMarketStatus(
       fetchedAt,
     };
   } catch (err) {
-    return { status: "unavailable", reason: err instanceof Error ? err.message : String(err), fetchedAt };
+    logServerError("Binance underlying-market status failed", err);
+    return { status: "unavailable", reason: `Binance: ${plainNetworkReason(err)}`, fetchedAt };
   }
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { pollErrorMessage } from "./poll-error";
 
 export interface PollState<T> {
   data: T | null;
@@ -22,13 +23,14 @@ export function usePoll<T>(url: string, intervalMs: number): PollState<T> {
       const res = await fetch(url, { cache: "no-store" });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
-        const message = json && typeof json.error === "string" ? json.error : `${url} returned ${res.status}`;
-        throw new Error(message);
+        setError(pollErrorMessage(res.status, json));
+        return;
       }
       setData(json as T);
       setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "request failed");
+    } catch {
+      // Network failure in the browser; its own text isn't shown.
+      setError("couldn't reach the server");
     } finally {
       setLoading(false);
     }

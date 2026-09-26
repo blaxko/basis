@@ -1,4 +1,5 @@
 import "server-only";
+import { logServerError, plainNetworkReason } from "../errors/public-error";
 
 // This module talks to Groq with a secret API key and must never reach a
 // client bundle. The `server-only` import throws a build-time error if
@@ -115,10 +116,8 @@ export async function chatCompletion(
     if (err instanceof Error && err.name === "AbortError") {
       return { ok: false, error: { kind: "timeout", message: `Groq API request timed out after ${timeoutMs}ms` } };
     }
-    return {
-      ok: false,
-      error: { kind: "network_error", message: err instanceof Error ? err.message : "unknown network error" },
-    };
+    logServerError("Groq request failed", err);
+    return { ok: false, error: { kind: "network_error", message: `Groq didn't answer (${plainNetworkReason(err)})` } };
   } finally {
     clearTimeout(timer);
   }

@@ -54,7 +54,7 @@ describe("simulateEvmTransaction", () => {
   });
 
   it("is unavailable when the request fails outright", async () => {
-    expect(await simulateEvmTransaction(EVM_TX, deps(new Error("fetch failed")))).toEqual({ result: "unavailable", reason: "fetch failed" });
+    expect(await simulateEvmTransaction(EVM_TX, deps(new Error("fetch failed")))).toEqual({ result: "unavailable", reason: "Binance: network error" });
   });
 });
 

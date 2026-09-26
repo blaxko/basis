@@ -7,6 +7,7 @@ import { clientIp } from "../../../lib/config/rate-limit";
 import { getLatestMarketStatuses } from "../../../lib/data/binance-rwa";
 import { getSchedulerStats } from "../../../lib/orchestration/scheduler";
 import { readWalletBalances } from "../../../lib/execution/wallet-balances";
+import { safeDetail } from "../../../lib/errors/public-error";
 
 const RECENT_BINANCE_CALLS = 50;
 
@@ -19,7 +20,7 @@ function tradingWalletStatus(): { configured: boolean; address: string | null; e
   try {
     return { configured: true, address: getTradingWalletAddress() };
   } catch (err) {
-    return { configured: false, address: null, error: err instanceof Error ? err.message : "invalid key" };
+    return { configured: false, address: null, error: safeDetail(err) };
   }
 }
 

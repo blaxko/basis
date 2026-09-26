@@ -2,6 +2,7 @@ import { priceSanityCheck, liquidityDepthCheck } from "../basis-model/sanity-che
 import type { ReferenceQuote } from "../data/binance-reference";
 import type { MarketStatus } from "../data/binance-rwa";
 import { DEFAULT_GUARDRAIL_CONFIG, type GuardrailConfig } from "./config";
+import { safeDetail } from "../errors/public-error";
 
 export type { ReferenceQuote } from "../data/binance-reference";
 export type { MarketStatus } from "../data/binance-rwa";
@@ -353,7 +354,7 @@ export function check(order: ProposedOrder, deps: GuardrailDeps): GuardrailVerdi
     return {
       approved: false,
       status: "error",
-      reason: `guardrail gate encountered an internal error: ${err instanceof Error ? err.message : String(err)}`,
+      reason: `guardrail gate encountered an internal error: ${safeDetail(err)}`,
       checks: [],
       timestamp,
       input: order,

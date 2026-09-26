@@ -1,4 +1,5 @@
 import { buildAuthHeaders, getConfig, type BinanceWeb3ApiConfig } from "./quotes";
+import { redactSecrets } from "../errors/public-error";
 
 // Every runtime Binance Web3 API call goes through binanceRequest(), which
 // signs it and records one entry per call: time, endpoint, HTTP status,
@@ -105,8 +106,7 @@ export async function binanceRequest(
     });
     text = await res.text();
   } catch (err) {
-    const error = err instanceof Error ? `${err.name}: ${err.message}${err.cause ? ` (cause: ${String((err.cause as Error).message ?? err.cause)})` : ""}` : String(err);
-    deps.callLog.record({ ...base, httpStatus: null, latencyMs: Math.round(deps.now() - t0), apiCode: null, ok: false, error: error.slice(0, MAX_ERROR_CHARS) });
+    deps.callLog.record({ ...base, httpStatus: null, latencyMs: Math.round(deps.now() - t0), apiCode: null, ok: false, error: callError(err).slice(0, MAX_ERROR_CHARS) });
     throw err;
   }
   const latencyMs = Math.round(deps.now() - t0);
@@ -119,10 +119,19 @@ export async function binanceRequest(
   }
   const apiCode = typeof body?.code === "number" ? body.code : null;
   const ok = res.ok && apiCode === 0;
-  const error = ok ? undefined : (!res.ok ? text : `code ${apiCode}: ${body?.msg ?? text}`).slice(0, MAX_ERROR_CHARS);
+  const error = ok ? undefined : redactSecrets(!res.ok ? text : `code ${apiCode}: ${body?.msg ?? text}`).slice(0, MAX_ERROR_CHARS);
 
   deps.callLog.record({ ...base, httpStatus: res.status, latencyMs, apiCode, ok, ...(error !== undefined ? { error } : {}) });
   return { httpStatus: res.status, body, text, latencyMs };
+}
+
+// The thrown error as the call log records it: name, message and cause,
+// verbatim except for URLs and secrets (lib/errors/public-error.ts).
+function callError(thrown: unknown): string {
+  if (!(thrown instanceof Error)) return redactSecrets(String(thrown));
+  const { name, message, cause } = thrown;
+  const causeText = cause instanceof Error ? cause.message : cause !== undefined ? String(cause) : "";
+  return redactSecrets(`${name}: ${message}${causeText ? ` (cause: ${causeText})` : ""}`);
 }
 
 // For /api/status: counts and latency percentiles over what's in the log.

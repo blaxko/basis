@@ -4,6 +4,7 @@ import { getDemoHistory, type SpreadHistoryPoint } from "../../../lib/data/demo-
 import { defaultLedger, type AuditLedgerEntry } from "../../../lib/execution/audit-ledger";
 import { isPublicReadOnly } from "../../../lib/config/deployment";
 import { checkRateLimit, clientIp, OPPORTUNITIES_RATE_LIMIT } from "../../../lib/config/rate-limit";
+import { logServerError, plainNetworkReason } from "../../../lib/errors/public-error";
 
 // About an hour of scheduler ticks at the default 30s interval.
 const MAX_LIVE_POINTS = 120;
@@ -74,17 +75,19 @@ export async function GET(request: Request) {
     const { spreads, opportunities, warmUp } = await getPreview();
     return NextResponse.json({ spreads, opportunities, warmUp, history, threshold });
   } catch (err) {
-    // Live pool read failed (e.g. BSC_RPC_URL not configured). History is
-    // still returned; spreads/opportunities come back empty with the
-    // error message, never a fabricated live value. Message text only —
-    // never the raw error object, which could carry env var names.
+    // Live pool read failed (RPC down or slow, or BSC_RPC_URL not set).
+    // History is still returned; spreads/opportunities come back empty
+    // with a short public message, never a fabricated live value. The raw
+    // error (viem's carries the RPC URL) goes to the server log only,
+    // redacted.
+    logServerError("live pool read for the dashboard failed", err);
     return NextResponse.json({
       spreads: [],
       opportunities: [],
       warmUp: {},
       history,
       threshold,
-      error: err instanceof Error ? err.message : "failed to compute live spreads",
+      error: `Live pool prices are temporarily unavailable (BNB Chain RPC: ${plainNetworkReason(err)}).`,
     });
   }
 }

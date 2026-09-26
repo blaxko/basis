@@ -26,6 +26,7 @@ import {
   type PipelineMode,
 } from "./audit-ledger";
 import type { TxSimulation } from "../data/binance-transaction";
+import { safeDetail } from "../errors/public-error";
 
 // A MANUAL execution test, not arbitrage. Two actions, one route:
 //   "round_trip" — buy up to $5 of MSFTB on the 0.25% pool, then sell what
@@ -377,6 +378,7 @@ async function runLeg(
   return leg;
 }
 
+// Shown in the ledger: first line only, URLs and secrets redacted.
 function message(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
+  return safeDetail(err);
 }

@@ -49,7 +49,7 @@ describe("readWalletBalances", () => {
 
   it("reports a failed read as unavailable, and doesn't cache it", async () => {
     const { d } = deps({ getBlockNumber: vi.fn(async () => Promise.reject(new Error("HTTP request failed.\nURL: https://…"))) });
-    expect(await readWalletBalances(d)).toMatchObject({ status: "unavailable", reason: "HTTP request failed." });
+    expect(await readWalletBalances(d)).toMatchObject({ status: "unavailable", reason: "BNB Chain RPC: network error" });
     const ok = deps();
     expect((await readWalletBalances(ok.d)).status).toBe("ok");
   });

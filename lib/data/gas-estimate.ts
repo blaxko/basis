@@ -7,6 +7,7 @@ import {
   PANCAKESWAP_V3_SWAP_ROUTER_ADDRESS,
   sqrtPriceX96ToToken1PerToken0,
 } from "./pancakeswap-v3";
+import { safeDetail } from "../errors/public-error";
 
 // Every address used here is read on-chain from the already-verified
 // PancakeSwap V3 SwapRouter, not hardcoded: router.factory() and
@@ -91,7 +92,7 @@ export async function estimateRoundTripGasUsd(
     }
     return { gasCostUsd, source: "live" };
   } catch (err) {
-    const error = err instanceof Error ? err.message.split("\n")[0]! : String(err);
+    const error = safeDetail(err);
     deps.warn(`live gas estimate failed (${error}); using fallback $${params.fallbackGasCostUsd}`);
     return { gasCostUsd: params.fallbackGasCostUsd, source: "fallback", error };
   }

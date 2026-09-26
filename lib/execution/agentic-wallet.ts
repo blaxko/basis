@@ -10,6 +10,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { isPublicReadOnly, getReadOnlyWalletAddress, ReadOnlyModeError } from "../config/deployment";
 import { bsc } from "viem/chains";
+import { safeDetail } from "../errors/public-error";
 
 // Real request shape for Binance Web3 Transaction API's DEX aggregator,
 // confirmed via portal reference (not a guess): a single GET call to
@@ -349,7 +350,7 @@ export async function send(unsignedTransaction: UnsignedTransaction, deps: Parti
   } catch (err) {
     // Broadcast succeeded, so the transaction may still be mined. Never
     // lose its hash: callers record it as pending.
-    throw new SentButUnconfirmedError(txHash, err instanceof Error ? err.message : String(err), orderId || undefined);
+    throw new SentButUnconfirmedError(txHash, safeDetail(err), orderId || undefined);
   }
   if (receipt.status !== "success") throw new Error(`transaction ${txHash} was mined but reverted`);
 

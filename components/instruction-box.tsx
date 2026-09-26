@@ -38,8 +38,10 @@ export function InstructionBox() {
       } catch {
         body = raw;
       }
-    } catch (err) {
-      body = { message: err instanceof Error ? err.message : String(err) };
+    } catch {
+      // Network failure: no HTTP status. describeInstructionResult words
+      // it; the browser's own error text is never shown.
+      body = null;
     } finally {
       setReply({ httpStatus, body, text: describeInstructionResult(httpStatus, body) });
       setSending(false);

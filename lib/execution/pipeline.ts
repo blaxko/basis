@@ -23,6 +23,7 @@ import {
 import { BSC_USDT_ADDRESS } from "../data/quotes";
 import { simulateEvmTransaction, type EvmTxToSimulate, type TxSimulation } from "../data/binance-transaction";
 import { AuditLedger, type PipelineLedgerEntry, type DetectionSnapshot, type PipelineMode } from "./audit-ledger";
+import { safeDetail } from "../errors/public-error";
 
 export type { PipelineMode } from "./audit-ledger";
 
@@ -357,7 +358,7 @@ async function runSteps(
         outcome: "approval_failed",
         verdict,
         freshness: { freshSpread, ok: true },
-        approval: { needed: true, error: err instanceof Error ? err.message : String(err) },
+        approval: { needed: true, error: safeDetail(err) },
       });
     }
   }
@@ -447,7 +448,7 @@ async function runSteps(
       approval: approvalInfo,
       dryRun,
       transactionSimulation,
-      send: { error: err instanceof Error ? err.message : String(err) },
+      send: { error: safeDetail(err) },
     });
   }
 }

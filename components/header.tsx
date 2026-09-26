@@ -22,11 +22,9 @@ export function Header() {
         body: JSON.stringify({ mode }),
       });
       const json = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(typeof json?.error === "string" ? json.error : `killswitch update failed (${res.status})`);
-      }
-    } catch (err) {
-      setPostError(err instanceof Error ? err.message : "failed to update killswitch");
+      if (!res.ok) setPostError(typeof json?.error === "string" ? json.error : `the server returned an error (HTTP ${res.status})`);
+    } catch {
+      setPostError("couldn't reach the server");
     } finally {
       setPosting(false);
       // Always re-pull server state after the attempt, success or not —

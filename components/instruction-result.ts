@@ -33,7 +33,7 @@ const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
 export function describeInstructionResult(httpStatus: number | null, body: unknown): InstructionOutcomeText {
   if (httpStatus === null) {
-    return { tone: "error", headline: "Couldn't reach the server.", detail: str(obj(body).message) || undefined };
+    return { tone: "error", headline: "Couldn't reach the server.", detail: "Check your connection and try again." };
   }
 
   const b = obj(body);
@@ -66,6 +66,12 @@ export function describeInstructionResult(httpStatus: number | null, body: unkno
             (Number.isFinite(minutes) ? ` Try again in about ${minutes} minute${minutes === 1 ? "" : "s"}.` : ""),
         };
       }
+      case "price_data_unavailable":
+        return {
+          tone: "error",
+          headline: `Live price data is temporarily unavailable for ${str(e.ticker) || "that stock"}, so nothing was evaluated.`,
+          detail: "Basis couldn't read the pool prices from BNB Chain just now. Try again in a minute.",
+        };
       case "pool_resolution_failed":
         return {
           tone: "info",
