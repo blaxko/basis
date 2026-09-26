@@ -84,6 +84,15 @@ describe("README and how-to-use match the code and the live site", () => {
     expect(readme).toMatch(/Transaction API[^\n]*(local|execution test)/);
   });
 
+  it("README and PRD list the cross-issuer recorder's calls among what runs on the deployed site", () => {
+    const prd = read("docs/PRD.md");
+    for (const doc of [readme, prd]) {
+      expect(doc).toContain("rwa/price");
+      expect(doc).toContain("/api/issuers");
+      expect(doc).toMatch(/Monitor only: Basis doesn't trade across issuers/);
+    }
+  });
+
   it("how-to-use: the round trip paid one pool's fee twice, not 'the two pools' fees'", () => {
     expect(howTo).not.toContain("(the two pools' fees)");
   });

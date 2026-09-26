@@ -158,7 +158,7 @@ As built and running (2026-09-26). Every box is a module under `lib/`.
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-**What runs where.** On the public deployed site (`PUBLIC_READ_ONLY`, no key) the Binance calls are `aggregator/quote` and `rwa/underlying-market`, on every tick and every typed instruction. The Transaction API endpoints (`pre-transaction/simulate`, `broadcast-transaction`) only run in dry-run when an order has a positive net edge (none has so far, so the deployed site has never called them) and in the local execution test, where they ran for the four mainnet transactions of 2026-09-25.
+**What runs where.** On the public deployed site (`PUBLIC_READ_ONLY`, no key) the Binance calls are `aggregator/quote` and `rwa/underlying-market`, on every tick and every typed instruction. The Transaction API endpoints (`pre-transaction/simulate`, `broadcast-transaction`) only run in dry-run when an order has a positive net edge (none has so far, so the deployed site has never called them) and in the local execution test, where they ran for the four mainnet transactions of 2026-09-25. The read-only **cross-issuer recorder** (`lib/issuers/`; Monitor only: Basis doesn't trade across issuers) adds `aggregator/quote` buy quotes for xStocks MSFTx and Ondo MSFTon every 30 s, and one `rwa/price` plus a sell quote per token every 5 min (about 4.8 calls a minute), and serves its per-share readings from memory at `/api/issuers`. Token addresses were confirmed from each issuer's own data, the chain, and Binance's RWA API.
 
 There is no second, operating-budget wallet: x402 self-funding was evaluated and rejected (section 5d).
 
