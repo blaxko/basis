@@ -155,6 +155,12 @@ h3 {
   background: var(--color-pass);
 }
 
+/* No call yet: neutral grey, hollow, like the other "not decided" states. */
+.status-dot--unknown {
+  background: transparent;
+  border: 2px dashed var(--color-pending);
+}
+
 /* --- Start here (public demo, dismissible) --- */
 
 .start-here {

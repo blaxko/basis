@@ -4,6 +4,7 @@ import { useState } from "react";
 import { usePoll } from "./use-poll";
 import type { MarketStatus, PipelineMode, StatusResponse } from "./api-types";
 import { readOnlyNote, revertLabel } from "./read-only-note";
+import { healthChip, type ChipState } from "./health-chip";
 
 const MODES: PipelineMode[] = ["simulation", "dry-run", "live"];
 
@@ -90,8 +91,8 @@ export function Header() {
         <>
           <div className="status-row">
             {status.data.publicReadOnly && <StatusChip label="Public read-only: no sending" ok={true} />}
-            <StatusChip label="Groq" ok={status.data.groq.configured} />
-            <StatusChip label="BSC RPC" ok={status.data.bscRpc.configured} />
+            <HealthChip chip={healthChip("Groq", status.data.groq, Date.now())} />
+            <HealthChip chip={healthChip("BSC RPC", status.data.bscRpc, Date.now())} />
             <StatusChip
               label={
                 status.data.tradingWallet.address
@@ -160,6 +161,16 @@ function marketChipOk(m: MarketStatus): boolean {
   if (m.status !== "ok") return false;
   if (m.reasonCode === null) return m.openState;
   return m.reasonCode === "TRADING" || m.reasonCode === "MARKET_CLOSED";
+}
+
+// Green = the last call worked, red = it failed, grey = no call yet.
+function HealthChip({ chip }: { chip: { label: string; state: ChipState } }) {
+  return (
+    <span className="status-chip">
+      <span className={"status-dot" + (chip.state === "ok" ? " status-dot--ok" : chip.state === "unknown" ? " status-dot--unknown" : "")} />
+      {chip.label}
+    </span>
+  );
 }
 
 function StatusChip({ label, ok }: { label: string; ok: boolean }) {

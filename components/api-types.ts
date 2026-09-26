@@ -36,11 +36,19 @@ export interface BinanceCallRecord {
   error?: string;
 }
 
+export interface ServiceHealthJson {
+  configured: boolean;
+  lastOkAt: string | null;
+  lastFailAt: string | null;
+  lastFailure: string | null;
+}
+
 export interface StatusResponse {
   publicReadOnly: boolean;
   requestClientIp: string;
-  groq: { configured: boolean };
-  bscRpc: { configured: boolean };
+  // Configured, and the last real call's outcome (lib/config/service-health.ts).
+  groq: ServiceHealthJson;
+  bscRpc: ServiceHealthJson;
   tradingWallet: { configured: boolean; address: string | null; error?: string };
   binanceWeb3Api: {
     configured: boolean;

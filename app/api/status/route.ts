@@ -8,6 +8,7 @@ import { getLatestMarketStatuses } from "../../../lib/data/binance-rwa";
 import { getSchedulerStats } from "../../../lib/orchestration/scheduler";
 import { readWalletBalances } from "../../../lib/execution/wallet-balances";
 import { safeDetail } from "../../../lib/errors/public-error";
+import { getServiceHealth } from "../../../lib/config/service-health";
 
 const RECENT_BINANCE_CALLS = 50;
 
@@ -42,8 +43,10 @@ export async function GET(request: Request) {
     publicReadOnly: isPublicReadOnly(),
     // The caller's own IP as the rate limiter sees it (see clientIp()).
     requestClientIp: clientIp(request),
-    groq: { configured: Boolean(process.env.GROQ_API_KEY) },
-    bscRpc: { configured: Boolean(process.env.BSC_RPC_URL) },
+    // Configured, plus the real outcome of the last call (when it last
+    // succeeded, when it last failed and why) — the header's chips.
+    groq: { configured: Boolean(process.env.GROQ_API_KEY), ...getServiceHealth("groq") },
+    bscRpc: { configured: Boolean(process.env.BSC_RPC_URL), ...getServiceHealth("bscRpc") },
     tradingWallet: tradingWalletStatus(),
     binanceWeb3Api: {
       configured: Boolean(

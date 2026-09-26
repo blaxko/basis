@@ -3,6 +3,8 @@ import type { Address } from "viem";
 import type { Protocol, Quote, PoolQuote } from "./types";
 import { getPoolsForTicker } from "./pool-addresses";
 import { readPoolPrice } from "./pancakeswap-v3";
+import { recordServiceFailure, recordServiceOk } from "../config/service-health";
+import { plainNetworkReason } from "../errors/public-error";
 
 // Ticker suffix convention confirmed live on BNB Chain as of Sep 2026:
 // Ondo total-return tokens use an "on" suffix (NVDAon, AAPLon, ...);
@@ -131,9 +133,17 @@ export async function fetchPoolQuotes(ticker: string): Promise<PoolQuote[]> {
   const pools = getPoolsForTicker(ticker);
   const timestamp = Date.now();
 
-  const results = await Promise.all(
-    pools.map((pool) => readPoolPrice(pool.address as Address, BSC_USDT_ADDRESS, pool.feeUnits))
-  );
+  // Every pool read also feeds the header's BSC RPC chip
+  // (lib/config/service-health.ts): the dashboard and the scheduler read
+  // the pools at least every 30 s, so this is the RPC's real recent health.
+  let results;
+  try {
+    results = await Promise.all(pools.map((pool) => readPoolPrice(pool.address as Address, BSC_USDT_ADDRESS, pool.feeUnits)));
+  } catch (err) {
+    recordServiceFailure("bscRpc", plainNetworkReason(err));
+    throw err;
+  }
+  recordServiceOk("bscRpc");
 
   return results.map((result) => ({
     ticker,

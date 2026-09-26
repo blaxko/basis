@@ -1,5 +1,6 @@
 import "server-only";
 import { logServerError, plainNetworkReason } from "../errors/public-error";
+import { recordServiceFailure, recordServiceOk } from "../config/service-health";
 
 // This module talks to Groq with a secret API key and must never reach a
 // client bundle. The `server-only` import throws a build-time error if
@@ -51,10 +52,30 @@ export function buildGroqAuthHeaders(apiKey: string): Record<string, string> {
 // hardcoded, never cached at module scope, never included in any
 // returned/logged message (error messages below report status codes and
 // generic text only, never request headers or the key).
-export async function chatCompletion(
-  messages: GroqChatMessage[],
-  options: GroqChatOptions = {}
-): Promise<GroqChatResult> {
+export async function chatCompletion(messages: GroqChatMessage[], options: GroqChatOptions = {}): Promise<GroqChatResult> {
+  const result = await callGroq(messages, options);
+  recordGroqHealth(result);
+  return result;
+}
+
+// Feeds the header's Groq chip (lib/config/service-health.ts). An unset
+// key is "not configured", not a failure, so it records nothing.
+function recordGroqHealth(result: GroqChatResult): void {
+  if (result.ok) return recordServiceOk("groq");
+  const httpStatus = result.error.message.match(/failed: (\d{3})/)?.[1];
+  const reason: Record<GroqChatError["kind"], string | null> = {
+    not_implemented: null,
+    timeout: "timed out",
+    rate_limit: "rate limited (HTTP 429)",
+    http_error: httpStatus ? `HTTP ${httpStatus}` : "HTTP error",
+    network_error: "network error",
+    malformed_response: "unexpected response",
+  };
+  const r = reason[result.error.kind];
+  if (r !== null) recordServiceFailure("groq", r);
+}
+
+async function callGroq(messages: GroqChatMessage[], options: GroqChatOptions): Promise<GroqChatResult> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     return {
