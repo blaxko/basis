@@ -9,7 +9,7 @@ import type {
   PipelineLedgerEntry,
   TxSimulation,
 } from "./api-types";
-import { groupLedgerRows } from "./ledger-groups";
+import { groupLedgerRows, summarizeDetections } from "./ledger-groups";
 import { ledgerShowingNote } from "./counters";
 import { ledgerVerdictWord } from "./verdict-wording";
 
@@ -92,7 +92,7 @@ export function AuditLedger() {
                 {(group.entry.runningForMs / 1000).toFixed(1)}s — no evaluation this interval
               </div>
             </div>
-          ) : group.entries.length === 1 && !group.continuesBeyondShown ? (
+          ) : group.entries.length === 1 && !group.entries[0]!.run && !group.continuesBeyondShown ? (
             <DetectionRow key={group.entries[0]!.id} entry={group.entries[0]!} />
           ) : (
             <DetectionSummaryRow key={group.entries[0]!.id} entries={group.entries} continuesBeyondShown={group.continuesBeyondShown} />
@@ -128,21 +128,19 @@ function DetectionRow({ entry }: { entry: DetectionLedgerEntry }) {
 // its count and time range cover only what's listed.
 function DetectionSummaryRow({ entries, continuesBeyondShown }: { entries: DetectionLedgerEntry[]; continuesBeyondShown: boolean }) {
   const latest = entries[0]!;
-  const oldest = entries[entries.length - 1]!;
-  const edges = entries.map((e) => e.detection.netEdge);
-  const fallbacks = entries.filter((e) => e.detection.gas.source === "fallback").length;
-  const noReference = entries.filter((e) => e.detection.reference.status !== "ok").length;
+  // Counts every reading, including those compacted into a run.
+  const s = summarizeDetections(entries);
   return (
     <div className="terminal-line">
       <div className="terminal-line-meta">
-        {fmtClock(oldest.timestamp)} → {fmtClock(latest.timestamp)} UTC · {entries.length} entries{continuesBeyondShown ? " shown (older ones not listed)" : ""} · outcome={latest.outcome}
+        {fmtClock(s.firstTimestamp)} → {fmtClock(s.lastTimestamp)} UTC · {s.count} entries{continuesBeyondShown ? " shown (older ones not listed)" : ""} · outcome={latest.outcome}
       </div>
       <div>
-        {latest.detection.ticker} — {entries.length}× detection: {detectionLabel(latest)} · net edge {signedPct(Math.min(...edges))} to{" "}
-        {signedPct(Math.max(...edges))} · latest: {pools(latest.detection)}
+        {latest.detection.ticker} — {s.count}× detection: {detectionLabel(latest)} · net edge {signedPct(s.netEdgeMin)} to{" "}
+        {signedPct(s.netEdgeMax)} · latest: {pools(latest.detection)}
         {` · latest ${reference(latest.detection)} · ${market(latest.detection)}`}
-        {fallbacks > 0 && ` · ${fallbacks} used FALLBACK gas`}
-        {noReference > 0 && ` · ${noReference} without a Binance reference`}
+        {s.fallbackGas > 0 && ` · ${s.fallbackGas} used FALLBACK gas`}
+        {s.noReference > 0 && ` · ${s.noReference} without a Binance reference`}
       </div>
     </div>
   );

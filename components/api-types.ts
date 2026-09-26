@@ -241,6 +241,18 @@ export interface DetectionLedgerEntry {
   outcome: "no_opportunity" | "warming_up";
   detection: DetectionSnapshot;
   warmUp?: { readings: number; required: number };
+  // Consecutive no_opportunity readings compacted into this one entry
+  // (lib/execution/audit-ledger.ts); `detection` is the latest reading.
+  run?: {
+    count: number;
+    firstTimestamp: number;
+    netEdgeMin: number;
+    netEdgeMax: number;
+    grossGapMin: number;
+    grossGapMax: number;
+    fallbackGas: number;
+    noReference: number;
+  };
 }
 
 export interface ExecutionTestLeg {
@@ -291,8 +303,10 @@ export interface SchedulerLedgerEntry {
 export type AuditLedgerEntry = PipelineLedgerEntry | DetectionLedgerEntry | ExecutionTestLedgerEntry | SchedulerLedgerEntry;
 
 export interface LedgerResponse {
-  entries: AuditLedgerEntry[]; // the newest 300, newest first
-  total: number; // every entry this session
+  entries: AuditLedgerEntry[]; // the newest 300 stored entries, newest first
+  total: number; // stored entries (runs of detections compacted)
+  decisions: number; // every decision recorded this session
+  dropped: { entries: number; decisions: number }; // removed by the hard cap
 }
 
 export interface KillswitchResponse {
