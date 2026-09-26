@@ -40,12 +40,23 @@ afterEach(() => {
   vi.resetModules();
 });
 
+// A real ledger (not a mock of readAll): `count` evaluations for the chart,
+// and `count` order entries for the ledger route (consecutive "no
+// opportunity" detections are compacted into one stored entry, so orders
+// are what fill the list).
 async function withLedger(count: number) {
   vi.resetModules();
-  const entries = Array.from({ length: count }, (_, i) => detectionEntry(i));
+  const real = await vi.importActual<typeof import("../lib/execution/audit-ledger")>("../lib/execution/audit-ledger");
+  const ledger = new real.AuditLedger();
+  for (let i = 0; i < count; i++) {
+    const e = detectionEntry(i);
+    if (e.kind === "detection") ledger.appendNoOpportunity({ mode: "simulation", detection: e.detection as never });
+  }
+  const verdict = { approved: false, status: "blocked", reason: "x", checks: [], timestamp: 0, input: { ticker: "MSFT", sizeUsd: 1000 } };
+  for (let i = 0; i < count; i++) ledger.append({ mode: "simulation", outcome: "blocked", verdict: verdict as never });
   vi.doMock("../lib/execution/audit-ledger", async (orig) => ({
     ...(await orig<typeof import("../lib/execution/audit-ledger")>()),
-    defaultLedger: { readAll: () => entries },
+    defaultLedger: ledger,
   }));
   vi.doMock("../lib/orchestration/agent-loop", async (orig) => ({
     ...(await orig<typeof import("../lib/orchestration/agent-loop")>()),
@@ -69,7 +80,8 @@ describe("the routes report the true totals, not just what they return", { timeo
     const { GET } = await import("../app/api/ledger/route");
     const body = await (await GET()).json();
     expect(body.entries).toHaveLength(300);
-    expect(body.total).toBe(500);
+    expect(body.total).toBe(501); // 500 orders + the one compacted run of 500 detections
+    expect(body.decisions).toBe(1000);
   });
 });
 

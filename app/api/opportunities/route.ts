@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { previewOpportunities, DEFAULT_AGENT_LOOP_CONFIG } from "../../../lib/orchestration/agent-loop";
 import { getDemoHistory, type SpreadHistoryPoint } from "../../../lib/data/demo-history";
-import { defaultLedger, type AuditLedgerEntry } from "../../../lib/execution/audit-ledger";
+import { defaultLedger, type EvaluationPoint } from "../../../lib/execution/audit-ledger";
 import { isPublicReadOnly } from "../../../lib/config/deployment";
 import { checkRateLimit, clientIp, OPPORTUNITIES_RATE_LIMIT } from "../../../lib/config/rate-limit";
 import { logServerError, plainNetworkReason } from "../../../lib/errors/public-error";
@@ -60,16 +60,14 @@ export async function GET(request: Request) {
 
   // `total` is every live evaluation this session; `points` is capped at
   // MAX_LIVE_POINTS, so the dashboard can say how much the chart shows.
+  // Both come from the ledger's running count and per-ticker buffer, so a
+  // poll costs the same after three weeks as after one minute.
   const history: Record<string, { source: "live" | "historical"; points: SpreadHistoryPoint[]; total: number }> = {};
-  const entries = defaultLedger.readAll();
 
   for (const ticker of DEFAULT_AGENT_LOOP_CONFIG.underlyings) {
-    const allLive = entries.filter(
-      (entry): entry is DetectionOrPipelineEntry => (entry.kind === "detection" || entry.kind === "pipeline") && entry.detection?.ticker === ticker
-    );
-    const live = allLive.slice(-MAX_LIVE_POINTS).map(toHistoryPoint);
+    const live = defaultLedger.recentEvaluations(ticker).slice(-MAX_LIVE_POINTS).map(toHistoryPoint);
     if (live.length > 0) {
-      history[ticker] = { source: "live", points: live, total: allLive.length };
+      history[ticker] = { source: "live", points: live, total: defaultLedger.evaluationCount(ticker) };
     } else {
       const fixture = getDemoHistory(ticker);
       history[ticker] = { source: "historical", points: fixture, total: fixture.length };
@@ -99,14 +97,9 @@ export async function GET(request: Request) {
   }
 }
 
-// Only detection and pipeline entries carry a detection snapshot; the
-// execution-test and scheduler kinds never feed the chart.
-type DetectionOrPipelineEntry = Extract<AuditLedgerEntry, { kind: "detection" | "pipeline" }>;
-
-function toHistoryPoint(entry: DetectionOrPipelineEntry): SpreadHistoryPoint {
-  const detection = entry.detection!;
+function toHistoryPoint({ timestamp, detection }: EvaluationPoint): SpreadHistoryPoint {
   return {
-    timestamp: new Date(entry.timestamp).toISOString(),
+    timestamp: new Date(timestamp).toISOString(),
     cheapPoolPriceUsd: detection.cheapPool.priceUsd,
     cheapPoolFeeUnits: detection.cheapPool.feeUnits,
     expensivePoolPriceUsd: detection.expensivePool.priceUsd,

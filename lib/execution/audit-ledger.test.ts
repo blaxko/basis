@@ -36,14 +36,18 @@ describe("AuditLedger — detection entries are a different kind from pipeline e
     expect("verdict" in entry).toBe(false);
   });
 
-  it("gives every entry a unique id, across both kinds", () => {
+  it("gives every stored entry a unique id; consecutive no_opportunity readings share their run's entry", () => {
     const ledger = new AuditLedger();
-    const ids = [
-      ledger.appendNoOpportunity({ mode: "simulation", detection }).id,
+    const run = [
       ledger.appendNoOpportunity({ mode: "simulation", detection }).id,
       ledger.appendNoOpportunity({ mode: "simulation", detection }).id,
     ];
-    expect(new Set(ids).size).toBe(3);
+    const others = [
+      ledger.appendWarmingUp({ mode: "simulation", detection, warmUp: { readings: 3, required: 10 } }).id,
+      ledger.appendNoOpportunity({ mode: "simulation", detection }).id,
+    ];
+    expect(run[0]).toBe(run[1]); // compacted (test/ledger-memory.test.ts)
+    expect(new Set([run[0], ...others]).size).toBe(3);
   });
 });
 
