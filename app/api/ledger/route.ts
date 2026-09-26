@@ -9,5 +9,6 @@ const MAX_ENTRIES = 300;
 export async function GET() {
   const entries = defaultLedger.readAll();
   const recent = entries.slice(Math.max(0, entries.length - MAX_ENTRIES)).reverse();
-  return NextResponse.json({ entries: recent });
+  // `total` lets the panel say when it isn't showing everything.
+  return NextResponse.json({ entries: recent, total: entries.length });
 }

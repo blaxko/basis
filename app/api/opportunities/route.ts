@@ -58,15 +58,22 @@ export async function GET(request: Request) {
     }
   }
 
-  const history: Record<string, { source: "live" | "historical"; points: SpreadHistoryPoint[] }> = {};
+  // `total` is every live evaluation this session; `points` is capped at
+  // MAX_LIVE_POINTS, so the dashboard can say how much the chart shows.
+  const history: Record<string, { source: "live" | "historical"; points: SpreadHistoryPoint[]; total: number }> = {};
   const entries = defaultLedger.readAll();
 
   for (const ticker of DEFAULT_AGENT_LOOP_CONFIG.underlyings) {
-    const live = entries
-      .filter((entry): entry is DetectionOrPipelineEntry => (entry.kind === "detection" || entry.kind === "pipeline") && entry.detection?.ticker === ticker)
-      .slice(-MAX_LIVE_POINTS)
-      .map(toHistoryPoint);
-    history[ticker] = live.length > 0 ? { source: "live", points: live } : { source: "historical", points: getDemoHistory(ticker) };
+    const allLive = entries.filter(
+      (entry): entry is DetectionOrPipelineEntry => (entry.kind === "detection" || entry.kind === "pipeline") && entry.detection?.ticker === ticker
+    );
+    const live = allLive.slice(-MAX_LIVE_POINTS).map(toHistoryPoint);
+    if (live.length > 0) {
+      history[ticker] = { source: "live", points: live, total: allLive.length };
+    } else {
+      const fixture = getDemoHistory(ticker);
+      history[ticker] = { source: "historical", points: fixture, total: fixture.length };
+    }
   }
 
   const threshold = DEFAULT_AGENT_LOOP_CONFIG.adjustedSpreadThreshold;

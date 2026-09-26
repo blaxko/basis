@@ -172,7 +172,8 @@ export interface SpreadHistoryPoint {
 // (lib/data/demo-history.ts), shown only when no live evaluation exists.
 export interface SpreadSeries {
   source: "live" | "historical";
-  points: SpreadHistoryPoint[];
+  points: SpreadHistoryPoint[]; // at most the last 120
+  total: number; // every evaluation this session
 }
 
 export interface PreviewOpportunity {
@@ -290,7 +291,8 @@ export interface SchedulerLedgerEntry {
 export type AuditLedgerEntry = PipelineLedgerEntry | DetectionLedgerEntry | ExecutionTestLedgerEntry | SchedulerLedgerEntry;
 
 export interface LedgerResponse {
-  entries: AuditLedgerEntry[];
+  entries: AuditLedgerEntry[]; // the newest 300, newest first
+  total: number; // every entry this session
 }
 
 export interface KillswitchResponse {

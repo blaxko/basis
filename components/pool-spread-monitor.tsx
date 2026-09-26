@@ -15,6 +15,7 @@ import {
 import { usePoll } from "./use-poll";
 import type { OpportunitiesResponse, ReferenceQuote, SpreadSeries } from "./api-types";
 import { TOKENS, CHART_BAND_OPACITY } from "./theme";
+import { evaluationsTag } from "./counters";
 
 const AXIS_TICK = { fontSize: 10, fill: TOKENS.chartAxis };
 
@@ -59,7 +60,7 @@ export function PoolSpreadMonitor() {
 }
 
 function TickerChart({ ticker, series, threshold }: { ticker: string; series: SpreadSeries; threshold: number }) {
-  const { points, source } = series;
+  const { points, source, total } = series;
   const latest = points[points.length - 1];
 
   if (!latest) {
@@ -87,7 +88,7 @@ function TickerChart({ ticker, series, threshold }: { ticker: string; series: Sp
         <h3 className="monitor-ticker">{ticker} · PancakeSwap V3 pools</h3>
         <span className={"source-tag " + (source === "live" ? "source-tag--live" : "source-tag--historical")}>
           {source === "live"
-            ? `LIVE · ${points.length} evaluation${points.length === 1 ? "" : "s"} this session`
+            ? evaluationsTag(total ?? points.length, points.length)
             : "HISTORICAL FIXTURE · 2026-09-18 → 09-21 · NOT LIVE"}
         </span>
       </div>

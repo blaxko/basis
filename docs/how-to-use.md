@@ -40,7 +40,7 @@ The AI (Groq) only reads your sentence into three things: which stock, buy or se
 
 ### Pool Spread Monitor
 
-The main chart. The green tag `LIVE · N evaluations this session` means real, live data; N goes up by one every 30 seconds. (A grey dashed `HISTORICAL FIXTURE … NOT LIVE` tag means it couldn't read live prices and is showing old sample data.)
+The main chart. The green tag `LIVE · N evaluations this session` means real, live data; N goes up by one every 30 seconds for as long as the server runs. The chart itself holds the last 120 evaluations (about an hour), so after the first hour the tag adds `· chart shows the last 120`. (A grey dashed `HISTORICAL FIXTURE … NOT LIVE` tag means it couldn't read live prices and is showing old sample data.)
 
 - **Reading line** under the tag: both pools' prices, the *gross gap* (the raw price difference), the *net edge* (the gap after all costs — red when below zero, green when it clears), then `no opportunity` or `clears threshold`, and `Binance reference $…` (Binance's own quote for the same purchase, used as a cross-check).
 - **Chart:** dashed yellow line = gross gap; solid white line = net edge; grey line at 0, labelled `0 = break-even`; dark-red band below zero, labelled `below zero: doesn't clear costs`.
@@ -71,7 +71,7 @@ Every decision, newest first:
 - **Detection rows** — `MSFT — N× detection: no opportunity, no order built`, with a time range, the net-edge range and the latest prices. Repeated "no" decisions are grouped into one row; each is still recorded.
 - **Guardrail rows** — `MSFT $200 — guardrail: APPROVED (…)` or `BLOCKED (…)`, then what happened, e.g. `no edge: net -0.819% is not positive — nothing sent`.
 - Rarer rows: `EXECUTION TEST (not arbitrage)` (only on the local machine) and `tick skipped` (a check ran late).
-- **Normal:** one detection row whose count grows every 30 seconds.
+- **Normal:** one detection row whose count grows every 30 seconds. The panel lists the newest 300 entries (about 2.5 hours); after that it says `Showing the newest 300 of N entries.`, and the oldest row reads `… entries shown (older ones not listed)`.
 
 ## 3. Public demo vs your own machine
 
@@ -90,7 +90,7 @@ Every decision, newest first:
 1. **Open the site.** You should see: every header chip with a green dot, including `Public read-only: no sending`.
 2. **Binance connected.** Look at the `Binance Web3 API · …ms` chip; refresh after 30 seconds. You should see: a number (around 100–300 ms) that changes between refreshes. `unreachable` or `HTTP …` means a problem.
 3. **Market status.** Look at the `MSFT underlying market` chip. You should see: `TRADING` or `MARKET_CLOSED` with a green dot.
-4. **Live prices updating.** Note the `LIVE · N evaluations` count in the Pool Spread Monitor, wait a minute, refresh. You should see: N higher by about 2, and a new point on the chart.
+4. **Live prices updating.** Note the `LIVE · N evaluations` count in the Pool Spread Monitor, wait a minute, refresh. You should see: N higher by about 2 (the chart shows the last 120 of them), and a new point at the right end of the chart.
 5. **Warm-up finishing.** Only relevant within 5 minutes of a restart. You should see: the Guardrail Gate's `WARMING UP … x of 10 readings` counting up, then disappearing.
 6. **Detection rows appearing.** Look at the Audit Ledger. You should see: `MSFT — N× detection: no opportunity, no order built`, the count and the time range growing.
 7. **A normal instruction.** Click the example `Buy $200 of MSFT`, then **Send** (section 5, test 1). You should see: a green result under the box, the Guardrail Gate turn `APPROVED`, and a new ledger row ending `no edge … nothing sent`.

@@ -10,6 +10,7 @@ import type {
   TxSimulation,
 } from "./api-types";
 import { groupLedgerRows } from "./ledger-groups";
+import { ledgerShowingNote } from "./counters";
 
 const POLL_MS = 10_000;
 
@@ -61,7 +62,9 @@ function gas(d: DetectionSnapshot): string {
 export function AuditLedger() {
   const poll = usePoll<LedgerResponse>("/api/ledger", POLL_MS);
   const entries = poll.data?.entries ?? [];
-  const groups = groupLedgerRows(entries);
+  const total = poll.data?.total ?? entries.length;
+  const groups = groupLedgerRows(entries, { truncated: total > entries.length });
+  const showingNote = ledgerShowingNote(total, entries.length);
 
   return (
     <section className="panel panel--terminal">
@@ -69,6 +72,7 @@ export function AuditLedger() {
 
       {poll.loading && !poll.data && <p className="state-message mono">loading ledger…</p>}
       {poll.error && <p className="state-message state-message--error mono">ledger unavailable: {poll.error}</p>}
+      {showingNote && <p className="state-message mono">{showingNote}</p>}
 
       <div className="terminal-feed">
         {entries.length === 0 && !poll.loading && <p className="terminal-empty mono">no ledger entries yet.</p>}
@@ -87,10 +91,10 @@ export function AuditLedger() {
                 {(group.entry.runningForMs / 1000).toFixed(1)}s — no evaluation this interval
               </div>
             </div>
-          ) : group.entries.length === 1 ? (
+          ) : group.entries.length === 1 && !group.continuesBeyondShown ? (
             <DetectionRow key={group.entries[0]!.id} entry={group.entries[0]!} />
           ) : (
-            <DetectionSummaryRow key={group.entries[0]!.id} entries={group.entries} />
+            <DetectionSummaryRow key={group.entries[0]!.id} entries={group.entries} continuesBeyondShown={group.continuesBeyondShown} />
           )
         )}
       </div>
@@ -119,7 +123,9 @@ function DetectionRow({ entry }: { entry: DetectionLedgerEntry }) {
 }
 
 // Newest-first, like the rest of the feed: entries[0] is the latest.
-function DetectionSummaryRow({ entries }: { entries: DetectionLedgerEntry[] }) {
+// continuesBeyondShown: the run goes on past the oldest entry shown, so
+// its count and time range cover only what's listed.
+function DetectionSummaryRow({ entries, continuesBeyondShown }: { entries: DetectionLedgerEntry[]; continuesBeyondShown: boolean }) {
   const latest = entries[0]!;
   const oldest = entries[entries.length - 1]!;
   const edges = entries.map((e) => e.detection.netEdge);
@@ -128,7 +134,7 @@ function DetectionSummaryRow({ entries }: { entries: DetectionLedgerEntry[] }) {
   return (
     <div className="terminal-line">
       <div className="terminal-line-meta">
-        {fmtClock(oldest.timestamp)} → {fmtClock(latest.timestamp)} UTC · {entries.length} entries · outcome={latest.outcome}
+        {fmtClock(oldest.timestamp)} → {fmtClock(latest.timestamp)} UTC · {entries.length} entries{continuesBeyondShown ? " shown (older ones not listed)" : ""} · outcome={latest.outcome}
       </div>
       <div>
         {latest.detection.ticker} — {entries.length}× detection: {detectionLabel(latest)} · net edge {signedPct(Math.min(...edges))} to{" "}

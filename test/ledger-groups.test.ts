@@ -36,7 +36,7 @@ describe("groupLedgerRows — display-only collapse of consecutive detection ent
     const entries = [detection(), detection(), detection()];
     const groups = groupLedgerRows(entries);
     expect(groups).toHaveLength(1);
-    expect(groups[0]).toEqual({ type: "detection", entries });
+    expect(groups[0]).toEqual({ type: "detection", entries, continuesBeyondShown: false });
   });
 
   it("never merges across a guardrail block, which stays its own visible row", () => {

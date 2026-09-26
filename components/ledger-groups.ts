@@ -4,14 +4,16 @@ export type LedgerRowGroup =
   | { type: "pipeline"; entry: PipelineLedgerEntry }
   | { type: "execution_test"; entry: ExecutionTestLedgerEntry }
   | { type: "scheduler"; entry: SchedulerLedgerEntry }
-  | { type: "detection"; entries: DetectionLedgerEntry[] };
+  // continuesBeyondShown: the oldest group of a capped list, whose run of
+  // detections goes on past what the response included.
+  | { type: "detection"; entries: DetectionLedgerEntry[]; continuesBeyondShown: boolean };
 
 // Display-only: collapses runs of consecutive detection entries for the
 // same ticker and outcome into one group, so a guardrail block isn't
 // buried under a detection row every 30s. Every input entry appears in
 // exactly one group, in the original order; nothing is dropped or merged
 // across a pipeline or execution-test entry.
-export function groupLedgerRows(entries: readonly AuditLedgerEntry[]): LedgerRowGroup[] {
+export function groupLedgerRows(entries: readonly AuditLedgerEntry[], options: { truncated?: boolean } = {}): LedgerRowGroup[] {
   const groups: LedgerRowGroup[] = [];
   for (const entry of entries) {
     if (entry.kind === "pipeline") {
@@ -34,8 +36,10 @@ export function groupLedgerRows(entries: readonly AuditLedgerEntry[]): LedgerRow
     if (sameRun) {
       last.entries.push(entry);
     } else {
-      groups.push({ type: "detection", entries: [entry] });
+      groups.push({ type: "detection", entries: [entry], continuesBeyondShown: false });
     }
   }
+  const oldest = groups[groups.length - 1];
+  if (options.truncated && oldest?.type === "detection") oldest.continuesBeyondShown = true;
   return groups;
 }
