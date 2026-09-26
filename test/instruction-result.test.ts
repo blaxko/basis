@@ -28,10 +28,10 @@ const REAL_422_NVDA = {
 };
 
 describe("describeInstructionResult — the three examples, from real replies", () => {
-  it("$200: approved but not sent, net edge below zero", () => {
+  it("$200: guardrails passed, not sent, no positive edge", () => {
     expect(describeInstructionResult(200, REAL_200_NO_EDGE)).toEqual({
-      tone: "approved",
-      headline: "Approved by all guardrails, but not sent: net edge -0.82% is below zero.",
+      tone: "not_sent",
+      headline: "Guardrails passed · not sent: no positive edge (net edge -0.82%).",
       detail: "After both pools' fees, slippage and gas, this trade would lose money, so Basis doesn't make it.",
     });
   });
@@ -91,10 +91,10 @@ describe("describeInstructionResult — rate limit, warm-up and errors", () => {
   it("other approved outcomes are named, never shown as sent", () => {
     const approved = (outcome: string) =>
       describeInstructionResult(200, { ...REAL_200_NO_EDGE, outcome, order: { adjustedSpread: 0.004, sizeUsd: 200 } }).headline;
-    expect(approved("simulated")).toBe("Approved by all guardrails. Simulation mode: checks only, nothing sent.");
+    expect(approved("simulated")).toBe("Guardrails passed · not sent: simulation mode runs the checks only.");
     expect(approved("two_leg_execution_not_implemented")).toContain("live arbitrage is switched off");
     expect(approved("spread_closed")).toContain("the gap closed");
-    expect(approved("dry_run_only")).toContain("Nothing sent in dry-run mode");
+    expect(approved("dry_run_only")).toContain("rehearsed only (dry-run mode)");
     expect(approved("tolerance_exceeds_edge")).toContain("too small to protect on-chain");
   });
 

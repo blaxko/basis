@@ -309,6 +309,11 @@ h3 {
   border-left-color: var(--color-fail);
 }
 
+/* Guardrails passed, nothing sent: neutral, solid (decided, not pending). */
+.instruction-result--not_sent {
+  border-left-color: var(--color-muted);
+}
+
 .instruction-headline {
   margin: 0;
   font-weight: 700;
@@ -416,6 +421,11 @@ h3 {
 
 .badge--blocked {
   color: var(--color-fail);
+}
+
+/* Guardrails passed, nothing sent: neutral, never green. */
+.badge--not-sent {
+  color: var(--color-text);
 }
 
 .badge--error {

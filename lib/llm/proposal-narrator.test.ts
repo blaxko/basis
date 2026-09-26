@@ -73,7 +73,9 @@ describe("narrateProposal — real MSFTB cross-pool scenario (declined-trade cas
 
     expect(text).toContain("MSFT: -1.28% net spread after fees/slippage/gas");
     expect(text).toContain("the raw gap does not survive costs");
-    expect(text).toContain("APPROVED");
+    // Checks passing isn't a trade: never "APPROVED" next to a losing edge.
+    expect(text).toContain("guardrails passed (size $200), not sent: no positive edge");
+    expect(text).not.toContain("APPROVED");
   });
 
   it("produces a BLOCKED line with the verdict's reason when the gate rejects the order", () => {

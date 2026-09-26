@@ -27,9 +27,12 @@ function describeEdge(adjustedSpread: number): string {
     : "the raw gap does not survive costs";
 }
 
-function describeDecision(verdict: GuardrailVerdict, proposedSizeUsd: number): string {
+// "guardrails passed", never "APPROVED": passing the checks is not a
+// trade. With no positive edge the line says outright that nothing is sent.
+function describeDecision(verdict: GuardrailVerdict, proposedSizeUsd: number, adjustedSpread: number): string {
   if (verdict.approved) {
-    return `APPROVED (proposed size $${verdict.approvedSizeUsd ?? proposedSizeUsd})`;
+    const size = `size $${verdict.approvedSizeUsd ?? proposedSizeUsd}`;
+    return adjustedSpread > 0 ? `guardrails passed (${size})` : `guardrails passed (${size}), not sent: no positive edge`;
   }
   return `BLOCKED (${verdict.reason})`;
 }
@@ -42,7 +45,7 @@ function describeDecision(verdict: GuardrailVerdict, proposedSizeUsd: number): s
 export function narrateProposal(opportunity: BasisOpportunity, verdict: GuardrailVerdict): string {
   const spreadPct = (opportunity.adjustedSpread * 100).toFixed(2);
   const edgeDescription = describeEdge(opportunity.adjustedSpread);
-  const decision = describeDecision(verdict, opportunity.proposedSizeUsd);
+  const decision = describeDecision(verdict, opportunity.proposedSizeUsd, opportunity.adjustedSpread);
 
   return `${opportunity.ticker}: ${spreadPct}% net spread after fees/slippage/gas, ${edgeDescription}, proposed size $${opportunity.proposedSizeUsd} — ${decision}.`;
 }

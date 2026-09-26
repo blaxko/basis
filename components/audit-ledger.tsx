@@ -11,6 +11,7 @@ import type {
 } from "./api-types";
 import { groupLedgerRows } from "./ledger-groups";
 import { ledgerShowingNote } from "./counters";
+import { ledgerVerdictWord } from "./verdict-wording";
 
 const POLL_MS = 10_000;
 
@@ -162,8 +163,7 @@ function PipelineRow({ entry }: { entry: PipelineLedgerEntry }) {
         {fmtTime(entry.timestamp)} · mode={entry.mode} · outcome={entry.outcome}
       </div>
       <div>
-        {entry.verdict.input.ticker} ${entry.verdict.input.sizeUsd} — guardrail:{" "}
-        {entry.verdict.approved ? "APPROVED" : entry.verdict.status === "error" ? "ERROR" : "BLOCKED"} ({entry.verdict.reason})
+        {entry.verdict.input.ticker} ${entry.verdict.input.sizeUsd} — {ledgerVerdictWord(entry.verdict, entry.outcome)} ({entry.verdict.reason})
       </div>
       {entry.detection && (
         <div>

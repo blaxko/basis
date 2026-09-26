@@ -3,7 +3,8 @@
 // (test/instruction-result.test.ts). It only rephrases what the server
 // decided; it never re-decides anything.
 
-export type ResultTone = "approved" | "blocked" | "info" | "error";
+// not_sent: the guardrails passed but nothing was sent (neutral, not green).
+export type ResultTone = "approved" | "not_sent" | "blocked" | "info" | "error";
 
 export interface InstructionOutcomeText {
   tone: ResultTone;
@@ -139,36 +140,34 @@ export function describeInstructionResult(httpStatus: number | null, body: unkno
     };
   }
 
-  const approved = "Approved by all guardrails";
+  // The checks passing is not a trade: unless something was actually
+  // sent, the result reads "not sent", in a neutral colour.
+  const passed = "Guardrails passed · not sent";
   switch (outcome) {
     case "no_edge":
       return {
-        tone: "approved",
-        headline: `${approved}, but not sent: net edge ${edge} is below zero.`,
+        tone: "not_sent",
+        headline: `${passed}: no positive edge (net edge ${edge}).`,
         detail: "After both pools' fees, slippage and gas, this trade would lose money, so Basis doesn't make it.",
       };
     case "tolerance_exceeds_edge":
       return {
-        tone: "approved",
-        headline: `${approved}, but not sent: net edge ${edge} is too small to protect on-chain.`,
+        tone: "not_sent",
+        headline: `${passed}: net edge ${edge} is too small to protect on-chain.`,
         detail: "The swap's minimum-output protection would cost more than the edge is worth.",
       };
     case "simulated":
-      return {
-        tone: "approved",
-        headline: `${approved}. Simulation mode: checks only, nothing sent.`,
-        detail: `Net edge ${edge}.`,
-      };
+      return { tone: "not_sent", headline: `${passed}: simulation mode runs the checks only.`, detail: `Net edge ${edge}.` };
     case "two_leg_execution_not_implemented":
       return {
-        tone: "approved",
-        headline: `${approved}, but not sent: live arbitrage is switched off.`,
+        tone: "not_sent",
+        headline: `${passed}: live arbitrage is switched off.`,
         detail: "Only one half of the trade (the buy) is built, and one half alone doesn't capture the gap.",
       };
     case "spread_closed":
-      return { tone: "approved", headline: `${approved}, but not sent: the gap closed when the pools were re-read.` };
+      return { tone: "not_sent", headline: `${passed}: the gap closed when the pools were re-read.` };
     case "dry_run_only":
-      return { tone: "approved", headline: `${approved} and rehearsed (dry-run). Nothing sent in dry-run mode.`, detail: `Net edge ${edge}.` };
+      return { tone: "not_sent", headline: `${passed}: rehearsed only (dry-run mode).`, detail: `Net edge ${edge}.` };
     case "dry_run_failed":
       return { tone: "blocked", headline: "Approved, but the rehearsal failed, so nothing was sent." };
     case "approval_failed":
@@ -177,6 +176,6 @@ export function describeInstructionResult(httpStatus: number | null, body: unkno
     case "executed":
       return { tone: "approved", headline: "Approved and sent." };
     default:
-      return { tone: "info", headline: `${approved}. Outcome: ${outcome || "unknown"}.` };
+      return { tone: "not_sent", headline: `${passed}. Outcome: ${outcome || "unknown"}.` };
   }
 }

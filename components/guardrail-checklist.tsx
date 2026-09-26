@@ -2,6 +2,7 @@
 
 import { usePoll } from "./use-poll";
 import type { GuardrailCheckResult, GuardrailVerdict, LedgerResponse, OpportunitiesResponse, WarmUpStatus } from "./api-types";
+import { notSentReason, verdictBadge } from "./verdict-wording";
 
 const OPPORTUNITIES_POLL_MS = 10_000;
 const LEDGER_POLL_MS = 10_000;
@@ -19,8 +20,12 @@ export function GuardrailChecklist() {
   // most recent ledger entry that actually went through the gate —
   // detection entries have no verdict, because no order was built.
   const previewVerdict = opportunities.data?.opportunities?.[0]?.verdict ?? null;
-  const latestLedgerVerdict = ledger.data?.entries?.find((e) => e.kind === "pipeline")?.verdict ?? null;
+  const latestPipeline = ledger.data?.entries?.find((e) => e.kind === "pipeline");
+  const latestLedgerVerdict = latestPipeline?.kind === "pipeline" ? latestPipeline.verdict : null;
   const verdict: GuardrailVerdict | null = previewVerdict ?? latestLedgerVerdict;
+  // What happened to it: the ledger's outcome, or null for a preview.
+  const outcome = previewVerdict ? null : latestPipeline?.kind === "pipeline" ? latestPipeline.outcome : null;
+  const badge = verdict ? verdictBadge(verdict, outcome) : null;
 
   const warming = Object.entries(opportunities.data?.warmUp ?? {}).filter(([, status]) => !status.complete);
 
@@ -40,12 +45,13 @@ export function GuardrailChecklist() {
         <p className="state-message">No guardrail evaluations yet — nothing has cleared the opportunity threshold.</p>
       )}
 
-      {verdict && (
+      {verdict && badge && (
         <>
           <div>
-            <span className={"badge " + badgeClass(verdict)}>{badgeLabel(verdict)}</span>
+            <span className={`badge badge--${badge.tone}`}>{badge.label}</span>
             <span style={{ marginLeft: 10, fontSize: "0.85rem", color: "var(--color-muted)" }}>
-              {verdict.input.ticker} ${verdict.input.sizeUsd} · {verdict.reason}
+              {verdict.input.ticker} ${verdict.input.sizeUsd} ·{" "}
+              {badge.tone === "not-sent" ? `${notSentReason(outcome, verdict.input.adjustedSpread)} · ${verdict.reason}` : verdict.reason}
             </span>
           </div>
 
@@ -77,18 +83,6 @@ function WarmUpBanner({ warming }: { warming: [string, WarmUpStatus][] }) {
       </span>
     </div>
   );
-}
-
-function badgeLabel(verdict: GuardrailVerdict): string {
-  if (verdict.approved) return "APPROVED";
-  if (verdict.status === "error") return "ERROR";
-  return verdict.checks.some((c) => c.warmingUp) ? "WARMING UP" : "BLOCKED";
-}
-
-function badgeClass(verdict: GuardrailVerdict): string {
-  if (verdict.approved) return "badge--approved";
-  if (verdict.status === "error") return "badge--error";
-  return verdict.checks.some((c) => c.warmingUp) ? "badge--warming" : "badge--blocked";
 }
 
 function markLabel(c: GuardrailCheckResult): string {
