@@ -53,7 +53,9 @@ async function withLedger(count: number) {
   }));
 }
 
-describe("the routes report the true totals, not just what they return", () => {
+// Re-importing a route module (next/server, viem) can take several
+// seconds while the rest of the suite runs in parallel.
+describe("the routes report the true totals, not just what they return", { timeout: 30_000 }, () => {
   it("/api/opportunities: 500 evaluations → chart gets 120 points, total says 500", async () => {
     await withLedger(500);
     const { GET } = await import("../app/api/opportunities/route");

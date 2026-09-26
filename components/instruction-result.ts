@@ -27,6 +27,25 @@ function pct(value: unknown): string {
   return `${n > 0 ? "+" : ""}${(n * 100).toFixed(2)}%`;
 }
 
+// One plain sentence per missing or wrong part of the order
+// (lib/llm/intent-parser.ts, IntentProblem). Never blames the AI.
+function describeParseProblem(problem: string): InstructionOutcomeText {
+  switch (problem) {
+    case "amount":
+      return { tone: "error", headline: "Basis needs a dollar amount above $0, for example: Buy $200 of MSFT." };
+    case "ticker":
+      return { tone: "info", headline: "Basis only covers Microsoft (MSFT) today.", detail: "It trades only tokens whose exchange pools it has verified on-chain." };
+    case "side":
+      return { tone: "error", headline: "Say that you want to buy, for example: Buy $200 of MSFT." };
+    default:
+      return {
+        tone: "error",
+        headline: "That doesn't look like an order. Try: Buy $200 of MSFT.",
+        detail: "An order needs a stock, buy, and a dollar amount. Other languages work too.",
+      };
+  }
+}
+
 type Json = Record<string, unknown>;
 const obj = (v: unknown): Json => (v && typeof v === "object" ? (v as Json) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -84,13 +103,15 @@ export function describeInstructionResult(httpStatus: number | null, body: unkno
           headline: "The AI couldn't read the instruction right now, so nothing was evaluated.",
           detail: str(e.message) || undefined,
         };
+      case "unsupported_side":
+        return {
+          tone: "info",
+          headline: "Basis only buys the cheaper pool leg for now; sells aren't supported.",
+          detail: "Nothing was evaluated. Try: Buy $200 of MSFT.",
+        };
       case "invalid_json":
       case "schema_validation":
-        return {
-          tone: "error",
-          headline: "The AI couldn't turn that into an order (a stock, buy or sell, and a dollar amount).",
-          detail: "Try something like: Buy $200 of MSFT.",
-        };
+        return describeParseProblem(str(e.problem));
       default:
         return { tone: "error", headline: "The instruction was refused.", detail: str(e.message) || undefined };
     }

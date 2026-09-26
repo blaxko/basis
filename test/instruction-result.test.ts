@@ -68,11 +68,11 @@ describe("describeInstructionResult — rate limit, warm-up and errors", () => {
     expect(r.detail).toContain("about 4 minutes"); // 7 readings × 30 s = 3.5 min → 4
   });
 
-  it("AI couldn't read it (schema_validation / invalid_json) → how to phrase it", () => {
+  it("not an order (schema_validation / invalid_json) → how to phrase it (per-problem wording: test/instruction-edge-cases.test.ts)", () => {
     for (const kind of ["schema_validation", "invalid_json"]) {
-      const r = describeInstructionResult(422, { error: { kind, message: "x", issues: [] } });
-      expect(r.headline).toContain("couldn't turn that into an order");
-      expect(r.detail).toContain("Buy $200 of MSFT");
+      const r = describeInstructionResult(422, { error: { kind, message: "x", issues: [], problem: "not_an_order" } });
+      expect(r.headline).toContain("doesn't look like an order");
+      expect(r.headline).toContain("Buy $200 of MSFT");
     }
   });
 

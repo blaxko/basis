@@ -55,6 +55,16 @@ export interface PriceDataUnavailableError {
   message: string;
 }
 
+// The instruction asked to sell. Only the buy leg (buy the token on the
+// cheaper pool) is built, so a sell is refused before any pool read —
+// never evaluated as if it were a buy.
+export interface UnsupportedSideError {
+  kind: "unsupported_side";
+  ticker: string;
+  side: "sell";
+  message: string;
+}
+
 // The pools resolved, but after a server start there aren't yet enough
 // price readings to sanity-check them. No order is proposed until there
 // are — same rule as the automatic loop.
@@ -76,7 +86,7 @@ export type InstructionResult =
       outcome: PipelineOutcome;
       ledgerEntryId: string;
     }
-  | { ok: false; error: IntentParseError | PoolResolutionError | PriceDataUnavailableError | WarmingUpError };
+  | { ok: false; error: IntentParseError | UnsupportedSideError | PoolResolutionError | PriceDataUnavailableError | WarmingUpError };
 
 export interface HandleInstructionDeps {
   spendTracker?: SpendTracker;
@@ -112,6 +122,13 @@ export async function handleInstruction(
   }
 
   const intent = parseResult.intent;
+
+  if (intent.side === "sell") {
+    return {
+      ok: false,
+      error: { kind: "unsupported_side", ticker: intent.ticker, side: "sell", message: "only the buy leg is built; sell orders aren't supported" },
+    };
+  }
   const spendTracker = deps.spendTracker ?? defaultSpendTracker;
   const getMode = deps.getMode ?? getKillswitchMode;
   const ledger = deps.ledger ?? defaultLedger;

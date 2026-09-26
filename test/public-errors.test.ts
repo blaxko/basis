@@ -90,7 +90,7 @@ describe("RPC down: a valid MSFT order says price data is unavailable, never 'no
   });
 });
 
-describe("/api/opportunities: a failed live read never puts the raw error on the page", () => {
+describe("/api/opportunities: a failed live read never puts the raw error on the page", { timeout: 30_000 }, () => {
   it("returns a short public message and logs the redacted detail", async () => {
     vi.resetModules();
     vi.doMock("../lib/orchestration/agent-loop", async (orig) => ({

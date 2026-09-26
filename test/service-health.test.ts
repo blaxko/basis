@@ -17,7 +17,9 @@ afterEach(() => {
   vi.resetModules();
 });
 
-describe("service health is recorded from real calls", () => {
+// Re-importing modules (next/server, viem) can take several seconds
+// while the rest of the suite runs in parallel.
+describe("service health is recorded from real calls", { timeout: 30_000 }, () => {
   it("Groq: a successful completion records ok, a 401 records a failure", async () => {
     vi.stubEnv("GROQ_API_KEY", "gsk_test");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: "{}" } }] }), { status: 200 })));
