@@ -154,7 +154,7 @@ As built and running (2026-09-26). Every box is a module under `lib/`.
 │  Execution test (local only, $5 cap): simulate → local signing →  │
 │  POST /api/v1/dex/pre-transaction/broadcast-transaction (MEV      │
 │  protection) → receipt. Proven on mainnet 2026-09-25.             │
-│  Every decision → the append-only audit ledger.                   │
+│  Every decision → the audit ledger (repeated "no"s compacted).    │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -255,7 +255,7 @@ What was built, in order (the git history has each step). Phases 0–1 were firs
 5. There is one trading wallet. Its key is read only by the local signer; the public deployment runs `PUBLIC_READ_ONLY` and never reads it. There is no operating-budget wallet (x402 self-funding was evaluated and rejected, section 5d); if paid data is ever added, its spend must be kept financially separate from the trading wallet.
 6. The fee-adjusted spread computation exists as its own tested module. A raw, unadjusted cross-pool price diff must never be used directly as an execution signal.
 7. Every price feed passes a sanity-bounds check and a liquidity-depth check before being used in a spread calculation.
-8. Audit ledger writes are append-only and happen for **every** decision — approved, blocked, or failed — not only for executed trades.
+8. **Every** decision is recorded in the audit ledger — approved, blocked, failed, and every "no" — not only executed trades. Memory is bounded, so what's kept is exact: orders (every guardrail run), warm-up readings, skipped ticks and execution tests keep full detail. Consecutive "no opportunity" detections for the same ticker and mode are compacted at write time into one run entry (count, first and last time, net-edge and gross-gap ranges, how many used fallback gas or had no Binance reference, and the latest full reading). The last 120 readings per ticker stay individual for the chart, and running totals stay exact. A hard cap of 5,000 stored entries drops the oldest only under sustained abuse of the rate-limited instruction route, and counts what it dropped. Nothing is written to disk on the deployed site: a restart starts a new ledger.
 9. The killswitch state (Simulation / Dry-Run / Live) is checked on every execution attempt at the infrastructure layer, never cached at app load.
 10. Secrets (Groq key, Binance Web3 API key, wallet credentials) never reach the client and are never committed to the repo.
 

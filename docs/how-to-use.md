@@ -68,7 +68,7 @@ The result of the safety checks for the most recent order.
 
 Every decision, newest first:
 
-- **Detection rows** — `MSFT — N× detection: no opportunity, no order built`, with a time range, the net-edge range and the latest prices. Repeated "no" decisions are grouped into one row; each is still recorded.
+- **Detection rows** — `MSFT — N× detection: no opportunity, no order built`, with a time range, the net-edge range and the latest prices. Repeated "no" decisions in a row are folded into one row per run as they're recorded (with their count, time range and net-edge range, and the latest prices in full), so the ledger's memory stays small however long the server runs; each one is still counted.
 - **Guardrail rows** — `MSFT $200 — guardrails passed · not sent (…)` or `MSFT $1000 — BLOCKED (…)`, then what happened, e.g. `no edge: net -0.819% is not positive — nothing sent`.
 - Rarer rows: `EXECUTION TEST (not arbitrage)` (only on the local machine) and `tick skipped` (a check ran late).
 - **Normal:** one detection row whose count grows every 30 seconds. The panel lists the newest 300 entries (about 2.5 hours); after that it says `Showing the newest 300 of N entries.`, and the oldest row reads `… entries shown (older ones not listed)`.

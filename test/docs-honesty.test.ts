@@ -50,6 +50,14 @@ describe("PRD matches the code and the live site", () => {
     }
   });
 
+  it("§7 and §12: the ledger is described as it's kept (compacted runs), not as append-only", () => {
+    expect(prd).not.toMatch(/append-only/i);
+    const rule = section(prd, "12. Technical Correctness Rules (Non-Negotiable)");
+    expect(rule).toMatch(/compact/i);
+    expect(rule).toContain("5,000");
+    expect(read("docs/how-to-use.md")).toMatch(/one row per run|folded into one row|compact/i);
+  });
+
   it("§14: proposals are template text, not Groq", () => {
     expect(section(prd, "14. Judging Criteria Alignment")).not.toContain("Plain-English proposals via Groq");
   });
