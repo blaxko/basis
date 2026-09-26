@@ -14,7 +14,7 @@ export const START_HERE = {
   title: "Start here",
   intro: [
     "Basis watches the two PancakeSwap pools where MSFTB (tokenized Microsoft stock) trades on BNB Chain, and would only trade when the price gap between them beats every cost: both pools' fees, slippage and gas.",
-    "Most of the time the gap is far smaller than those costs, so Basis correctly says no, and records why.",
+    "So far, on every reading, the gap has been far smaller than those costs, so Basis correctly says no, and records why.",
   ],
   tryItTitle: "Try it",
   steps: [

@@ -1,6 +1,6 @@
 # Basis — Product Requirements Document
 
-**One-liner:** Trading the real spread, not the total-return noise.
+**One-liner:** Cross-pool gaps, counted only after every cost.
 **Hackathon:** BNB Hack: Tokenized Stocks Edition (Sep 16 – Oct 11, 2026)
 **Track:** Single track — tokenized stock products and agents on BSC
 
@@ -22,13 +22,13 @@ The catch, and the reason this isn't a free lunch: Binance's own Web3 Trading AP
 |---|---|
 | **Primary — the trader** | Wants exposure to genuine cross-pool mispricing between PancakeSwap V3 pools of the same tokenized stock, without personally watching every pool and fee tier or babysitting an agent that might misfire. |
 | **Secondary — the judge/evaluator** | Needs to verify, in under four minutes, that the system does what it claims: detects a real cross-pool gap, distinguishes it from one that doesn't survive fees, slippage, and gas, and enforces its own safety rules — without reading the codebase. |
-| **Tertiary — the builder reusing the pattern** | A developer wanting a reference implementation of Wallet Skills + Agent Studio + an isolated LLM layer, where "isolate the LLM from execution" is reusable outside tokenized equities entirely. |
+| **Tertiary — the builder reusing the pattern** | A developer wanting a reference implementation of an isolated LLM layer in front of a deterministic guardrail gate, where "the LLM only reads the request; code decides" is reusable outside tokenized equities entirely. |
 
 Core use cases:
-1. Detect a genuine cross-pool spread on a chosen underlying and, within pre-set guardrails, act on it. (Live on-chain execution is disabled until two-leg execution exists — see §10.)
-2. Query the agent conversationally (via the dashboard or directly through Wallet Skills in Claude/ChatGPT) for current status, rationale, and open positions.
-3. Manually override or pause the agent at any time via the killswitch, with the change taking effect on the next execution attempt, not the next page load.
-4. Review a complete, timestamped audit trail for every decision the agent made — approved, blocked, or executed — for accountability.
+1. Detect a genuine cross-pool spread on a chosen underlying and, within pre-set guardrails, act on it. (Live on-chain arbitrage is disabled until two-leg execution exists — see §10.)
+2. Give the agent an order in plain language on the dashboard (any language; the AI only reads the stock, side and dollar amount) and see how the guardrails and live data judge it.
+3. Manually override or pause the agent at any time via the killswitch, with the change taking effect on the next evaluation, not the next page load.
+4. Review a complete, timestamped audit trail for every decision the agent made — including every "no" — for accountability.
 
 ---
 
@@ -102,52 +102,63 @@ Across all four: **separate the thing that decides from the thing that holds mon
 1. **Landing = the dashboard itself.** No marketing page. The persistent header shows system state (API/RPC health, wallet balances, killswitch position) before any scrolling.
 2. **Judge/trader sees a live Pool Spread Monitor** — gross cross-pool gap vs. net edge after costs per underlying, with each pool's fee tier visible so it's obvious when a raw gap is being correctly rejected because it doesn't clear costs.
 3. **An opportunity clears threshold** — only when the net edge after both pools' fees, slippage, and gas is positive, and only after enough price history has built up since server start to sanity-check both pools — the Advisory Feed prints a plain-English proposal, generated from a fixed template. Every evaluation that doesn't clear is still recorded in the Audit Ledger as a detection decision.
-4. **The Guardrail Gate evaluates it live**, visibly ticking through price sanity on both pools, per-trade cap, daily cap, and dry-run min-output checks, resolving to a bold **APPROVED** or **BLOCKED** badge. A check with no data is shown as WARMING UP or PENDING, never as a pass.
+4. **The Guardrail Gate evaluates it live**, visibly ticking through price sanity on both pools, market status, the Binance reference price, per-trade cap, daily cap, and dry-run min-output checks. The badge says what happened: **BLOCKED**, **GUARDRAILS PASSED · NOT SENT** (with why: no positive edge, simulation, dry-run, live refused), or **APPROVED · SENT** only if something was actually sent. A check with no data is shown as WARMING UP or PENDING, never as a pass.
 5. **If approved**, dry-run mode runs the execution path up to the point of sending: pre-send re-read of both pools, ERC-20 allowance check, QuoterV2 simulation, and the dry-run floor on the simulated output. Approval, signing, and sending straight to the PancakeSwap V3 SwapRouter are built and tested too, but no mode reaches them: **live on-chain arbitrage is disabled until two-leg execution exists**. Only the buy leg is built, and a single leg alone doesn't capture the spread, so live mode refuses every order before any approval or send and logs the refusal.
-6. **Any time**, the trader can flip the Master Killswitch between Simulation → Dry-Run → Live; the scheduler picks up the change on its next tick. The PRD's original conversational surface (talking to the agent through Wallet Skills from a Claude/ChatGPT client) is not built in this codebase.
+6. **Any time**, the trader can flip the Master Killswitch between Simulation → Dry-Run → Live; the scheduler picks up the change on its next tick. On the public demo Live is refused, and any other mode returns to simulation 5 minutes after the last change.
 
 ---
 
 ## 7. System Architecture
 
+As built and running (2026-09-26). Every box is a module under `lib/`.
+
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  DATA LAYER (single integrated loop, not split processes)       │
-│  Binance Web3 API → live quotes: xStocks/bStocks (price-return)  │
-│                      + Ondo (total-return)                      │
-│  Dividend calendar (hardcoded for MVP set of underlyings)        │
-└───────────────────────────┬───────────────────────────────────────┘
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  BASIS MODEL (pure function, unit-testable, no LLM involved)     │
-│  1. NAV-equivalent for Ondo leg = price − accrued dividend        │
-│  2. adjusted_spread = (NAV-equiv − price-return price) / price   │
-│  3. Sanity bounds check vs. last N ticks                         │
-│  4. Liquidity/depth check before sizing                          │
-└───────────────────────────┬───────────────────────────────────────┘
-                            ▼ only if threshold cleared
-┌─────────────────────────────────────────────────────────────────┐
-│  LLM LAYER (Groq, isolated, advisory only)                        │
-│  Structured opportunity → plain-English proposal.                │
-│  Free-text user instruction → same structured schema.             │
-│  Output is ALWAYS a validated structured object — never a signed  │
-│  transaction, never a direct wallet call.                        │
-└───────────────────────────┬───────────────────────────────────────┘
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  GUARDRAIL GATE (pure check(), independent of the LLM)           │
-│  Per-trade cap · Daily hard cap · Dry-run min-output floor        │
-│  Fails CLOSED on limit violations; fails to human review          │
-│  (never to silent execution) on unrelated errors                 │
-└───────────────────────────┬───────────────────────────────────────┘
-                            ▼ only if approved
-┌─────────────────────────────────────────────────────────────────┐
-│  EXECUTION — single trading wallet, signed locally              │
-│  Binance Transaction API simulate → local signing → Binance     │
-│  MEV-protected broadcast → receipt; writes to the audit ledger. │
-│  (No Agentic Wallet / Wallet Skills.)                           │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│  DATA LAYER  (scheduler: one integrated loop, every 30 s)         │
+│  BSC RPC → PancakeSwap V3 slot0/liquidity for MSFTB's 0.25% and   │
+│            1% pools; QuoterV2 gas for both legs (live gas cost)   │
+│  Binance Trading API  GET /api/v1/dex/aggregator/quote            │
+│            → reference price for the same buy, same size          │
+│  Binance RWA Data     GET /api/v1/dex/market/rwa/underlying-market│
+│            → the underlying stock's market status                 │
+└───────────────────────────────┬──────────────────────────────────┘
+                                ▼
+┌──────────────────────────────────────────────────────────────────┐
+│  BASIS MODEL  (pure functions, no LLM)                            │
+│  buy price  = cheap pool × (1 + its fee)                          │
+│  sell price = dear pool  × (1 − its fee)                          │
+│  net edge   = (sell − buy) / buy − slippage − gas / size          │
+│  Price sanity vs. the last 10 readings; liquidity depth           │
+└───────────────────────────────┬──────────────────────────────────┘
+                                ▼ an order only if net edge > 0
+┌──────────────────────────────────────────────────────────────────┐
+│  LLM LAYER  (Groq, isolated)                                      │
+│  Only for typed instructions: sentence → {ticker, side, sizeUsd}, │
+│  schema-validated. Never a price, a pool or a transaction.        │
+│  Proposal text comes from fixed templates, not the LLM.           │
+└───────────────────────────────┬──────────────────────────────────┘
+                                ▼
+┌──────────────────────────────────────────────────────────────────┐
+│  GUARDRAIL GATE  (pure check(), independent of the LLM)           │
+│  sanityAndLiquidity · marketStatus · referencePrice (≤ 2%)        │
+│  perTradeCap $500 · dailyCap $2,000 · dryRunFloor 98%             │
+│  + before any send: spreadFreshness, slippageTolerance            │
+│  Fails CLOSED on any failed check or internal error               │
+└───────────────────────────────┬──────────────────────────────────┘
+                                ▼ killswitch: simulation / dry-run / live
+┌──────────────────────────────────────────────────────────────────┐
+│  EXECUTION  (one trading wallet, key held locally)                │
+│  simulation: checks only.  dry-run: re-read pools, allowance,     │
+│  QuoterV2, Binance POST /api/v1/dex/pre-transaction/simulate.     │
+│  live: arbitrage REFUSED (only the buy leg is built).             │
+│  Execution test (local only, $5 cap): simulate → local signing →  │
+│  POST /api/v1/dex/pre-transaction/broadcast-transaction (MEV      │
+│  protection) → receipt. Proven on mainnet 2026-09-25.             │
+│  Every decision → the append-only audit ledger.                   │
+└──────────────────────────────────────────────────────────────────┘
 ```
+
+**What runs where.** On the public deployed site (`PUBLIC_READ_ONLY`, no key) the Binance calls are `aggregator/quote` and `rwa/underlying-market`, on every tick and every typed instruction. The Transaction API endpoints (`pre-transaction/simulate`, `broadcast-transaction`) only run in dry-run when an order has a positive net edge (none has so far, so the deployed site has never called them) and in the local execution test, where they ran for the four mainnet transactions of 2026-09-25.
 
 There is no second, operating-budget wallet: x402 self-funding was evaluated and rejected (section 5d).
 
@@ -157,18 +168,21 @@ There is no second, operating-budget wallet: x402 self-funding was evaluated and
 |---|---|---|
 | Trading wallet (self-funded BSC account, key held locally) | Swaps and their gas. Today only the $5-capped execution test; live arbitrage is disabled | Bounded by the per-trade and per-day caps and the execution test's $5 hard cap. The public deployment runs `PUBLIC_READ_ONLY` and never reads the key |
 
-**Deployment:** Next.js (TS) app, API routes as the server boundary — Groq and Binance Web3 API keys never reach the client. One deployed URL. BSC mainnet, dry-run via Transaction API during development, small live amounts for the demo.
+**Deployment:** Next.js (TS) app, API routes as the server boundary — Groq and Binance Web3 API keys never reach the client. One deployed URL on Railway (Singapore), public and read-only. BSC mainnet; the only live amounts so far are the $5 execution test, run locally.
 
 ---
 
 ## 8. Recommended Stack
 
-- **Next.js (TypeScript)** — single deployable app with one URL, matching the hackathon's "judges need to run it" requirement.
-- **viem** for BSC calls.
-- **Binance Web3 API** — aggregated market data, quotes, swaps, dry-run Transaction API across all three protocols.
-- **Wallet Skills** — natural-language execution surface, also usable directly from Claude/ChatGPT/Copilot for the "talk to your agent" demo path.
-- **BNB Agent Studio + x402** — evaluated for agent identity and self-funded data calls; not used (section 5d).
-- **Groq (free tier)** — isolated LLM layer for intent parsing and English-language trade explanations. Chosen because the task (structured extraction, not deep reasoning) fits comfortably within Groq's free rate limits, and its low latency keeps a live demo feeling responsive. Kept structurally incapable of touching the wallet directly.
+What the build actually uses:
+
+- **Next.js 15 (TypeScript)** — single deployable app with one URL; API routes are the server boundary.
+- **viem** for BSC reads (pool state, QuoterV2, balances, gas) and for local signing in the execution test.
+- **Binance Web3 API** — Trading API (`aggregator/quote`, the reference price), Market API / RWA Data (`rwa/underlying-market`, market status), Transaction API (`pre-transaction/simulate`, `pre-transaction/broadcast-transaction` with MEV protection). Only bStocks MSFTB; no swaps through the aggregator.
+- **Groq (free tier, `openai/gpt-oss-120b`)** — reads a typed instruction into ticker, side and dollar amount; nothing else. Kept structurally incapable of touching the wallet or setting a price.
+- **Railway** (Singapore, Hobby plan) — the public, read-only deployment.
+
+Evaluated and not used: **Agentic Wallet / Wallet Skills** (Basis signs locally with its own key), **BNB Agent Studio**, **x402** (section 5d).
 
 ---
 
@@ -176,9 +190,9 @@ There is no second, operating-budget wallet: x402 self-funding was evaluated and
 
 ### 9.1 System Overview (replaces a landing page)
 A persistent header across the top of the single dashboard, always visible:
-- **One-liner:** "Basis: Trading the real spread, not the total-return noise."
-- **Live status:** Binance Web3 API latency, BSC RPC status, Groq API uptime.
-- **Wallet balances:** a status chip with the trading wallet's live on-chain BNB, USDT and MSFTB balances. (An earlier Trading Capital / Operating Budget split was never connected to real balances and was removed.)
+- **One-liner:** "Cross-pool gaps, counted only after every cost."
+- **Live status:** the Binance Web3 API's last call and its latency; the BSC RPC's and Groq's last real call (ok or failing, and how long ago; grey "no calls yet" before the first one); the underlying market status from Binance.
+- **Wallet balances:** a status chip with the trading wallet's live on-chain BNB, USDT and MSFTB balances, rounded for reading (e.g. 0.0029 BNB · 4.975 USDT). (An earlier Trading Capital / Operating Budget split was never connected to real balances and was removed.)
 - **Master killswitch:** a single, unmissable control cycling Simulation → Dry-Run → Live.
 
 ### 9.2 Core Dashboard Layout
@@ -186,14 +200,14 @@ The layout itself has to argue the thesis: decision and safety are visibly separ
 - **Pool Spread Monitor ("the math"):** dual-line chart, gross cross-pool gap vs. net edge after fees, slippage, and gas, per pool pair, on one axis with a labeled zero (break-even) line and the below-zero region shaded, so a real gap that fails to clear costs is visibly flagged, not hidden. Each point is one live evaluation recorded in the audit ledger; the seeded historical fixture is shown only when no live evaluation exists, and is labeled as such.
 - **Instruction box:** type an order in plain English (with clickable examples); the result is shown in plain language with the raw reply expandable. The AI only reads the sentence into ticker, side and size; the decision comes from the guardrails and live data.
 - **Advisory Feed ("the brain"):** a scrolling terminal of plain-English proposals generated from fixed templates filled from the Basis Model's structured output and the guardrail verdict (no AI writes them) — advisory only, visually distinct from anything that touches the wallet.
-- **Guardrail Gate ("the shield"):** a real-time checklist — per-trade cap, daily hard cap, dry-run min-output — each with live state, resolving to bold **APPROVED**/**BLOCKED** badges.
+- **Guardrail Gate ("the shield"):** a real-time checklist — price sanity, market status, Binance reference, per-trade cap, daily hard cap, dry-run min-output — each with live state. The badge reads **BLOCKED**, **GUARDRAILS PASSED · NOT SENT** (neutral, with the reason), or **APPROVED · SENT** only when something was actually sent.
 - **Audit Ledger ("the log"):** a sequential, timestamped feed: detection (pool prices, net edge, Binance reference, market status) → guardrail check → outcome, with transaction hashes for anything actually sent (so far only the execution test).
 
 ### 9.3 Visual style
 - **Bento UI** for structure — the system's real architecture is a set of distinct, isolated components (data layer, basis model, LLM layer, guardrail gate), so a strict grid that compartmentalizes each into its own card keeps a data-dense, multi-variable system legible instead of overwhelming.
 - **Neo-brutalism** for aesthetics — high contrast, stark borders, bold typography. This is the visual argument for the product's thesis: stripped of marketing gloss, the raw execution logic is the product. Hard white borders with hard-offset yellow shadows signal a developer tool, not a consumer app.
 - **Palette: BNB Chain's brand colours** (bnbchain.org/en/brand-guidelines): near-black `#0B0E11` background, white `#FFFFFF` text, yellow `#F0B90B` accent. Colours only — no BNB Chain logo (its use needs BNB Chain's approval and must not imply endorsement), and no "Official" or "Partner" wording; the footer says "Built on BNB Chain" in plain text. All colours are defined once, in `components/theme.ts`, and injected as CSS variables.
-- **Colour meanings stay unambiguous.** Yellow is decoration only (title underlines, links, primary buttons, panel shadows) and never signals a state. Pass / approved is green (`#0ECB81`), block / fail is red (`#FF5A6E`). Pending / warming up is neutral grey (`#A7AEB8`) with a dashed outline and an explicit label (`[PENDING]`, `WARMING UP`): grey reads as "not decided", distinct from green, red and the brand yellow, and the dashes and label keep it distinct even for colour-blind readers. Text on yellow, green or red is near-black, never white. Every text/background pair passes WCAG AA (4.5:1); the pairs and ratios are tested (`test/theme.test.ts`).
+- **Colour meanings stay unambiguous.** Yellow is decoration only (title underlines, links, primary buttons, panel shadows) and never signals a state. Pass / approved-and-sent is green (`#0ECB81`), block / fail is red (`#FF5A6E`). "Guardrails passed · not sent" is neutral white, never green: passing the checks is not a trade. Pending / warming up is neutral grey (`#A7AEB8`) with a dashed outline and an explicit label (`[PENDING]`, `WARMING UP`): grey reads as "not decided", distinct from green, red and the brand yellow, and the dashes and label keep it distinct even for colour-blind readers. Text on yellow, green or red is near-black, never white. Every text/background pair passes WCAG AA (4.5:1); the pairs and ratios are tested (`test/theme.test.ts`).
 - **Chart on dark:** gross gap as a dashed yellow line, net edge as a thicker solid white line, a grey zero line labelled "0 = break-even", and a dark-red band labelled "below zero: doesn't clear costs".
 - **Logs:** the Advisory Feed and Audit Ledger keep monospace terminal styling on the darker page background, in white and grey, so green and red stay reserved for pass and fail.
 - **Avoid:** Editorial Design and Glassmorphism — both prioritize typographic warmth or visual softness over the real-time legibility an arbitrage dashboard actually needs.
@@ -216,16 +230,19 @@ The layout itself has to argue the thesis: decision and safety are visibly separ
 
 ## 11. Build Steps
 
-| Phase | Deliverable |
+What was built, in order (the git history has each step). Phases 0–1 were first written for the original cross-protocol thesis and rewritten for cross-pool detection once that thesis was falsified (§5b).
+
+| Phase | Delivered |
 |---|---|
-| 0. Setup | Repo scaffolding, Next.js app shell, env var contracts, Binance Web3 API + Agent Studio registration |
-| 1. Data + Basis Model | Live quote ingestion for 3–5 underlyings; NAV-equivalent + adjusted-spread math; unit tests proving a known dividend-drift case is suppressed |
-| 2. Guardrail Gate | Pure `check()` function, fully unit-tested independent of any LLM; spend caps, dry-run floor, sanity/liquidity checks |
-| 3. Execution Wiring | Agentic Wallet integration; dry-run → small live execution path; audit ledger writer |
-| 4. LLM Layer | Groq-backed intent parsing (the only AI use) + plain-English proposal text from fixed templates, fully isolated from execution |
-| 5. Dashboard UI | Bento-grid layout, neo-brutalist styling, killswitch, wallet balance chip, instruction box, NAV chart, advisory feed, guardrail checklist, audit ledger view |
-| 6. Hardening & Testing | Deliberately trigger a guardrail violation and confirm it blocks live; deliberately trigger a dividend-drift date and confirm suppression |
-| 7. Submission | Demo video (≤4 min), DevEx report, deployment, repo freeze before submission deadline |
+| 0. Setup | Repo scaffolding, Next.js app shell, env var contracts |
+| 1. Data + Basis Model | Live PancakeSwap V3 pool reads for MSFTB's two fee-tier pools; fee-adjusted net-edge math with live gas, tested against real MSFTB readings |
+| 2. Guardrail Gate | Pure `check()`, unit-tested independent of any LLM: price sanity with warm-up, liquidity, market status, Binance reference, spend caps, dry-run floor |
+| 3. Execution Wiring | Direct-pool swap path (allowance, QuoterV2, SwapRouter), local signing, Binance Transaction API simulate + MEV-protected broadcast, audit ledger; live arbitrage refused until two-leg execution exists |
+| 4. LLM Layer | Groq intent parsing (the only AI use); proposal text from fixed templates |
+| 5. Orchestration + Dashboard | 30 s scheduler, instruction route, killswitch; bento dashboard: Pool Spread Monitor, instruction box, Advisory Feed, Guardrail Gate, Audit Ledger, status chips |
+| 6. Live proof + hardening | $5 MSFTB round trip on mainnet (2026-09-25); `X-OC-RECV-WINDOW`, timeouts, per-call Binance log; public read-only mode with rate limits |
+| 7. Deployment | Railway (Singapore), `PUBLIC_READ_ONLY`; Start here panel; plain-language guide; public-safe errors and real service health |
+| 8. Submission | Demo video (≤4 min), DevEx report (submitted through its own form), repo freeze before the deadline |
 
 ---
 
@@ -247,17 +264,27 @@ The layout itself has to argue the thesis: decision and safety are visibly separ
 ## 13. Repository Expectations
 
 - **Public repo**, part of the hackathon's mandatory project submission (see §16).
-- **README** covering: one-liner, architecture diagram, setup steps, documented (not filled-in) required env vars, how a judge runs it — including how to switch between Dry-Run and Live — and the demo video link.
-- **Folder structure:**
+- **README** covering: one-liner, what runs where, setup steps, documented (not filled-in) required env vars, how a judge runs it — including how to switch between Dry-Run and Live — and the demo video link.
+- **Folder structure (as built):**
   ```
-  /app                 — Next.js routes + dashboard UI
-  /lib/data             — quote ingestion, dividend calendar
-  /lib/basis-model      — NAV-equivalent + adjusted-spread math (+ tests)
+  /app                  — dashboard page + API routes (status, opportunities,
+                          instruction, killswitch, ledger, health, execution-test)
+  /components           — dashboard panels + pure display helpers (tested)
+  /lib/data             — pool reads, gas estimate, Binance clients (quote,
+                          RWA market status, Transaction API), call log
+  /lib/basis-model      — fee-adjusted prices, net-edge math, sanity checks
   /lib/guardrails       — the pure check() gate (+ tests)
-  /lib/execution        — Agentic Wallet integration, audit ledger writer
-  /lib/llm              — Groq intent parsing + proposal generation
-  /docs                 — Developer Experience Report
+  /lib/execution        — pipeline, local signer, execution test, audit
+                          ledger, wallet balances
+  /lib/llm              — Groq client, intent parser, template narrator
+  /lib/orchestration    — scheduler, agent loop, instructions, killswitch
+  /lib/config, /lib/errors — deployment mode, rate limits, service health,
+                          public-safe errors
+  /docs                 — PRD, how-to-use, runbook, config rationale,
+                          devex-log (raw material for the DevEx report)
+  /test                 — cross-cutting tests (read-only mode, docs, UI text)
   ```
+  Leftovers from the rejected cross-protocol thesis are still in the tree and unused: `lib/data/dividend-calendar.ts`, `lib/data/token-addresses.ts`, and `fetchQuote`/`fetchQuotes` in `lib/data/quotes.ts`. `lib/basis-model/nav-equivalent.ts` and `lib/execution/agentic-wallet.ts` keep their early names; they hold the fee adjustment and the local signer.
 - A `.env.example` with every required variable name and no real values.
 - Unit tests specifically covering the basis model and guardrail gate are non-optional — these are the two modules the entire trust argument rests on.
 - Commit history reflecting work done inside the Sep 16 – Oct 11 window, since everything submitted must be built inside it.
@@ -269,10 +296,10 @@ The layout itself has to argue the thesis: decision and safety are visibly separ
 
 | Criterion | Weight | How this PRD addresses it |
 |---|---|---|
-| Technical implementation | 30% | Fee-adjusted cross-pool spread model with live gas + independent guardrail gate (price sanity with warm-up, Binance reference price, spend caps, dry-run floor, slippage tolerance below the edge, pre-send freshness) + Binance Web3 API Trading API quotes in the live path |
+| Technical implementation | 30% | Fee-adjusted cross-pool spread model with live gas + independent guardrail gate (price sanity with warm-up, market status, Binance reference price, spend caps, dry-run floor, slippage tolerance below the edge, pre-send freshness) + Binance Web3 API: Trading API quote and RWA market status on every tick (deployed site), Transaction API simulate + MEV-protected broadcast proven in the local $5 mainnet test |
 | Creativity & originality | 25% | Fee-tier fragmentation between pools of the same tokenized stock — the gap Binance's own aggregator erases for normal users — with the aggregator's quote reused as an outside reference for pool prices |
 | Developer Experience Report | 25% | Built from `docs/devex-log.md`: raw facts of every Binance Web3 API interaction (DNS, docs access, verbatim responses, latency) |
-| Product quality & UX | 20% | Plain-English proposals via Groq; visible, explainable guardrail decisions rather than a black box |
+| Product quality & UX | 20% | Plain-language instruction box (Groq only reads the sentence; any language); template-generated proposals; visible, explainable guardrail decisions that say "not sent" and why; plain-language guide and Start here panel |
 
 Stack awards: not currently targeted. Basis signs locally with its own key rather than through Agentic Wallet/Wallet Skills, and doesn't use BNB Agent Studio or x402. Both are optional under the rules.
 
@@ -289,10 +316,12 @@ Stack awards: not currently targeted. Basis signs locally with its own key rathe
 ## 16. Acceptance Criteria — Definition of Done
 
 **Functional**
-- [ ] Live pool prices render for each independently-verified fee-tier pool of the confirmed underlying(s) within the dashboard at an acceptable refresh latency.
-- [ ] The fee-adjusted spread calculation demonstrably identifies at least one documented case where a real raw cross-pool gap does not clear trading costs (fees, slippage, gas) — a case a naive raw-diff bot would have flagged as a false signal.
-- [ ] The guardrail gate visibly blocks at least one deliberately-triggered violation (e.g., an oversized order) live, not just in a unit test.
-- [ ] The execution path (pre-send re-read → allowance/approval → QuoterV2 simulation → Binance Transaction API simulate → local sign → Binance MEV-protected broadcast → receipt) is built and covered by tests.
+Ticked items were verified on the deployed site or on mainnet, as noted.
+
+- [x] Live pool prices render for each independently-verified fee-tier pool of the confirmed underlying(s) within the dashboard at an acceptable refresh latency. (Deployed site: a new reading every 30 s.)
+- [x] The fee-adjusted spread calculation demonstrably identifies at least one documented case where a real raw cross-pool gap does not clear trading costs (fees, slippage, gas) — a case a naive raw-diff bot would have flagged as a false signal. (Every live evaluation so far: the two pools' fees alone are 1.25%.)
+- [x] The guardrail gate visibly blocks at least one deliberately-triggered violation (e.g., an oversized order) live, not just in a unit test. (Deployed site: "Buy $1000 of MSFT" → BLOCKED by perTradeCap.)
+- [x] The execution path (pre-send re-read → allowance/approval → QuoterV2 simulation → Binance Transaction API simulate → local sign → Binance MEV-protected broadcast → receipt) is built and covered by tests.
 - [x] **The live send path is proven on BSC mainnet.** On 2026-09-25 the manual execution test (`POST /api/execution-test`, killswitch `live`, `confirm: true`, $5 hard cap) ran a $5 MSFTB round trip on the 0.25% pool, ledger entry `ledger_1790342672442_26`, outcome `completed`. Four transactions, all mined with status success at 0.05 gwei, each simulated by Binance first and broadcast through Binance with `enableMevProtection: true`:
   - USDT approve `0x9df5a668e25b2b7f329a8b4a4200bfe85d98aed878bde8c3ed1d73d2449e62e7` (block 123956296)
   - buy swap `0x66aa49fdcd676cfc1df23c717bf7530aa5cdf8267255dfb2bc2bfefa40b9c5fe` (block 123956355)
@@ -300,23 +329,24 @@ Stack awards: not currently targeted. Basis signs locally with its own key rathe
   - sell swap `0xc77ffb104e42303913745f519922af6d61dc3f988f5940c53a9e388e689cc1ff` (block 123956404)
 
   Result: 5 USDT → 0.009987 MSFTB → 4.975031 USDT, 497,423 gas, 0.00002487 BNB in fees. Full record and on-chain verification in `docs/devex-log.md`.
-- [ ] **Live on-chain arbitrage stays disabled until two-leg execution exists.** Live mode refuses every arbitrage order before any approval or send (`two_leg_execution_not_implemented`), and that refusal is itself tested and logged. The execution test is not arbitrage: a separate route, never reachable from the scheduler or the arbitrage path, ledgered as its own kind (`execution_test`). The demo shows real detection declining a real gap that doesn't clear costs, and a deliberate guardrail block — neither staged.
-- [ ] The audit ledger shows the complete chain for every decision: detection (pool prices, gross gap, net edge, gas and its source, Binance reference, underlying market status) → guardrail check → outcome. Arbitrage entries have no TxID while live arbitrage is disabled; the execution test's entry carries its four.
-- [ ] The killswitch demonstrably changes agent behavior across all three states: Simulation (gates only), Dry-Run (full path short of sending), Live (refused as two-leg execution not implemented).
+- [x] **Live on-chain arbitrage stays disabled until two-leg execution exists.** Live mode refuses every arbitrage order before any approval or send (`two_leg_execution_not_implemented`), and that refusal is itself tested and logged. The execution test is not arbitrage: a separate route, never reachable from the scheduler or the arbitrage path, ledgered as its own kind (`execution_test`). The demo shows real detection declining a real gap that doesn't clear costs, and a deliberate guardrail block — neither staged.
+- [x] The audit ledger shows the complete chain for every decision: detection (pool prices, gross gap, net edge, gas and its source, Binance reference, underlying market status) → guardrail check → outcome. Arbitrage entries have no TxID while live arbitrage is disabled; the execution test's entry carries its four.
+- [x] The killswitch demonstrably changes agent behavior across all three states: Simulation (gates only), Dry-Run (full path short of sending), Live (refused as two-leg execution not implemented). (Tests for all three; on the deployed site Live is refused with 403, and dry-run's automatic return to simulation after 5 minutes was verified on 2026-09-26.)
 
 **Submission**
 
 Two things are mandatory: the project and the Developer Experience Report ("Both are mandatory. Miss either one and you don't get scored." — blog).
 
-- [ ] **The project is built on the Binance Web3 API.** The hackathon page defines it as "A working project built on one or more Binance Web3 API modules, and optionally Agentic Wallet or Wallet Skills." Basis meets this with:
-  - the **Trading API** in the live path: `GET /api/v1/dex/aggregator/quote` on every scheduler tick and for every order, as the `referencePrice` guardrail's reference;
-  - the **Transaction API** in the direct-pool path: `pre-transaction/simulate` on our own `exactInputSingle` calldata in every dry-run and before every send, and `pre-transaction/broadcast-transaction` with `enableMevProtection: true` as the only broadcast (no public-RPC fallback). Proven on mainnet by the execution test above;
-  - the **Market API, RWA Data** module: `GET /api/v1/dex/market/rwa/underlying-market` on every scheduler tick and for every order, feeding the `marketStatus` guardrail.
-- [ ] **A public repo** with README instructions a judge can follow standalone, with no undocumented setup steps.
-- [ ] **A deployed link, or instructions a judge can follow.**
-- [ ] **A demo video, four minutes or less.** The page calls it "strongly recommended but optional"; the blog lists it as part of the mandatory project. We're making one.
-- [ ] **The Developer Experience Report:** specific, actionable, honest; 25% of the score; "Perfunctory or AI-generated reports are not accepted." Raw material is collected in `docs/devex-log.md`.
-- [ ] **Build requirement:** "At least one of bStocks, Ondo or xStocks has to be central to what you submit." Basis uses bStocks MSFTB on PancakeSwap V3.
+- [x] **The project is built on the Binance Web3 API.** The hackathon page defines it as "A working project built on one or more Binance Web3 API modules, and optionally Agentic Wallet or Wallet Skills." Basis uses three modules:
+  - the **Trading API**: `GET /api/v1/dex/aggregator/quote` on every scheduler tick and for every typed instruction, as the `referencePrice` guardrail's reference;
+  - the **Market API, RWA Data** module: `GET /api/v1/dex/market/rwa/underlying-market` on every scheduler tick and for every typed instruction, feeding the `marketStatus` guardrail;
+  - the **Transaction API**: `pre-transaction/simulate` on our own `exactInputSingle` calldata before every send (and in dry-run, for an order with a positive net edge), and `pre-transaction/broadcast-transaction` with `enableMevProtection: true` as the only broadcast (no public-RPC fallback). So far these ran only in the local execution test: four simulate and four broadcast calls, the mainnet round trip above.
+  - On the deployed site the calls are `aggregator/quote` and `rwa/underlying-market` only: it is read-only, and no order has had a positive net edge, so it has never reached simulate. Its `/api/status` lists every recent call.
+- [x] **A public repo** with README instructions a judge can follow standalone, with no undocumented setup steps. (github.com/blaxko/basis, MIT.)
+- [x] **A deployed link, or instructions a judge can follow.** (https://basis-production-c229.up.railway.app, read-only.)
+- [ ] **A demo video, four minutes or less.** Recorded; the link goes in with `npm run set-demo-video <url>` (README, how-to-use and the Start here panel). The submission form marks the video URL as required, although the page calls it optional.
+- [ ] **The Developer Experience Report:** specific, actionable, honest; 25% of the score; "Perfunctory or AI-generated reports are not accepted." Submitted through its own form; raw material is collected in `docs/devex-log.md`.
+- [x] **Build requirement:** "At least one of bStocks, Ondo or xStocks has to be central to what you submit." Basis uses bStocks MSFTB on PancakeSwap V3.
 
 **Hackathon rules, as recorded.** Sources: the hackathon page (bnbchain.org/en/hackathons/tokenized-stocks, "Tracks" tab, checked 2026-09-25) and the blog post (bnbchain.org/en/blog/bnb-hack-tokenized-stocks-edition-with-binance-web3-wallet, checked 2026-09-24).
 

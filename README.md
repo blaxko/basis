@@ -4,7 +4,7 @@
 
 **Live demo: https://basis-production-c229.up.railway.app** (no wallet, deposit or sign-up needed)
 
-Basis watches the two PancakeSwap pools where MSFTB (tokenized Microsoft stock) trades on BNB Chain, and would only trade when the price gap between them beats every cost: both pools' fees, slippage and gas. Most of the time the gap is far smaller than those costs, so Basis correctly says no, and records why.
+Basis watches the two PancakeSwap pools where MSFTB (tokenized Microsoft stock) trades on BNB Chain, and would only trade when the price gap between them beats every cost: both pools' fees, slippage and gas. So far, on every reading, the gap has been far smaller than those costs, so Basis correctly says no, and records why.
 
 **Try it**
 
@@ -12,7 +12,7 @@ Basis watches the two PancakeSwap pools where MSFTB (tokenized Microsoft stock) 
 2. Watch the **Guardrail Gate** and the **Audit Ledger** update, about 10 seconds later.
 3. Try **Buy $1000 of MSFT** to see a safety block: it's over the $500 per-trade limit.
 
-**This demo can't trade, on purpose. See the real trade:** demo video (link coming soon) and the four transactions of the $5 mainnet round trip, listed under [Status](#status). A plain-language guide to every panel: [`docs/how-to-use.md`](docs/how-to-use.md).
+**This demo can't trade, on purpose. See the real trade:** <!-- demo-video -->demo video (link coming soon)<!-- /demo-video --> and the four transactions of the $5 mainnet round trip, listed under [Status](#status). A plain-language guide to every panel: [`docs/how-to-use.md`](docs/how-to-use.md).
 
 ## What Basis is
 
@@ -20,9 +20,11 @@ An autonomous agent that watches the two PancakeSwap V3 pools for **MSFTB** (bSt
 
 Built for the BNB Chain Tokenized Stocks hackathon on the **Binance Web3 API**:
 
-- **Trading API**: `GET /api/v1/dex/aggregator/quote` on every scheduler tick, as the cross-check price for the `referencePrice` guardrail (not fully independent: the aggregator can route through the same pools).
-- **Transaction API**: `pre-transaction/simulate` on our own swap calldata in every dry-run and before every send; `pre-transaction/broadcast-transaction` with MEV protection as the only broadcast path.
-- **Market API, RWA Data**: `GET /api/v1/dex/market/rwa/underlying-market` on every tick, feeding the `marketStatus` guardrail.
+- **Trading API**: `GET /api/v1/dex/aggregator/quote` on every scheduler tick and every typed instruction, as the cross-check price for the `referencePrice` guardrail (not fully independent: the aggregator can route through the same pools).
+- **Market API, RWA Data**: `GET /api/v1/dex/market/rwa/underlying-market` on every tick and every typed instruction, feeding the `marketStatus` guardrail.
+- **Transaction API**: `pre-transaction/simulate` on our own swap calldata before every send, and `pre-transaction/broadcast-transaction` with MEV protection as the only broadcast path. So far these ran only in the local execution test (the four mainnet transactions under [Status](#status)); dry-run also calls simulate, but only for an order with a positive net edge, and none has had one.
+
+**What runs on the deployed site:** `aggregator/quote` and `rwa/underlying-market`, every 30 seconds and for each typed instruction, plus BSC RPC reads of the two pools. It holds no key, so it never signs or broadcasts; its [`/api/status`](https://basis-production-c229.up.railway.app/api/status) lists every recent Binance call with its status and latency.
 
 ## Status
 
