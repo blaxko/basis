@@ -18,6 +18,7 @@ export default function Home() {
         <GuardrailChecklist />
         <AuditLedger />
       </div>
+      <footer className="footer">Built on BNB Chain</footer>
     </main>
   );
 }

@@ -14,6 +14,9 @@ import {
 } from "recharts";
 import { usePoll } from "./use-poll";
 import type { OpportunitiesResponse, ReferenceQuote, SpreadSeries } from "./api-types";
+import { TOKENS, CHART_BAND_OPACITY } from "./theme";
+
+const AXIS_TICK = { fontSize: 10, fill: TOKENS.chartAxis };
 
 const POLL_MS = 15_000;
 
@@ -106,31 +109,35 @@ function TickerChart({ ticker, series, threshold }: { ticker: string; series: Sp
 
       <ResponsiveContainer width="100%" height={240}>
         <LineChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#ddd8cc" />
+          <CartesianGrid strokeDasharray="3 3" stroke={TOKENS.chartGrid} />
           <ReferenceArea
             y1={yMin}
             y2={0}
-            fill="#c81e1e"
-            fillOpacity={0.06}
+            fill={TOKENS.chartBand}
+            fillOpacity={CHART_BAND_OPACITY}
             ifOverflow="hidden"
-            label={{ value: "below zero: doesn't clear costs", position: "center", fontSize: 11, fill: "#c81e1e" }}
+            label={{ value: "below zero: doesn't clear costs", position: "center", fontSize: 11, fill: TOKENS.chartBand }}
           />
-          <XAxis dataKey="time" tick={{ fontSize: 10 }} minTickGap={24} />
-          <YAxis domain={[yMin, yMax]} ticks={ticks} tickFormatter={(v: number) => signedPct(v)} tick={{ fontSize: 10 }} width={64} />
+          <XAxis dataKey="time" tick={AXIS_TICK} stroke={TOKENS.chartAxis} minTickGap={24} />
+          <YAxis domain={[yMin, yMax]} ticks={ticks} tickFormatter={(v: number) => signedPct(v)} tick={AXIS_TICK} stroke={TOKENS.chartAxis} width={64} />
           <ReferenceLine
             y={0}
-            stroke="#0d0d0d"
+            stroke={TOKENS.chartZero}
             strokeWidth={2}
-            label={{ value: "0 = break-even", position: "insideTopLeft", fontSize: 10 }}
+            label={{ value: "0 = break-even", position: "insideTopLeft", fontSize: 10, fill: TOKENS.text }}
           />
-          <Tooltip formatter={(value) => signedPct(Number(value), 3)} />
+          <Tooltip
+            formatter={(value) => signedPct(Number(value), 3)}
+            contentStyle={{ background: TOKENS.surface, border: `2px solid ${TOKENS.border}`, color: TOKENS.text }}
+            labelStyle={{ color: TOKENS.text }}
+          />
           <Legend wrapperStyle={{ fontSize: 11 }} />
           {/* Same axis for both lines on purpose: the distance between them
               is the real cost of trading, not an artifact of two scales. */}
           <Line
             type="monotone"
             dataKey={GROSS_GAP}
-            stroke="#b8860b"
+            stroke={TOKENS.chartGross}
             strokeWidth={2}
             strokeDasharray="4 3"
             dot={{ r: 2 }}
@@ -139,7 +146,7 @@ function TickerChart({ ticker, series, threshold }: { ticker: string; series: Sp
           <Line
             type="monotone"
             dataKey={NET_EDGE}
-            stroke="#0d0d0d"
+            stroke={TOKENS.chartNet}
             strokeWidth={3}
             dot={{ r: 2 }}
             isAnimationActive={false}

@@ -1,19 +1,7 @@
+/* Colours: every --color-* variable is injected by app/layout.tsx from
+   components/theme.ts (BNB Chain's brand palette plus the pass / fail /
+   pending colours). No colour values are written in this file. */
 :root {
-  --color-bg: #f4f1ea;
-  --color-surface: #ffffff;
-  --color-ink: #0d0d0d;
-  --color-border: #0d0d0d;
-  --color-muted: #5c5850;
-  --color-accent: #ff5a1f;
-  --color-approved: #0a7d33;
-  --color-blocked: #c81e1e;
-  --color-warn: #b8860b;
-
-  --terminal-bg: #0a0e0a;
-  --terminal-fg: #39ff6a;
-  --terminal-fg-dim: #1f9c46;
-  --terminal-border: #1f9c46;
-
   --border-width: 3px;
   --border-width-thick: 5px;
   --shadow-offset: 6px;
@@ -28,12 +16,21 @@ body {
   padding: 0;
   margin: 0;
   background: var(--color-bg);
-  color: var(--color-ink);
+  color: var(--color-text);
   font-family: "Helvetica Neue", Arial, sans-serif;
 }
 
 body {
   min-height: 100vh;
+}
+
+a {
+  color: var(--color-link);
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 h1,
@@ -76,7 +73,7 @@ h3 {
 .panel {
   background: var(--color-surface);
   border: var(--border-width) solid var(--color-border);
-  box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--color-border);
+  box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--color-accent);
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -84,25 +81,24 @@ h3 {
   min-height: 260px;
 }
 
+/* The log panels sit on the darker page background, in monospace. */
 .panel--terminal {
-  background: var(--terminal-bg);
-  color: var(--terminal-fg);
-  border-color: var(--terminal-border);
-  box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--terminal-border);
+  background: var(--color-bg);
+  color: var(--color-text);
 }
 
 .panel-title {
   font-size: 1.1rem;
   text-transform: uppercase;
-  border-bottom: var(--border-width) solid currentColor;
+  border-bottom: var(--border-width) solid var(--color-accent);
   padding-bottom: 8px;
 }
 
 /* --- Header --- */
 
 .header {
-  background: var(--color-ink);
-  color: var(--color-bg);
+  background: var(--color-bg);
+  color: var(--color-text);
   border: var(--border-width) solid var(--color-border);
   box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--color-accent);
   padding: 16px 20px;
@@ -125,8 +121,7 @@ h3 {
 }
 
 .header-subtitle {
-  color: var(--color-bg);
-  opacity: 0.75;
+  color: var(--color-muted);
   margin-top: 4px;
   font-size: 0.95rem;
 }
@@ -141,7 +136,7 @@ h3 {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 2px solid var(--color-bg);
+  border: 2px solid var(--color-border);
   padding: 4px 10px;
   font-size: 0.8rem;
   text-transform: uppercase;
@@ -152,12 +147,12 @@ h3 {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: var(--color-blocked);
+  background: var(--color-fail);
   flex-shrink: 0;
 }
 
 .status-dot--ok {
-  background: var(--color-approved);
+  background: var(--color-pass);
 }
 
 /* --- Start here (public demo, dismissible) --- */
@@ -165,7 +160,6 @@ h3 {
 .start-here {
   min-height: 0;
   border-color: var(--color-accent);
-  box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--color-accent);
 }
 
 .start-here-top {
@@ -184,9 +178,9 @@ h3 {
   font-size: 0.8rem;
   font-weight: 700;
   padding: 4px 10px;
-  border: var(--border-width) solid var(--color-border);
-  background: var(--color-bg);
-  color: var(--color-ink);
+  border: var(--border-width) solid var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -243,15 +237,21 @@ h3 {
   padding: 8px 10px;
   border: var(--border-width) solid var(--color-border);
   background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.instruction-input::placeholder {
+  color: var(--color-muted);
+  opacity: 1;
 }
 
 .instruction-send {
   font: inherit;
   font-weight: 700;
   padding: 8px 18px;
-  border: var(--border-width) solid var(--color-border);
+  border: var(--border-width) solid var(--color-accent);
   background: var(--color-accent);
-  color: var(--color-ink);
+  color: var(--color-on-accent);
   cursor: pointer;
 }
 
@@ -272,9 +272,9 @@ h3 {
 .instruction-example {
   font: inherit;
   padding: 3px 8px;
-  border: 1px dashed var(--color-border);
+  border: 1px dashed var(--color-muted);
   background: var(--color-bg);
-  color: var(--color-ink);
+  color: var(--color-text);
   cursor: pointer;
 }
 
@@ -285,19 +285,22 @@ h3 {
 }
 
 .instruction-result--approved {
-  border-left-color: var(--color-approved);
+  border-left-color: var(--color-pass);
 }
 
 .instruction-result--blocked {
-  border-left-color: var(--color-blocked);
+  border-left-color: var(--color-fail);
 }
 
+/* Can not judge it yet (warming up, unknown stock): neutral and dashed,
+   never green, red or brand yellow. */
 .instruction-result--info {
-  border-left-color: var(--color-warn);
+  border-left-color: var(--color-pending);
+  border-left-style: dashed;
 }
 
 .instruction-result--error {
-  border-left-color: var(--color-blocked);
+  border-left-color: var(--color-fail);
 }
 
 .instruction-headline {
@@ -313,6 +316,7 @@ h3 {
 .instruction-raw {
   margin-top: 6px;
   font-size: 0.75rem;
+  color: var(--color-muted);
 }
 
 .instruction-raw pre {
@@ -321,6 +325,7 @@ h3 {
   white-space: pre-wrap;
   word-break: break-all;
   font-family: "Courier New", Consolas, monospace;
+  color: var(--color-text);
 }
 
 /* --- Killswitch --- */
@@ -334,19 +339,19 @@ h3 {
 
 .killswitch-buttons {
   display: flex;
-  border: 2px solid var(--color-bg);
+  border: 2px solid var(--color-border);
 }
 
 .killswitch-button {
   background: transparent;
-  color: var(--color-bg);
+  color: var(--color-text);
   border: none;
   padding: 8px 14px;
   font-weight: 700;
   text-transform: uppercase;
   font-size: 0.8rem;
   cursor: pointer;
-  border-right: 2px solid var(--color-bg);
+  border-right: 2px solid var(--color-border);
 }
 
 .killswitch-button:last-child {
@@ -360,16 +365,16 @@ h3 {
 
 .killswitch-button--active {
   background: var(--color-accent);
-  color: var(--color-ink);
+  color: var(--color-on-accent);
 }
 
 .killswitch-button--active.killswitch-button--live {
-  background: var(--color-blocked);
-  color: var(--color-bg);
+  background: var(--color-fail);
+  color: var(--color-on-fail);
 }
 
 .killswitch-error {
-  color: var(--color-blocked);
+  color: var(--color-fail);
   font-size: 0.8rem;
   font-weight: 700;
 }
@@ -379,13 +384,12 @@ h3 {
   flex-basis: 100%;
   max-width: 34rem;
   margin: 0;
-  color: var(--color-bg);
+  color: var(--color-text);
   font-size: 0.78rem;
   line-height: 1.4;
 }
 
 .killswitch-note a {
-  color: var(--color-accent);
   font-weight: 700;
 }
 
@@ -401,15 +405,16 @@ h3 {
 }
 
 .badge--approved {
-  color: var(--color-approved);
+  color: var(--color-pass);
 }
 
 .badge--blocked {
-  color: var(--color-blocked);
+  color: var(--color-fail);
 }
 
 .badge--error {
-  color: var(--color-warn);
+  color: var(--color-fail);
+  border-style: dashed;
 }
 
 /* --- Guardrail checklist --- */
@@ -436,11 +441,11 @@ h3 {
 }
 
 .check-mark--ok {
-  color: var(--color-approved);
+  color: var(--color-pass);
 }
 
 .check-mark--fail {
-  color: var(--color-blocked);
+  color: var(--color-fail);
 }
 
 .check-reason {
@@ -461,17 +466,17 @@ h3 {
 }
 
 .terminal-line {
-  border-left: 3px solid var(--terminal-fg-dim);
+  border-left: 3px solid var(--color-muted);
   padding-left: 10px;
 }
 
 .terminal-line-meta {
-  color: var(--terminal-fg-dim);
+  color: var(--color-muted);
   font-size: 0.75rem;
 }
 
 .terminal-empty {
-  color: var(--terminal-fg-dim);
+  color: var(--color-muted);
 }
 
 /* --- States --- */
@@ -482,16 +487,8 @@ h3 {
 }
 
 .state-message--error {
-  color: var(--color-blocked);
+  color: var(--color-fail);
   font-weight: 700;
-}
-
-.panel--terminal .state-message {
-  color: var(--terminal-fg-dim);
-}
-
-.panel--terminal .state-message--error {
-  color: #ff6161;
 }
 
 /* --- Pool Spread Monitor --- */
@@ -523,13 +520,15 @@ h3 {
 }
 
 .source-tag--live {
-  background: var(--color-approved);
-  color: var(--color-surface);
+  background: var(--color-pass);
+  color: var(--color-on-pass);
+  border-color: var(--color-pass);
 }
 
 .source-tag--historical {
   background: var(--color-bg);
   color: var(--color-muted);
+  border-color: var(--color-muted);
   border-style: dashed;
 }
 
@@ -540,20 +539,30 @@ h3 {
 }
 
 .reading-clears {
-  color: var(--color-approved);
+  color: var(--color-pass);
 }
 
 .reading-declines {
-  color: var(--color-blocked);
+  color: var(--color-fail);
 }
 
-/* --- Warm-up / pending: never styled as a pass --- */
+/* --- Warm-up / pending: neutral grey, dashed, always labelled; never a
+   pass, a block, or the brand yellow --- */
 
 .badge--warming {
-  color: var(--color-warn);
+  color: var(--color-pending);
   border-style: dashed;
 }
 
 .check-mark--pending {
-  color: var(--color-warn);
+  color: var(--color-pending);
+}
+
+/* --- Footer --- */
+
+.footer {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  padding: 8px 0 16px;
 }

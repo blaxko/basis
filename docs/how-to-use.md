@@ -8,7 +8,7 @@ The same token, MSFTB (a token that tracks Microsoft stock), trades in two diffe
 
 ## 2. A tour of the dashboard
 
-**Colours everywhere:** green = OK / passed, red = not OK / blocked, amber (dashed) = waiting (warming up or pending).
+**Colours everywhere** (on a near-black background, in BNB Chain's brand palette): **green** = OK / passed, **red** = not OK / blocked, **grey with a dashed outline and a label** = waiting (warming up or pending). **Yellow** is only decoration (titles' underlines, links, the main buttons); it never means a state.
 
 ### Header (top, dark bar)
 
@@ -30,11 +30,11 @@ The same token, MSFTB (a token that tracks Microsoft stock), trades in two diffe
 - `dry-run` — also re-reads the pools and asks the exchange and Binance to *simulate* the trade (a rehearsal that changes nothing), but never sends it.
 - `live` — would allow sending. **Greyed out on the public demo**, with a note under the buttons saying why (see section 3).
 
-The highlighted button is the current mode (orange; red if live). On the public demo the mode is shared by everyone viewing the site, so a change there lasts only 5 minutes: the header shows *"Returns to simulation at HH:MM UTC"*, and then it switches back by itself. Each new change restarts the 5 minutes; choosing simulation ends it. On your own machine a mode stays until you change it.
+The highlighted button is the current mode (yellow; red if live). On the public demo the mode is shared by everyone viewing the site, so a change there lasts only 5 minutes: the header shows *"Returns to simulation at HH:MM UTC"*, and then it switches back by itself. Each new change restarts the 5 minutes; choosing simulation ends it. On your own machine a mode stays until you change it.
 
 ### Give an instruction (the box at the top)
 
-Type an order in plain English and press **Send**, or click one of the examples under the box to fill it in. The answer appears right under the box in plain language, with a coloured bar: green = approved by the guardrails, red = blocked or failed, amber = can't judge it yet (warming up, or a stock Basis doesn't cover). **Raw reply** expands to the exact response, for technical readers.
+Type an order in plain English and press **Send**, or click one of the examples under the box to fill it in. The answer appears right under the box in plain language, with a coloured bar on its left: green = approved by the guardrails, red = blocked or failed, grey dashed = can't judge it yet (warming up, or a stock Basis doesn't cover). **Raw reply** expands to the exact response, for technical readers.
 
 The AI (Groq) only reads your sentence into three things: which stock, buy or sell, and how many dollars. Whether anything happens is decided by the guardrails and live market data, never by the AI.
 
@@ -43,8 +43,8 @@ The AI (Groq) only reads your sentence into three things: which stock, buy or se
 The main chart. The green tag `LIVE · N evaluations this session` means real, live data; N goes up by one every 30 seconds. (A grey dashed `HISTORICAL FIXTURE … NOT LIVE` tag means it couldn't read live prices and is showing old sample data.)
 
 - **Reading line** under the tag: both pools' prices, the *gross gap* (the raw price difference), the *net edge* (the gap after all costs — red when below zero, green when it clears), then `no opportunity` or `clears threshold`, and `Binance reference $…` (Binance's own quote for the same purchase, used as a cross-check).
-- **Chart:** dashed gold line = gross gap; solid black line = net edge; thick black line at 0 = break-even; pink band below zero = "doesn't clear costs".
-- **Normal:** the net-edge line sits in the pink band (around −0.8% on 2026-09-25) and the reading says `no opportunity`.
+- **Chart:** dashed yellow line = gross gap; solid white line = net edge; grey line at 0, labelled `0 = break-even`; dark-red band below zero, labelled `below zero: doesn't clear costs`.
+- **Normal:** the net-edge line sits in the dark-red band (around −0.8% to −1.3% on 2026-09-25/26) and the reading says `no opportunity`.
 
 ### Advisory Feed (dark panel)
 
@@ -54,8 +54,8 @@ A one-line summary for each opportunity that clears the threshold. **Normal: emp
 
 The result of the safety checks for the most recent order.
 
-- **Badge:** `APPROVED` (green), `BLOCKED` (red), `WARMING UP` (amber, dashed), `ERROR` (amber).
-- **Each check:** `[PASS]` green, `[FAIL]` red, `[PENDING]` / `[WARMING UP]` amber.
+- **Badge:** `APPROVED` (green), `BLOCKED` (red), `WARMING UP` (grey, dashed outline), `ERROR` (red, dashed outline).
+- **Each check:** `[PASS]` green, `[FAIL]` red, `[PENDING]` / `[WARMING UP]` grey.
   - `sanityAndLiquidity` — prices look sane against recent history and the pools hold enough money.
   - `marketStatus` — Binance says the stock isn't paused or restricted.
   - `referencePrice` — the pool price is within 2% of Binance's quote.
@@ -107,7 +107,7 @@ Under the box (green): *"Approved by all guardrails, but not sent: net edge -0.8
 Under the box (red): *"Blocked by perTradeCap: order size $1000 exceeds per-trade cap $500."* and *"That's the per-trade limit. Nothing was sent."* Guardrail Gate: `BLOCKED`, `perTradeCap [FAIL]`, the rest `[PASS]` (`dryRunFloor [PENDING]`). A `guardrail: BLOCKED` row in the ledger.
 
 **Test 3 — `Buy $100 of NVDA` (a stock Basis doesn't cover).**
-Under the box (amber): *"No pools known for NVDA; Basis won't guess."* and *"Basis only trades tokens whose exchange pools it has verified on-chain. Today that's MSFT (MSFTB)."* Nothing changes elsewhere on the dashboard.
+Under the box (grey, dashed): *"No pools known for NVDA; Basis won't guess."* and *"Basis only trades tokens whose exchange pools it has verified on-chain. Today that's MSFT (MSFTB)."* Nothing changes elsewhere on the dashboard.
 
 The net-edge figure will differ from −0.82% at other times; the wording stays the same.
 
