@@ -386,3 +386,31 @@ Whole run: first simulate 13:23:30.998 → ledger entry written 13:24:32.442 (61
 - First call (the hosted server's own call log, `/api/status`): `GET /api/v1/dex/market/rwa/underlying-market?binanceChainId=56&tokenContractAddress=0x80106cb3EAD06659A5ad19DF39D9b4733863B9b0`, started 20:21:13.835Z, HTTP 200, code 0, 117 ms. Same tick: `GET /api/v1/dex/aggregator/quote` (200 USDT → MSFTB, `userWalletAddress=0x0bA556a253D2f1FdCF352aD55A5b44718802BB95`), started 20:21:13.833Z, HTTP 200, code 0, 121 ms.
 - First 14 calls, 20:21:13 – 20:24:13 UTC (7 ticks × quote + underlying-market): 14 ok, 0 failed; latency p50 121 ms, p95 147 ms, max 147 ms, min 109 ms. No `40301`–`40304`. (From the home connection on the same day: 0.9–9.9 s per call when reachable.)
 - Reference quotes recorded on the first 9 detection entries: $517.7496 – $518.7200 (`Rfq Neptunex` ×7, `Rfq Neptune` ×1, `Pancakeswap V3` ×1); 1% pool $514.8746, 0.25% pool $517.3816; quote 0.56–0.75% above the cheaper pool. `statusInfo` on every tick: `openState: true, reasonCode: "TRADING"`, other fields null.
+
+## 2026-09-26/27: Cross-issuer recorder, first live readings (hosted, Railway Singapore)
+
+- Recorder deployed 2026-09-26 ~21:30 UTC (commit `c9f13cd`), redeployed 2026-09-27 02:04 UTC (`c498bb4`). Readings exported before each redeploy to a file outside the repo (598 readings, then 605).
+- Calls it makes: `GET /api/v1/dex/aggregator/quote` (USDT→token, 200 USDT; token→USDT sell quotes every 5 min) and one batched `GET /api/v1/dex/market/rwa/price?binanceChainId=56&tokenContractAddresses=<MSFTB>,<MSFTx>,<MSFTon>` every 5 min. The batched, comma-separated `tokenContractAddresses` was accepted: three rows came back.
+- No `40301`–`40304` in the hosted call log at any check.
+
+**`/rwa/price` rows, 2026-09-27 02:05 UTC (verbatim):**
+
+```json
+{"binanceChainId":"56","tokenContractAddress":"0x80106cb3ead06659a5ad19df39d9b4733863b9b0","platformId":"bstock","tokenPrice":"517.71000000","referencePrice":"517.03064","tokenPriceUpdatedAt":1790474700653}
+{"binanceChainId":"56","tokenContractAddress":"0x5621737f42dae558b81269fcb9e9e70c19aa6b35","platformId":null,"tokenPrice":"491.85606822997883867475","referencePrice":"491.85606822997883867475","tokenPriceUpdatedAt":1788895000000}
+{"binanceChainId":"56","tokenContractAddress":"0x6bfe75d1ad432050ea973c3a3dcd88f02e2444c3","platformId":"ondo","tokenPrice":"520.314858813481752217","referencePrice":"517.35","tokenPriceUpdatedAt":1790474700494}
+```
+
+- **MSFTB:** `tokenPrice / referencePrice` = 1.0013140; bStocks publishes `ml` 1.001313964833366845 (bstocks.finance asset data). Agrees to 7 digits.
+- **MSFTon:** 520.314858813481752217 / 517.35 = 1.0057309; Ondo publishes `sharesMultiplier` 1.005730856892783903 (app.ondo.finance). Agrees.
+- **MSFTx** (xStocks, address from api.xstocks.fi for `BinanceSmartChain`): `platformId` null, `tokenPrice` equal to `referencePrice` (implied multiplier 1.0000, vs xStocks' published 1.0059033904787456), `tokenPriceUpdatedAt` 1788895000000 = 2026-09-08 07:56:40 UTC, 19 days before the call. Left out of the recorder: it can't be confirmed as xStocks through this API.
+
+**Aggregator quote, 200 USDT → MSFTon, 2026-09-27 02:05:03 UTC (a Sunday), chosen route fields (verbatim):** `vendorName` "LiquidMesh", `executionMode` "SWAP", `fromTokenAmount` "200000000000000000000", `toTokenAmount` "194103839225", `toToken.decimal` "18", `toToken.tokenSymbol` "MSFTon", `toToken.tokenUnitPrice` "520.314858813481752217"; 1 route.
+
+- `toTokenAmount` at 18 decimals = 0.000000194103839225 MSFTon for 200 USDT, i.e. ~$1.03 × 10⁹ per token. The same response's `tokenUnitPrice` is $520.31.
+- The Trading API docs say Ondo tokens are "Always routed via 3-vendor RFQ (InchFusion + CowSwap + PcsXRfq). All routes return `executionMode=RFQ`." This response: one route, LiquidMesh, `SWAP`.
+- The same result on every buy quote from 2026-09-26 21:30 to 2026-09-27 02:05 UTC (Saturday night into Sunday).
+- The recorder's first version used this amount as a price: all Ondo readings in the first export are wrong (per-share ~1.02 × 10⁹). From `c498bb4` a per-share price more than 20% away from bStocks' is recorded as an error with the raw fields, and no gap is computed.
+- A sell quote sized from that bad price (1.94 × 10⁻⁷ MSFTon → USDT) returned `code 40375`, `"Minimum order amount is 5 USD."`
+
+**Aggregator quote, MSFTB → USDT (sell), same time:** `vendorName` "LiquidMesh", `executionMode` "SWAP", `fromTokenAmount` "384948671409000000", `toTokenAmount` "199465748438336845536"; 1 route. bStocks per-share: buy 518.87, sell 517.48 (spread 0.27%).
