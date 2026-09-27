@@ -1,4 +1,4 @@
-import { priceSanityCheck, liquidityDepthCheck } from "../basis-model/sanity-checks";
+import { priceSanityCheck, liquidityDepthCheck, median } from "../basis-model/sanity-checks";
 import type { ReferenceQuote } from "../data/binance-reference";
 import type { MarketStatus } from "../data/binance-rwa";
 import { DEFAULT_GUARDRAIL_CONFIG, type GuardrailConfig } from "./config";
@@ -72,6 +72,10 @@ export interface GuardrailCheckResult {
   // The check has no data to run on yet (ok is true so it doesn't block,
   // but it did not pass). Displayed as "pending", never as a pass.
   pending?: boolean;
+  // What the check requires, from config, and what it measured on this
+  // order — shown on the dashboard's guardrail rows. Set by check().
+  limit?: string;
+  measured?: string;
 }
 
 // The gate's decision. Deliberately includes enough structure (checks[],
@@ -301,6 +305,51 @@ export function slippageToleranceCheck(netEdge: number, config: GuardrailConfig)
   return { name: "slippageTolerance", ok: true };
 }
 
+// --- What each check requires and measured (display only) -----------------
+
+const usd0 = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
+const usdCents = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const pctOf = (fraction: number) => `${Number((fraction * 100).toFixed(2))}%`;
+
+// Pure, from the same order, deps and config the check used. Never decides
+// anything: the checks above do; this only says what they looked at.
+function limitAndMeasured(name: string, order: ProposedOrder, deps: GuardrailDeps, config: GuardrailConfig): { limit: string; measured: string } {
+  switch (name) {
+    case "sanityAndLiquidity": {
+      const limit = `each pool within ${pctOf(config.maxPriceDeviationPct)} of its recent median (${config.minPriceHistoryReadings}+ readings); thinner pool ≥ ${usd0(config.minLiquidityDepthUsd)}`;
+      const readings = Math.min(order.recentTicks.length, order.expensiveRecentTicks.length);
+      if (readings < config.minPriceHistoryReadings) return { limit, measured: `${readings} of ${config.minPriceHistoryReadings} readings` };
+      const dev = (price: number, ticks: number[]) => Math.abs(price - median(ticks)) / median(ticks);
+      const largest = Math.max(dev(order.price, order.recentTicks), dev(order.expensivePrice, order.expensiveRecentTicks));
+      return { limit, measured: `largest deviation ${(largest * 100).toFixed(2)}% · thinner pool ${usd0(order.liquidityDepthUsd)}` };
+    }
+    case "marketStatus": {
+      const s = order.marketStatus;
+      return { limit: MARKET_STATUS_PASS_CODES.join(" or "), measured: s.status === "ok" ? s.reasonCode ?? (s.openState ? "open" : "not tradable") : `unavailable (${s.reason})` };
+    }
+    case "referencePrice": {
+      const limit = `within ${pctOf(config.maxReferenceDivergencePct)} of the Binance quote`;
+      if (order.reference.status !== "ok") return { limit, measured: `no quote (${order.reference.reason})` };
+      const r = order.reference.priceUsd;
+      return { limit, measured: `${((Math.abs(order.price - r) / r) * 100).toFixed(2)}% from ${usdCents(r)} (${order.reference.vendor})` };
+    }
+    case "perTradeCap":
+      return { limit: `≤ ${usd0(config.perTradeCapUsd)}`, measured: usd0(order.sizeUsd) };
+    case "dailyCap":
+      return {
+        limit: `≤ ${usd0(config.perDayCapUsd)} a day (UTC)`,
+        measured: `${usd0(deps.spentTodaySoFarUsd)} sent today + ${usd0(order.sizeUsd)} = ${usd0(deps.spentTodaySoFarUsd + order.sizeUsd)}`,
+      };
+    case "dryRunFloor": {
+      const limit = `simulated output ≥ ${pctOf(config.minDryRunOutputRatio)} of the order`;
+      if (order.simulatedOutputUsd === null) return { limit, measured: "not simulated yet" };
+      return { limit, measured: `${usdCents(order.simulatedOutputUsd)} (${((order.simulatedOutputUsd / order.sizeUsd) * 100).toFixed(1)}%)` };
+    }
+    default:
+      return { limit: "", measured: "" };
+  }
+}
+
 // The gate. Pure and side-effect-free: no wallet calls, no network calls,
 // no signing — it only decides, and a caller must check verdict.approved
 // before proceeding to anything downstream (PRD rules 1 and 4).
@@ -320,7 +369,7 @@ export function check(order: ProposedOrder, deps: GuardrailDeps): GuardrailVerdi
       perTradeCapCheck(order, config),
       dailyCapCheck(order, deps, config),
       dryRunFloorCheck(order, config),
-    ];
+    ].map((c) => ({ ...c, ...limitAndMeasured(c.name, order, deps, config) }));
 
     const failed = checks.find((c) => !c.ok);
     if (failed) {

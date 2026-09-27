@@ -6,7 +6,7 @@ export interface CheckResult {
   warmingUp?: boolean;
 }
 
-function median(values: number[]): number {
+export function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 0 ? ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2 : (sorted[mid] ?? 0);
