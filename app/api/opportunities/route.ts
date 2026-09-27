@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { previewOpportunities, DEFAULT_AGENT_LOOP_CONFIG } from "../../../lib/orchestration/agent-loop";
 import { getDemoHistory, type SpreadHistoryPoint } from "../../../lib/data/demo-history";
 import { defaultLedger, type EvaluationPoint } from "../../../lib/execution/audit-ledger";
+import { costBreakdown, type CostBreakdown } from "../../../lib/basis-model/cost-breakdown";
 import { isPublicReadOnly } from "../../../lib/config/deployment";
 import { checkRateLimit, clientIp, OPPORTUNITIES_RATE_LIMIT } from "../../../lib/config/rate-limit";
 import { logServerError, plainNetworkReason } from "../../../lib/errors/public-error";
@@ -62,12 +63,35 @@ export async function GET(request: Request) {
   // MAX_LIVE_POINTS, so the dashboard can say how much the chart shows.
   // Both come from the ledger's running count and per-ticker buffer, so a
   // poll costs the same after three weeks as after one minute.
-  const history: Record<string, { source: "live" | "historical"; points: SpreadHistoryPoint[]; total: number }> = {};
+  // `costs` breaks the latest live evaluation's net edge into its costs,
+  // with the Basis Model's own functions (lib/basis-model/cost-breakdown.ts),
+  // so the table's total is exactly the net edge the monitor shows.
+  const history: Record<
+    string,
+    { source: "live" | "historical"; points: SpreadHistoryPoint[]; total: number; costs?: CostBreakdown & { at: string } }
+  > = {};
 
   for (const ticker of DEFAULT_AGENT_LOOP_CONFIG.underlyings) {
-    const live = defaultLedger.recentEvaluations(ticker).slice(-MAX_LIVE_POINTS).map(toHistoryPoint);
+    const evaluations = defaultLedger.recentEvaluations(ticker);
+    const live = evaluations.slice(-MAX_LIVE_POINTS).map(toHistoryPoint);
     if (live.length > 0) {
-      history[ticker] = { source: "live", points: live, total: defaultLedger.evaluationCount(ticker) };
+      const latest = evaluations[evaluations.length - 1]!;
+      const d = latest.detection;
+      const costs = costBreakdown({
+        cheapPriceUsd: d.cheapPool.priceUsd,
+        cheapFeeUnits: d.cheapPool.feeUnits,
+        dearPriceUsd: d.expensivePool.priceUsd,
+        dearFeeUnits: d.expensivePool.feeUnits,
+        slippagePct: DEFAULT_AGENT_LOOP_CONFIG.slippagePctEstimate,
+        gasCostUsd: d.gas.costUsd,
+        tradeSizeUsd: DEFAULT_AGENT_LOOP_CONFIG.orderSizeUsd,
+      });
+      history[ticker] = {
+        source: "live",
+        points: live,
+        total: defaultLedger.evaluationCount(ticker),
+        costs: { ...costs, at: new Date(latest.timestamp).toISOString() },
+      };
     } else {
       const fixture = getDemoHistory(ticker);
       history[ticker] = { source: "historical", points: fixture, total: fixture.length };
