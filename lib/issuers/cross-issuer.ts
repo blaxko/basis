@@ -39,6 +39,9 @@ export const MSFT_ISSUER_TOKENS: readonly IssuerToken[] = [
 export const QUOTE_SIZE_USD = 200; // same size as the cross-pool reference quote
 export const SLOW_EVERY_TICKS = 10; // /rwa/price + sell quotes every 5 min
 export const MULTIPLIER_TOLERANCE = 0.0005; // Binance-implied vs issuer-published
+// A per-share buy further than this from bStocks' per-share buy is treated
+// as a bad quote, not a price: recorded as an error with its raw fields.
+export const PLAUSIBLE_DEVIATION = 0.2;
 export const MAX_READINGS = 2_880; // 24 h at 30 s
 const STAGGER_MS = 300; // stays under Binance's 5 requests/s per endpoint
 export const LABEL = "Monitor only: Basis doesn't trade across issuers";
@@ -67,6 +70,8 @@ export interface TokenConfirmation {
   multiplier: number | null; // Binance-implied
   publishedMultiplier: number;
   multiplierMatches: boolean;
+  // The /rwa/price row Binance returned for this address, verbatim.
+  binanceRow?: RwaPriceRow;
 }
 
 export function confirmTokens(tokens: readonly IssuerToken[], rows: readonly RwaPriceRow[]): TokenConfirmation[] {
@@ -75,8 +80,11 @@ export function confirmTokens(tokens: readonly IssuerToken[], rows: readonly Rwa
     const row = rows.find((r) => r.tokenContractAddress?.toLowerCase() === token.address);
     if (!row) return { ...base, included: false, reason: "not returned by Binance's RWA API", platformId: null, multiplier: null, multiplierMatches: false };
     const platformId = row.platformId ?? null;
-    if (!platformId || !token.platformMatch.test(platformId)) {
-      return { ...base, included: false, reason: `Binance's RWA API lists it under platform "${platformId ?? "none"}", not ${token.issuer}`, platformId, multiplier: null, multiplierMatches: false };
+    if (!platformId) {
+      return { ...base, binanceRow: row, included: false, reason: `Binance's RWA API returned it without a platformId, so it can't be confirmed as ${token.issuer}`, platformId, multiplier: null, multiplierMatches: false };
+    }
+    if (!token.platformMatch.test(platformId)) {
+      return { ...base, binanceRow: row, included: false, reason: `Binance's RWA API lists it under platform "${platformId}", not ${token.issuer}`, platformId, multiplier: null, multiplierMatches: false };
     }
     const tokenPrice = Number(row.tokenPrice);
     const referencePrice = Number(row.referencePrice);
@@ -85,6 +93,7 @@ export function confirmTokens(tokens: readonly IssuerToken[], rows: readonly Rwa
     if (!multiplierMatches) {
       return {
         ...base,
+        binanceRow: row,
         included: false,
         reason: `Binance's implied multiplier ${multiplier?.toFixed(6) ?? "unavailable"} differs from ${token.issuer}'s published ${token.publishedMultiplier.toFixed(6)} by more than ${MULTIPLIER_TOLERANCE * 100}%`,
         platformId,
@@ -92,7 +101,7 @@ export function confirmTokens(tokens: readonly IssuerToken[], rows: readonly Rwa
         multiplierMatches: false,
       };
     }
-    return { ...base, included: true, platformId, multiplier, multiplierMatches: true };
+    return { ...base, binanceRow: row, included: true, platformId, multiplier, multiplierMatches: true };
   });
 }
 
@@ -174,7 +183,22 @@ export interface RecorderDeps {
 const QUOTE_PATH = "/api/v1/dex/aggregator/quote";
 const RWA_PRICE_PATH = "/api/v1/dex/market/rwa/price";
 
-type QuoteResult = { ok: true; out: number; vendor: string } | { ok: false; reason: string };
+// The fields of the chosen route that decide the price, verbatim: kept
+// per token and side in status() so a surprising number can be checked
+// against exactly what Binance returned.
+export interface RawQuote {
+  at: number;
+  vendorName?: string;
+  executionMode?: string;
+  fromTokenAmount?: string;
+  toTokenAmount?: string;
+  toTokenDecimal?: string;
+  toTokenSymbol?: string;
+  toTokenUnitPrice?: string;
+  routes: number;
+}
+
+type QuoteResult = { ok: true; out: number; vendor: string; raw: RawQuote } | { ok: false; reason: string };
 
 export class CrossIssuerRecorder {
   private ticks = 0;
@@ -184,6 +208,7 @@ export class CrossIssuerRecorder {
   private lastBuy = new Map<string, number>();
   private buffer: IssuerReading[] = [];
   private callTimes: number[] = [];
+  private rawQuotes: Record<string, RawQuote> = {};
 
   constructor(private readonly deps: RecorderDeps) {}
 
@@ -205,11 +230,26 @@ export class CrossIssuerRecorder {
         input.buyPerToken = reused.priceUsdPerToken;
       } else {
         const q = await this.quote(BSC_USDT_ADDRESS, token.address, parseUnits(QUOTE_SIZE_USD.toFixed(6), 18));
-        if (q.ok) input.buyPerToken = QUOTE_SIZE_USD / q.out;
-        else input.error = q.reason;
+        if (q.ok) {
+          this.rawQuotes[`${token.symbol}_buy`] = q.raw;
+          input.buyPerToken = QUOTE_SIZE_USD / q.out;
+        } else input.error = q.reason;
       }
-      if (input.buyPerToken !== undefined) this.lastBuy.set(token.symbol, input.buyPerToken);
       inputs.push(input);
+    }
+
+    // A per-share price far from bStocks' is a bad quote, not a price.
+    const anchor = inputs.find((x) => x.token.symbol === "MSFTB" && x.buyPerToken !== undefined);
+    const anchorPerShare = anchor ? anchor.buyPerToken! / anchor.multiplier : null;
+    for (const input of inputs) {
+      if (input.buyPerToken === undefined) continue;
+      const perShare = input.buyPerToken / input.multiplier;
+      if (anchorPerShare !== null && Math.abs(perShare / anchorPerShare - 1) > PLAUSIBLE_DEVIATION) {
+        input.error = `implausible quote: $${perShare.toPrecision(6)} per share vs bStocks $${anchorPerShare.toFixed(2)} (raw quote in status)`;
+        delete input.buyPerToken;
+        continue;
+      }
+      this.lastBuy.set(input.token.symbol, input.buyPerToken);
     }
 
     if (slow) {
@@ -218,7 +258,10 @@ export class CrossIssuerRecorder {
         if (perToken === undefined) continue;
         const tokensIn = QUOTE_SIZE_USD / perToken;
         const q = await this.quote(input.token.address, BSC_USDT_ADDRESS, parseUnits(tokensIn.toFixed(12), 18));
-        if (q.ok) this.sells.set(input.token.symbol, { perToken: q.out / tokensIn, at: now });
+        if (q.ok) {
+          this.rawQuotes[`${input.token.symbol}_sell`] = q.raw;
+          this.sells.set(input.token.symbol, { perToken: q.out / tokensIn, at: now });
+        }
         else input.error = input.error ?? `sell quote: ${q.reason}`;
       }
     }
@@ -254,6 +297,7 @@ export class CrossIssuerRecorder {
       callsPerMinuteBudget: 2 * 2 + (1 + MSFT_ISSUER_TOKENS.length) / 5,
       callsLastMinute: this.callTimes.length,
       readings: this.buffer.length,
+      lastQuotes: { ...this.rawQuotes },
     };
   }
 
@@ -281,11 +325,23 @@ export class CrossIssuerRecorder {
     if (this.deps.userWalletAddress) query.set("userWalletAddress", this.deps.userWalletAddress);
     const res = await this.call(QUOTE_PATH, query);
     if (!res.ok) return res;
-    const routes = Array.isArray(res.body.data) ? (res.body.data as Array<{ isBest?: boolean; toTokenAmount?: string; toToken?: { decimal?: string }; vendorName?: string }>) : [];
+    type Route = { isBest?: boolean; toTokenAmount?: string; fromTokenAmount?: string; executionMode?: string; toToken?: { decimal?: string; tokenSymbol?: string; tokenUnitPrice?: string }; vendorName?: string };
+    const routes = Array.isArray(res.body.data) ? (res.body.data as Route[]) : [];
     const best = routes.find((r) => r.isBest) ?? routes[0];
+    const raw: RawQuote = {
+      at: this.deps.now(),
+      vendorName: best?.vendorName,
+      executionMode: best?.executionMode,
+      fromTokenAmount: best?.fromTokenAmount,
+      toTokenAmount: best?.toTokenAmount,
+      toTokenDecimal: best?.toToken?.decimal,
+      toTokenSymbol: best?.toToken?.tokenSymbol,
+      toTokenUnitPrice: best?.toToken?.tokenUnitPrice,
+      routes: routes.length,
+    };
     const out = best ? Number(best.toTokenAmount) / 10 ** Number(best.toToken?.decimal) : NaN;
     if (!Number.isFinite(out) || out <= 0) return { ok: false, reason: "no usable route" };
-    return { ok: true, out, vendor: best?.vendorName ?? "unknown" };
+    return { ok: true, out, vendor: best?.vendorName ?? "unknown", raw };
   }
 
   private async call(path: string, query: URLSearchParams): Promise<{ ok: true; body: { data?: unknown } } | { ok: false; reason: string }> {

@@ -162,6 +162,46 @@ describe("the recorder: modest calls, bounded memory, never trades", () => {
   });
 });
 
+describe("implausible quotes never become prices (live, 2026-09-27: MSFTon read as ~$1.03 billion per token)", () => {
+  it("a per-share buy more than 20% from bStocks' is an error with its raw quote kept, and there's no gap", async () => {
+    const request = vi.fn(async ({ path, query }: { path: string; query: URLSearchParams }) => {
+      if (path.endsWith("/rwa/price")) {
+        return {
+          httpStatus: 200,
+          body: { code: 0, data: [REAL_MSFTB_RWA, { tokenContractAddress: MSFTON!.address, platformId: "ondo", tokenPrice: "523.0", referencePrice: String(523 / MSFTON!.publishedMultiplier) }] },
+          text: "",
+          latencyMs: 1,
+        };
+      }
+      const toOndo = query.get("toTokenAddress")!.toLowerCase() === MSFTON!.address;
+      // An amount that implies ~$1e9 per token, as observed live.
+      const route = { isBest: true, vendorName: "PcsXRfq", executionMode: "RFQ", fromTokenAmount: query.get("amount"), toTokenAmount: toOndo ? "194110000000" : "385000000000000000", toToken: { decimal: "18", tokenSymbol: toOndo ? "MSFTon" : "USDT", tokenUnitPrice: "523.1" } };
+      return { httpStatus: 200, body: { code: 0, data: [route] }, text: "", latencyMs: 1 };
+    });
+    const rec = new CrossIssuerRecorder({
+      request: request as never,
+      latestMsftbBuy: () => ({ priceUsdPerToken: 519.5, at: 0 }),
+      latestGasUsd: () => 0.024,
+      now: () => 0,
+      sleep: async () => {},
+      log: () => {},
+    });
+    const r = (await rec.tick())!;
+    const ondo = r.tokens.find((t) => t.symbol === "MSFTon")!;
+    expect(ondo.buyPerShare).toBeNull();
+    expect(ondo.error).toMatch(/implausible/);
+    expect(r.gap).toBeNull();
+    const raw = rec.status().lastQuotes.MSFTon_buy;
+    expect(raw).toMatchObject({ vendorName: "PcsXRfq", executionMode: "RFQ", toTokenAmount: "194110000000", toTokenDecimal: "18", toTokenSymbol: "MSFTon", toTokenUnitPrice: "523.1" });
+  });
+
+  it("says plainly when Binance returns a token without a platformId", () => {
+    const c = confirmTokens([MSFTX!], [{ tokenContractAddress: MSFTX!.address, tokenPrice: "525", referencePrice: "522" }]);
+    expect(c[0]!.reason).toBe("Binance's RWA API returned it without a platformId, so it can't be confirmed as xStocks");
+    expect(c[0]!.binanceRow).toMatchObject({ tokenContractAddress: MSFTX!.address });
+  });
+});
+
 describe("GET /api/issuers", () => {
   it("returns status and readings, labelled monitor-only, with no URL", async () => {
     vi.resetModules();
