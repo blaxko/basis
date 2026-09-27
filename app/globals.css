@@ -215,6 +215,8 @@ pre {
 
   .dashboard {
     padding: 16px;
+    max-width: 1600px;
+    margin: 0;
   }
 }
 
@@ -1058,20 +1060,12 @@ pre {
   grid-column: 2;
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 12px;
-  color: var(--color-body);
+  color: var(--color-text);
+  overflow-wrap: anywhere;
 }
 
-@media (min-width: 768px) {
-  .check-item {
-    grid-template-columns: 84px minmax(0, 1fr) auto;
-  }
-
-  .check-measured {
-    grid-column: 3;
-    text-align: right;
-    white-space: nowrap;
-  }
-}
+/* The measured value sits on its own line under the description, at any
+   width, so a long value never squeezes the description column. */
 
 /* --- Audit Ledger --- */
 

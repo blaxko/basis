@@ -68,7 +68,7 @@ export function GuardrailChecklist() {
                   {c.limit && <span className="check-limit">Limit: {c.limit}</span>}
                   {(!c.ok || c.pending) && c.reason && <span className="check-reason">{c.reason}</span>}
                 </span>
-                {c.measured && <span className="check-measured mono">{c.measured}</span>}
+                {c.measured && <span className="check-measured mono">Measured: {c.measured}</span>}
               </li>
             ))}
             {verdict.checks.length === 0 && (
