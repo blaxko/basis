@@ -30,7 +30,10 @@ describe("readOnlyNote", () => {
 
   it("the header renders the note and the button tooltip", () => {
     const header = readFileSync(join(__dirname, "..", "components", "header.tsx"), "utf8");
-    expect(header).toContain("readOnlyNote(status.data?.publicReadOnly)");
+    // The server's answer (the page's prop) until /api/status arrives, so
+    // the note and the locked Live button are in the first paint.
+    expect(header).toContain("const readOnly = status.data?.publicReadOnly ?? publicReadOnly;");
+    expect(header).toContain("readOnlyNote(readOnly)");
     expect(header).toContain('className="killswitch-note"');
     expect(header).toContain("note.liveButtonTitle");
   });

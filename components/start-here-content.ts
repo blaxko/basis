@@ -7,8 +7,10 @@ import { LIVE_PROOF_TXS, bscScanTxUrl } from "./read-only-note";
 // coming instead of showing a dead link. Set the URL here.
 export const DEMO_VIDEO_URL: string | null = null;
 
-// Per-visitor memory of "dismissed" (browser localStorage).
+// Per-visitor memory of "dismissed": browser localStorage, plus a cookie the
+// server reads so the panel isn't rendered at all for a returning visitor.
 export const START_HERE_STORAGE_KEY = "basis.startHere.dismissed";
+export const START_HERE_COOKIE = "basis_start_here_dismissed";
 
 export const START_HERE = {
   title: "Start here",

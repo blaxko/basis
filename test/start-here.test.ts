@@ -47,11 +47,15 @@ describe("Start here content", () => {
 });
 
 describe("Start here wiring", () => {
-  it("is on the page, directly under the header", () => {
+  it("is on the page, directly under the header, decided on the server", () => {
     const page = read("app", "page.tsx");
-    expect(page).toContain("<StartHere />");
-    expect(page.indexOf("<Header />")).toBeLessThan(page.indexOf("<StartHere />"));
-    expect(page.indexOf("<StartHere />")).toBeLessThan(page.indexOf('<div className="bento-grid">'));
+    // The server decides (deployment mode + dismissal cookie), so the
+    // panel is in the first paint and nothing shifts when data loads.
+    expect(page).toContain("<StartHere status={status} dismissed={dismissed} />");
+    expect(page).toContain("publicReadOnlyFromEnv(process.env.PUBLIC_READ_ONLY)");
+    expect(page).toContain("cookies()).get(START_HERE_COOKIE)");
+    expect(page.indexOf("<Header ")).toBeLessThan(page.indexOf("<StartHere "));
+    expect(page.indexOf("<StartHere ")).toBeLessThan(page.indexOf('<div className="bento-grid">'));
   });
 
   it("shows only on the public read-only demo, and remembers dismissal per visitor", () => {
@@ -59,6 +63,7 @@ describe("Start here wiring", () => {
     expect(panel).toContain("status.publicReadOnly === true");
     expect(panel).toContain("localStorage.getItem(START_HERE_STORAGE_KEY)");
     expect(panel).toContain("localStorage.setItem(START_HERE_STORAGE_KEY");
+    expect(panel).toContain("document.cookie = `${START_HERE_COOKIE}=1");
     expect(START_HERE_STORAGE_KEY).toBe("basis.startHere.dismissed");
   });
 

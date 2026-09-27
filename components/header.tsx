@@ -9,7 +9,10 @@ import { walletChipLabel } from "./format-balance";
 
 const MODES: PipelineMode[] = ["simulation", "dry-run", "live"];
 
-export function Header() {
+// publicReadOnly comes from the server (app/page.tsx), so the read-only
+// badge, note and the locked Live button are in the first paint; the mode
+// shown is always the server's (/api/status), never what was clicked.
+export function Header({ publicReadOnly }: { publicReadOnly: boolean }) {
   const status = usePoll<StatusResponse>("/api/status", 5000);
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
@@ -37,17 +40,18 @@ export function Header() {
   }
 
   const currentMode = status.data?.killswitch ?? null;
-  const note = readOnlyNote(status.data?.publicReadOnly);
+  const readOnly = status.data?.publicReadOnly ?? publicReadOnly;
+  const note = readOnlyNote(readOnly);
 
   return (
-    <header className="header">
+    <header className="header" id="top">
       <div className="header-top">
-        <div>
+        <div className="brand">
           <h1 className="header-title">Basis</h1>
           <p className="header-subtitle">Cross-pool gaps, counted only after every cost.</p>
         </div>
 
-        <div className="killswitch">
+        <div className="killswitch" role="group" aria-label="Killswitch">
           <div className="killswitch-buttons">
             {MODES.map((mode) => (
               <button
@@ -58,15 +62,24 @@ export function Header() {
                   (currentMode === mode ? " killswitch-button--active" : "") +
                   (mode === "live" ? " killswitch-button--live" : "")
                 }
+                aria-pressed={currentMode === mode}
                 // Convenience only: the server rejects "live" in read-only mode.
-                disabled={posting || status.loading || (mode === "live" && (status.data?.publicReadOnly ?? true))}
+                disabled={posting || status.loading || (mode === "live" && readOnly)}
                 title={mode === "live" && note ? note.liveButtonTitle : undefined}
                 onClick={() => setMode(mode)}
               >
+                {mode === "live" && readOnly && <LockIcon />}
                 {mode}
               </button>
             ))}
           </div>
+        </div>
+
+        {readOnly && <span className="mode-badge">Public demo · read-only</span>}
+      </div>
+
+      {(status.data?.killswitchRevertsAt || note) && (
+        <div className="header-notes">
           {status.data?.killswitchRevertsAt && (
             <p className="killswitch-note">
               <strong>{revertLabel(status.data.killswitchRevertsAt)}</strong> Changes on this public demo are shared by every
@@ -82,15 +95,17 @@ export function Header() {
             </p>
           )}
         </div>
-      </div>
+      )}
 
-      {status.loading && !status.data && <p className="state-message">Loading system status…</p>}
       {status.error && <p className="state-message state-message--error">Status unavailable: {status.error}</p>}
       {postError && <p className="killswitch-error">Killswitch update failed: {postError}</p>}
 
-      {status.data && (
-        <>
-          <div className="status-row">
+      {/* Fixed-height ribbon: placeholders hold its place until /api/status
+          answers, so nothing below moves (no layout shift). */}
+      <div className="status-row" aria-live="polite">
+        {!status.data && <span className="status-chip status-chip--placeholder">Loading system status…</span>}
+        {status.data && (
+          <>
             {status.data.publicReadOnly && <StatusChip label="Public read-only: no sending" ok={true} />}
             <HealthChip chip={healthChip("Groq", status.data.groq, Date.now())} />
             <HealthChip chip={healthChip("BSC RPC", status.data.bscRpc, Date.now())} />
@@ -109,20 +124,25 @@ export function Header() {
               ok={status.data.binanceWeb3Api.configured && (status.data.binanceWeb3Api.calls[0]?.ok ?? false)}
             />
             <StatusChip
-              label={
-                status.data.walletBalances.status === "ok"
-                  ? walletChipLabel(status.data.walletBalances)
-                  : "Wallet balances unavailable"
-              }
+              label={status.data.walletBalances.status === "ok" ? walletChipLabel(status.data.walletBalances) : "Wallet balances unavailable"}
               ok={status.data.walletBalances.status === "ok"}
             />
             {Object.entries(status.data.marketStatus).map(([ticker, market]) => (
               <StatusChip key={ticker} label={marketChipLabel(ticker, market)} ok={marketChipOk(market)} />
             ))}
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </div>
     </header>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true" focusable="false">
+      <rect x="5" y="11" width="14" height="10" rx="1" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
   );
 }
 
