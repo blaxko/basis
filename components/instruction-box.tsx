@@ -3,7 +3,14 @@
 import { useState } from "react";
 import { describeInstructionResult, type InstructionOutcomeText } from "./instruction-result";
 
-const EXAMPLES = ["Buy $200 of MSFT", "Buy $1000 of MSFT", "Buy $100 of NVDA"];
+// Clickable examples: the text that fills the box, and a hint about what
+// it shows. Hints carry no numbers: limits come from the server's reply.
+const EXAMPLES: ReadonlyArray<{ text: string; hint: string }> = [
+  { text: "Buy $200 of MSFT", hint: "a normal order" },
+  { text: "Buy $1000 of MSFT", hint: "over the per-trade cap" },
+  { text: "Buy $100 of NVDA", hint: "no verified pools" },
+  { text: "Sell $50 of MSFT", hint: "sells are refused" },
+];
 
 interface Reply {
   httpStatus: number | null;
@@ -49,13 +56,11 @@ export function InstructionBox() {
   }
 
   return (
-    <section className="panel instruction-panel">
-      <h2 className="panel-title">Give an instruction</h2>
-
-      <p className="instruction-help">
-        Type an order in plain English. The AI only reads your sentence into a stock, buy or sell, and a dollar amount;
-        whether anything happens is decided by the guardrails and live market data, never by the AI.
-      </p>
+    <section className="panel instruction-panel" id="instruction">
+      <div className="panel-head">
+        <h2 className="panel-title">Give an instruction</h2>
+        <span className="pill pill--plain">AI reads it · guardrails decide</span>
+      </div>
 
       <form
         className="instruction-form"
@@ -64,25 +69,36 @@ export function InstructionBox() {
           void send();
         }}
       >
-        <input
-          className="instruction-input"
-          type="text"
-          value={instruction}
-          onChange={(e) => setInstruction(e.target.value)}
-          placeholder="e.g. Buy $200 of MSFT"
-          maxLength={200}
-          aria-label="Instruction"
-        />
+        <label className="prompt">
+          <span className="prompt-caret mono" aria-hidden="true">
+            &gt;
+          </span>
+          <input
+            className="instruction-input"
+            type="text"
+            value={instruction}
+            onChange={(e) => setInstruction(e.target.value)}
+            placeholder="e.g. Buy $200 of MSFT"
+            maxLength={200}
+            aria-label="Instruction"
+          />
+        </label>
         <button className="instruction-send" type="submit" disabled={sending || !instruction.trim()}>
           {sending ? "Sending…" : "Send"}
         </button>
       </form>
 
+      <p className="instruction-help">
+        Type an order in plain English. The AI only reads your sentence into a stock, buy or sell, and a dollar amount;
+        whether anything happens is decided by the guardrails and live market data, never by the AI. Other languages work too.
+      </p>
+
       <div className="instruction-examples">
-        <span>Try:</span>
+        <span className="examples-label">Try:</span>
         {EXAMPLES.map((example) => (
-          <button key={example} type="button" className="instruction-example" onClick={() => setInstruction(example)}>
-            {example}
+          <button key={example.text} type="button" className="instruction-example" onClick={() => setInstruction(example.text)}>
+            <span className="mono">{example.text}</span>
+            <span className="example-hint">{example.hint}</span>
           </button>
         ))}
       </div>

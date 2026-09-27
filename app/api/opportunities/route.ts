@@ -5,6 +5,7 @@ import { defaultLedger, type EvaluationPoint } from "../../../lib/execution/audi
 import { costBreakdown, type CostBreakdown } from "../../../lib/basis-model/cost-breakdown";
 import { observations as buildObservations } from "../../../lib/orchestration/observations";
 import { getMarketStatusChanges } from "../../../lib/data/binance-rwa";
+import { DEFAULT_SCHEDULER_INTERVAL_MS } from "../../../lib/orchestration/scheduler";
 import { isPublicReadOnly } from "../../../lib/config/deployment";
 import { checkRateLimit, clientIp, OPPORTUNITIES_RATE_LIMIT } from "../../../lib/config/rate-limit";
 import { logServerError, plainNetworkReason } from "../../../lib/errors/public-error";
@@ -111,7 +112,7 @@ export async function GET(request: Request) {
 
   try {
     const { spreads, opportunities, warmUp } = await getPreview();
-    return NextResponse.json({ spreads, opportunities, warmUp, history, threshold, observations });
+    return NextResponse.json({ spreads, opportunities, warmUp, history, threshold, observations, intervalMs: DEFAULT_SCHEDULER_INTERVAL_MS });
   } catch (err) {
     // Live pool read failed (RPC down or slow, or BSC_RPC_URL not set).
     // History is still returned; spreads/opportunities come back empty
@@ -126,6 +127,7 @@ export async function GET(request: Request) {
       history,
       threshold,
       observations,
+      intervalMs: DEFAULT_SCHEDULER_INTERVAL_MS,
       error: `Live pool prices are temporarily unavailable (BNB Chain RPC: ${plainNetworkReason(err)}).`,
     });
   }

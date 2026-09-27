@@ -121,6 +121,9 @@ export interface GuardrailCheckResult {
   warmingUp?: boolean;
   // Had no data to run on yet. Never shown as a pass.
   pending?: boolean;
+  // What the check requires (from config) and what it measured on this order.
+  limit?: string;
+  measured?: string;
 }
 
 export interface GuardrailVerdict {
@@ -174,6 +177,32 @@ export interface SpreadSeries {
   source: "live" | "historical";
   points: SpreadHistoryPoint[]; // at most the last 120
   total: number; // every evaluation this session
+  // The latest live evaluation's net edge, split into its costs
+  // (lib/basis-model/cost-breakdown.ts). Absent for the fixture.
+  costs?: CostBreakdown;
+}
+
+export interface CostLine {
+  key: "buyFee" | "sellFee" | "slippage" | "gas";
+  pct: number; // share of the order (negative)
+  usd: number; // dollars on the order (positive)
+  feeUnits?: number;
+}
+
+export interface CostBreakdown {
+  grossGap: number;
+  lines: CostLine[];
+  totalCostPct: number;
+  netEdge: number;
+  tradeSizeUsd: number;
+  at: string;
+}
+
+// Advisory Feed observations: fixed templates, real data.
+export interface Observation {
+  kind: "largest_gap" | "market_status";
+  at: string;
+  text: string;
 }
 
 export interface PreviewOpportunity {
@@ -189,6 +218,8 @@ export interface OpportunitiesResponse {
   warmUp: Record<string, WarmUpStatus>;
   history: Record<string, SpreadSeries>;
   threshold: number;
+  observations?: Observation[];
+  intervalMs?: number; // the scheduler's evaluation interval
   error?: string;
 }
 

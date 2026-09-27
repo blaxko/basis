@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { usePoll } from "./use-poll";
+import { filterGroups, groupsToCsv, type LedgerFilter } from "./ledger-csv";
 import type {
   DetectionLedgerEntry,
   DetectionSnapshot,
@@ -64,18 +66,46 @@ export function AuditLedger() {
   const poll = usePoll<LedgerResponse>("/api/ledger", POLL_MS);
   const entries = poll.data?.entries ?? [];
   const total = poll.data?.total ?? entries.length;
-  const groups = groupLedgerRows(entries, { truncated: total > entries.length });
+  const [filter, setFilter] = useState<LedgerFilter>("all");
+  const groups = filterGroups(groupLedgerRows(entries, { truncated: total > entries.length }), filter);
   const showingNote = ledgerShowingNote(total, entries.length);
 
+  // Client-side only: a CSV of the rows shown, from the data already on the
+  // page. No request is made and nothing shared changes.
+  function exportCsv() {
+    const blob = new Blob([groupsToCsv(groups)], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `basis-ledger-${new Date().toISOString().slice(0, 19).replace(/:/g, "")}Z.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
-    <section className="panel panel--terminal">
-      <h2 className="panel-title mono">Audit Ledger</h2>
+    <section className="panel" id="ledger">
+      <div className="panel-head">
+        <h2 className="panel-title">Audit Ledger</h2>
+        {poll.data && <span className="pill pill--plain mono">{poll.data.decisions ?? total} decisions</span>}
+      </div>
+
+      <div className="ledger-bar" role="toolbar" aria-label="Ledger view">
+        {(["all", "orders", "detections"] as const).map((f) => (
+          <button key={f} type="button" className={"chip-btn" + (filter === f ? " chip-btn--on" : "")} aria-pressed={filter === f} onClick={() => setFilter(f)}>
+            {f === "all" ? "All" : f === "orders" ? "Orders" : "Detections"}
+          </button>
+        ))}
+        <span className="ledger-bar-spacer" />
+        <button type="button" className="chip-btn" onClick={exportCsv} disabled={groups.length === 0}>
+          Export CSV (shown rows)
+        </button>
+      </div>
 
       {poll.loading && !poll.data && <p className="state-message mono">loading ledger…</p>}
       {poll.error && <p className="state-message state-message--error mono">ledger unavailable: {poll.error}</p>}
       {showingNote && <p className="state-message mono">{showingNote}</p>}
 
-      <div className="terminal-feed">
+      <div className="terminal-feed" tabIndex={0} aria-label="Ledger entries, newest first">
         {entries.length === 0 && !poll.loading && <p className="terminal-empty mono">no ledger entries yet.</p>}
         {groups.map((group) =>
           group.type === "pipeline" ? (

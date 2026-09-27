@@ -1,43 +1,41 @@
-"use client";
+import type { Observation, PreviewOpportunity } from "./api-types";
 
-import { usePoll } from "./use-poll";
-import type { OpportunitiesResponse } from "./api-types";
-
-// Shows the server's already-narrated `opportunities[]`. The narration is
-// a fixed text template (lib/llm/proposal-narrator.ts) filled from the
-// Basis Model's numbers and the guardrail verdict — no AI writes it. The
-// AI (Groq) is only used to read typed instructions. Polls every ~10 s,
-// which is indistinguishable from live for a demo.
-const POLL_MS = 10_000;
-
-export function AdvisoryFeed() {
-  const poll = usePoll<OpportunitiesResponse>("/api/opportunities", POLL_MS);
-  const opportunities = poll.data?.opportunities ?? [];
-
+// The Advisory Feed: short lines from fixed text templates filled with
+// real numbers — the server's observations (largest gap in the last hour,
+// market-status changes; lib/orchestration/observations.ts) and any
+// opportunity that clears the threshold (lib/llm/proposal-narrator.ts).
+// No AI writes them. Rendered inside the spread monitor's side column,
+// from the same /api/opportunities poll.
+export function AdvisoryFeed({
+  observations,
+  opportunities,
+  loading,
+}: {
+  observations: readonly Observation[];
+  opportunities: readonly PreviewOpportunity[];
+  loading: boolean;
+}) {
   return (
-    <section className="panel panel--terminal">
-      <h2 className="panel-title mono">Advisory Feed</h2>
-      <p className="state-message mono">generated from fixed templates, not written by the AI</p>
+    <section className="advisory" aria-labelledby="advisory-title">
+      <div className="panel-head panel-head--sub">
+        <h2 className="panel-title" id="advisory-title">Advisory Feed</h2>
+      </div>
+      <p className="panel-sub">generated from fixed templates, not written by the AI</p>
 
-      {poll.loading && !poll.data && <p className="state-message mono">connecting…</p>}
-      {poll.error && <p className="state-message state-message--error mono">feed unavailable: {poll.error}</p>}
-      {poll.data?.error && (
-        <p className="state-message state-message--error mono">live scan unavailable: {poll.data.error}</p>
-      )}
-
-      <div className="terminal-feed">
-        {opportunities.length === 0 && !poll.loading && (
-          <p className="terminal-empty mono">no opportunities currently clear the threshold.</p>
-        )}
-
+      <div className="advisory-lines">
         {opportunities.map((opportunity, i) => (
-          <div className="terminal-line" key={`${opportunity.ticker}-${i}`}>
-            <div className="terminal-line-meta">
-              [{opportunity.ticker}] net edge {(opportunity.order.adjustedSpread * 100).toFixed(2)}%
-            </div>
-            <div>{opportunity.narration}</div>
-          </div>
+          <p className="advisory-line mono" key={`${opportunity.ticker}-${i}`}>
+            <span className="advisory-when">[{opportunity.ticker}] net edge {(opportunity.order.adjustedSpread * 100).toFixed(2)}%</span> {opportunity.narration}
+          </p>
         ))}
+        {observations.map((o) => (
+          <p className="advisory-line mono" key={`${o.kind}-${o.at}`}>
+            {o.text}
+          </p>
+        ))}
+        {opportunities.length === 0 && (
+          <p className="advisory-line advisory-line--quiet mono">{loading ? "connecting…" : "no opportunities currently clear the threshold."}</p>
+        )}
       </div>
     </section>
   );
