@@ -8,9 +8,11 @@ The same token, MSFTB (a token that tracks Microsoft stock), trades in two diffe
 
 ## 2. A tour of the dashboard
 
-**Colours everywhere** (on a near-black background, in BNB Chain's brand palette): **green** = OK / passed, **red** = not OK / blocked, **grey with a dashed outline and a label** = waiting (warming up, pending, or no call yet), **white / neutral** = the checks passed but nothing was sent. **Yellow** is only decoration (titles' underlines, links, the main buttons); it never means a state.
+**The layout.** A dark terminal-style page. On a wide screen, a **sidebar** on the left links to each panel (Instruction, Spread monitor, Cost breakdown, Guardrail gate, Audit ledger, How it works); on a phone the same links are a strip across the top, and everything is one column. Numbers use a fixed-width font so they line up.
 
-### Header (top, dark bar)
+**Colours everywhere** (on a near-black background, in BNB Chain's brand palette): **green** = OK / passed, **red** = not OK / blocked, **grey with a dashed outline and a label** = waiting (warming up, pending, or no call yet), **white / neutral** = the checks passed but nothing was sent. **Yellow** marks the main button, the current killswitch mode and links; it never means a state.
+
+### Header (top)
 
 **Status chips** — each has a dot: green = working, red = not working, grey dashed = no call yet.
 
@@ -24,54 +26,69 @@ The same token, MSFTB (a token that tracks Microsoft stock), trades in two diffe
 | `Wallet · 0.0029 BNB · 4.975 USDT · 0 MSFTB` | The wallet's balances read live from the blockchain. BNB pays gas; USDT is a dollar token. | Green |
 | `MSFT underlying market · TRADING` | Binance's view of whether Microsoft's real stock is tradable right now. Basis also accepts `MARKET_CLOSED` (it's meant to trade outside stock-market hours), though Binance hasn't reported it so far: it said `TRADING` even on Saturday 2026-09-26. Things like `ASSET_PAUSED` block trading. | Green |
 
-**Killswitch** (three buttons, top right) — the master switch for how far Basis may go:
+**Killswitch** (the three-part switch, top right; on a phone, under the name) — the master switch for how far Basis may go:
 
 - `simulation` — runs the checks only. The default after every restart.
 - `dry-run` — also re-reads the pools and asks the exchange and Binance to *simulate* the trade (a rehearsal that changes nothing), but never sends it.
-- `live` — would allow sending. **Greyed out on the public demo**, with a note under the buttons saying why (see section 3).
+- `live` — would allow sending. **Greyed out with a lock on the public demo**, with a `Public demo · read-only` badge and a note under the header saying why (see section 3).
 
 The highlighted button is the current mode (yellow; red if live). On the public demo the mode is shared by everyone viewing the site, so a change there lasts only 5 minutes: the header shows *"Returns to simulation at HH:MM UTC"*, and then it switches back by itself. Each new change restarts the 5 minutes; choosing simulation ends it. On your own machine a mode stays until you change it.
 
-### Give an instruction (the box at the top)
+### Start here (the yellow-edged panel, public demo only)
 
-Type an order in plain language and press **Send**, or click one of the examples under the box to fill it in. Other languages work too (French was tested: *"Achète 100 dollars d'actions Microsoft"*). The answer appears right under the box in plain language, with a coloured bar on its left: white = the guardrails passed but nothing was sent (the usual result), red = blocked or failed, grey dashed = can't judge it (warming up, or not something Basis does), green = sent (never on the public demo). **Raw reply** expands to the exact response, for technical readers.
+What Basis is, three steps to try, and the four BscScan transactions of the real $5 trade. **Got it, hide this** hides it for good on that browser. On a phone it shows one sentence and a **More** button.
+
+### Give an instruction
+
+Type an order in plain language after the `>` and press **Send**, or click one of the examples under the box to fill it in: `Buy $200 of MSFT` (a normal order), `Buy $1000 of MSFT` (over the per-trade cap), `Buy $100 of NVDA` (no verified pools), `Sell $50 of MSFT` (sells are refused). Other languages work too (French was tested: *"Achète 100 dollars d'actions Microsoft"*). The answer appears right under the box in plain language, with a coloured bar on its left: white = the guardrails passed but nothing was sent (the usual result), red = blocked or failed, grey dashed = can't judge it (warming up, or not something Basis does), green = sent (never on the public demo). **Raw reply** expands to the exact response, for technical readers.
 
 The AI (Groq) only reads your sentence into three things: which stock, buy or sell, and how many dollars. Whether anything happens is decided by the guardrails and live market data, never by the AI.
 
 ### Pool Spread Monitor
 
-The main chart. The green tag `LIVE · N evaluations this session` means real, live data; N goes up by one every 30 seconds for as long as the server runs. The chart itself holds the last 120 evaluations (about an hour), so after the first hour the tag adds `· chart shows the last 120`. (A grey dashed `HISTORICAL FIXTURE … NOT LIVE` tag means it couldn't read live prices and is showing old sample data; the panel then says *"Live pool prices are temporarily unavailable (BNB Chain RPC: …)"*.)
+The main chart, with a strip of four numbers above it: the **0.25% pool** and **1% pool** prices, the **Binance quote** for the same purchase (with its vendor), and the **net edge** (red below zero, green when it clears; `no opportunity` or `clears threshold` underneath). The green tag `LIVE · N evaluations this session` means real, live data; N goes up by one every 30 seconds for as long as the server runs. The chart itself holds the last 120 evaluations (about an hour), so after the first hour the tag adds `· chart shows the last 120`. (A grey dashed `HISTORICAL FIXTURE … NOT LIVE` tag means it couldn't read live prices and is showing old sample data; the panel then says *"Live pool prices are temporarily unavailable (BNB Chain RPC: …)"*.)
 
-- **Reading line** under the tag: both pools' prices, the *gross gap* (the raw price difference), the *net edge* (the gap after all costs — red when below zero, green when it clears), then `no opportunity` or `clears threshold`, and `Binance reference $…` (Binance's own quote for the same purchase, used as a cross-check).
-- **Chart:** dashed yellow line = gross gap; solid white line = net edge; grey line at 0, labelled `0 = break-even`; dark-red band below zero, labelled `below zero: doesn't clear costs`.
+- **Reading line** under the strip: the *gross gap* (the raw price difference between the pools) and the *net edge* (the gap after all costs).
+- **Chart:** dashed yellow line = gross gap; solid white line = net edge; dashed grey line at 0, labelled `0 = break-even`; dark-red band below zero, labelled `below zero: doesn't clear costs`.
+- **Note under the chart:** what Basis reads on every evaluation (both pools' prices and liquidity over the BNB Chain RPC, live gas, Binance's quote), and that it buys the cheaper pool and sells the dearer one, picking the direction on each reading.
 - **Normal:** the net-edge line sits in the dark-red band (around −0.8% to −1.3% on 2026-09-25/26) and the reading says `no opportunity`.
 
-### Advisory Feed (dark panel)
+### Cost breakdown (beside the chart; under it on a phone)
 
-A one-line summary for each opportunity that clears the threshold. **Normal: empty**, showing `no opportunities currently clear the threshold.` The lines are generated from fixed templates (a sentence pattern filled with the numbers), not written by the AI; the panel says so under its title.
+Why the net edge is what it is, for the latest evaluation of a $200 order: the **gross gap**, then each cost as a share of the order and in dollars (**buy-side fee** on the cheaper pool, **sell-side fee** on the dearer one, **slippage** as a fixed estimate, **gas** for both swaps, live), their **total**, and **net edge = gross gap + costs**. The time of that evaluation is in the corner. It's computed on the server with the same functions Basis decides with, so the net edge here is always the one on the chart. Normal on 2026-09-27: gross gap about +0.1%, total costs about −1.31%, net edge about −1.2%.
+
+### Advisory Feed (under the cost breakdown)
+
+Short lines generated from fixed templates (a sentence pattern filled with real numbers), not written by the AI; the panel says so under its title:
+
+- the **largest gross gap between the pools in the last hour**, with its time, and the best net edge in that hour;
+- the **MSFT underlying market status** from Binance (unchanged since a time, or each change with its time);
+- a line for any opportunity that clears the threshold (none so far).
+
+**Normal:** the two observations and `no opportunities currently clear the threshold.`
 
 ### Guardrail Gate
 
 The result of the safety checks for the most recent order.
 
 - **Badge:** `GUARDRAILS PASSED · NOT SENT` (white) with the reason next to it, e.g. `no positive edge (net -1.28%)`; `BLOCKED` (red); `WARMING UP` (grey, dashed outline); `ERROR` (red, dashed outline). `APPROVED · SENT` (green) would mean a trade was actually sent, which the public demo can't do.
-- **Each check:** `[PASS]` green, `[FAIL]` red, `[PENDING]` / `[WARMING UP]` grey.
-  - `sanityAndLiquidity` — prices look sane against recent history and the pools hold enough money.
-  - `marketStatus` — Binance says the stock isn't paused or restricted.
-  - `referencePrice` — the pool price is within 2% of Binance's quote.
-  - `perTradeCap` — the order is at most $500.
-  - `dailyCap` — today's total stays at most $2,000.
-  - `dryRunFloor` — the rehearsed trade would return at least 98% of its value. `[PENDING]` until a rehearsal runs; that's expected.
+- **Each check** is a row: its mark (`[PASS]` green, `[FAIL]` red, `[PENDING]` / `[WARMING UP]` grey), its name, a sentence on what it does, `Limit: …` (the threshold, from the configuration), and on the right what it measured on this order.
+  - `sanityAndLiquidity` — each pool's price is within 5% of its recent median (after 10 readings), and the thinner pool holds at least $1,000. Measured, e.g. `largest deviation 0.00% · thinner pool $817,334`.
+  - `marketStatus` — Binance's RWA status for the stock: passes on `TRADING` and on `MARKET_CLOSED`, blocks paused, limited, maintenance or unknown. Measured: the status code.
+  - `referencePrice` — the buy pool's price is within 2% of Binance's quote. Measured, e.g. `0.07% from $519.10 (LiquidMesh)`.
+  - `perTradeCap` — the order is at most $500. Measured: the order size.
+  - `dailyCap` — today's sent total (UTC) plus this order stays at most $2,000. Measured, e.g. `$0 sent today + $200 = $200`.
+  - `dryRunFloor` — the rehearsed trade would return at least 98% of its value. `[PENDING]` (`not simulated yet`) until a rehearsal runs; that's expected.
 - **Normal:** `No guardrail evaluations yet — nothing has cleared the opportunity threshold.` In the first 5 minutes after a restart: `WARMING UP … price history x of 10 readings`. After you send an instruction, it shows that order's checks.
 
-### Audit Ledger (dark panel, bottom)
+### Audit Ledger (beside the Guardrail Gate)
 
-Every decision, newest first:
+Every decision, newest first, in a scrolling box. The corner shows how many decisions this session. Above the box: **All / Orders / Detections** filters what's shown, and **Export CSV (shown rows)** downloads the rows you're looking at as a spreadsheet file (made in your browser; nothing is sent).
 
 - **Detection rows** — `MSFT — N× detection: no opportunity, no order built`, with a time range, the net-edge range and the latest prices. Repeated "no" decisions in a row are folded into one row per run as they're recorded (with their count, time range and net-edge range, and the latest prices in full), so the ledger's memory stays small however long the server runs; each one is still counted.
 - **Guardrail rows** — `MSFT $200 — guardrails passed · not sent (…)` or `MSFT $1000 — BLOCKED (…)`, then what happened, e.g. `no edge: net -0.819% is not positive — nothing sent`.
 - Rarer rows: `EXECUTION TEST (not arbitrage)` (only on the local machine) and `tick skipped` (a check ran late).
-- **Normal:** one detection row whose count grows every 30 seconds. The panel lists the newest 300 entries (about 2.5 hours); after that it says `Showing the newest 300 of N entries.`, and the oldest row reads `… entries shown (older ones not listed)`.
+- **Normal:** one detection row whose count grows every 30 seconds. The panel lists the newest 300 stored rows; since a run of "no" decisions is one row, that reaches back across many hours. Past 300 it says `Showing the newest 300 of N entries.`, and the oldest row reads `… entries shown (older ones not listed)`.
 
 ## 3. Public demo vs your own machine
 

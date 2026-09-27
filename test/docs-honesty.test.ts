@@ -58,6 +58,18 @@ describe("PRD matches the code and the live site", () => {
     expect(read("docs/how-to-use.md")).toMatch(/one row per run|folded into one row|compact/i);
   });
 
+  it("§9.3 describes the terminal redesign, not the old neo-brutalist style", () => {
+    const s = section(prd, "9. Design & UI");
+    for (const stale of ["Neo-brutalism", "Hard white borders", "hard-offset yellow shadows", "Bento UI"]) expect(s).not.toContain(stale);
+    for (const now of ["hairline", "JetBrains Mono", "Inter", "#F0B90B", "prefers-reduced-motion", "Cost breakdown"]) expect(s).toContain(now);
+  });
+
+  it("how-to-use covers the redesigned panels", () => {
+    const howTo = read("docs/how-to-use.md");
+    for (const now of ["Cost breakdown", "Export CSV", "Limit:", "Sell $50 of MSFT", "Advisory Feed", "sidebar"]) expect(howTo).toContain(now);
+    expect(howTo).not.toContain("**Normal: empty**");
+  });
+
   it("§14: proposals are template text, not Groq", () => {
     expect(section(prd, "14. Judging Criteria Alignment")).not.toContain("Plain-English proposals via Groq");
   });
