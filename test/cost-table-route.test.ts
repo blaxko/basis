@@ -46,5 +46,7 @@ describe("/api/opportunities cost table", () => {
     expect(series.costs.grossGap).toBeCloseTo(last.rawSpread, 12);
     expect(series.costs.lines.find((l: { key: string }) => l.key === "gas").usd).toBeCloseTo(0.02414223869532307, 12);
     expect(series.costs.at).toBe(last.timestamp);
+    // The Advisory Feed's observations come with it (fixed templates, real data).
+    expect(body.observations.map((o: { kind: string }) => o.kind)).toContain("largest_gap");
   });
 });

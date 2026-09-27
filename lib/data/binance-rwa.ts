@@ -86,7 +86,43 @@ function latest(): Map<string, MarketStatus> {
 }
 export function recordLatestMarketStatus(ticker: string, status: MarketStatus): void {
   latest().set(ticker, status);
+  recordChange(ticker, status);
+}
+
+// Changes of the status per ticker (reasonCode, or "unavailable"), for the
+// Advisory Feed's observations: the first status seen, then every change.
+// Bounded to the last MAX_STATUS_CHANGES.
+export interface MarketStatusChange {
+  at: string;
+  from: string | null;
+  to: string;
+}
+const MAX_STATUS_CHANGES = 50;
+const CHANGES_KEY = Symbol.for("basis.marketStatus.changes");
+function changes(): Map<string, MarketStatusChange[]> {
+  const g = globalThis as unknown as Record<symbol, Map<string, MarketStatusChange[]> | undefined>;
+  return (g[CHANGES_KEY] ??= new Map());
+}
+function statusCode(s: MarketStatus): string {
+  if (s.status !== "ok") return "unavailable";
+  return s.reasonCode ?? (s.openState ? "open" : "not tradable");
+}
+function recordChange(ticker: string, status: MarketStatus): void {
+  const list = changes().get(ticker) ?? [];
+  const to = statusCode(status);
+  const last = list[list.length - 1];
+  if (last && last.to === to) return;
+  list.push({ at: status.fetchedAt, from: last?.to ?? null, to });
+  if (list.length > MAX_STATUS_CHANGES) list.splice(0, list.length - MAX_STATUS_CHANGES);
+  changes().set(ticker, list);
+}
+export function getMarketStatusChanges(ticker: string): readonly MarketStatusChange[] {
+  return changes().get(ticker) ?? [];
+}
+export function resetMarketStatusHistory(): void {
+  changes().clear();
 }
 export function getLatestMarketStatuses(): Record<string, MarketStatus> {
   return Object.fromEntries(latest());
 }
+

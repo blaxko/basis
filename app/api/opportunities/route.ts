@@ -3,6 +3,8 @@ import { previewOpportunities, DEFAULT_AGENT_LOOP_CONFIG } from "../../../lib/or
 import { getDemoHistory, type SpreadHistoryPoint } from "../../../lib/data/demo-history";
 import { defaultLedger, type EvaluationPoint } from "../../../lib/execution/audit-ledger";
 import { costBreakdown, type CostBreakdown } from "../../../lib/basis-model/cost-breakdown";
+import { observations as buildObservations } from "../../../lib/orchestration/observations";
+import { getMarketStatusChanges } from "../../../lib/data/binance-rwa";
 import { isPublicReadOnly } from "../../../lib/config/deployment";
 import { checkRateLimit, clientIp, OPPORTUNITIES_RATE_LIMIT } from "../../../lib/config/rate-limit";
 import { logServerError, plainNetworkReason } from "../../../lib/errors/public-error";
@@ -100,9 +102,16 @@ export async function GET(request: Request) {
 
   const threshold = DEFAULT_AGENT_LOOP_CONFIG.adjustedSpreadThreshold;
 
+  // The Advisory Feed's observations: fixed templates filled from the
+  // evaluations and Binance's market-status changes (lib/orchestration/observations.ts).
+  const now = Date.now();
+  const observations = DEFAULT_AGENT_LOOP_CONFIG.underlyings.flatMap((ticker) =>
+    buildObservations(ticker, defaultLedger.recentEvaluations(ticker), getMarketStatusChanges(ticker), now)
+  );
+
   try {
     const { spreads, opportunities, warmUp } = await getPreview();
-    return NextResponse.json({ spreads, opportunities, warmUp, history, threshold });
+    return NextResponse.json({ spreads, opportunities, warmUp, history, threshold, observations });
   } catch (err) {
     // Live pool read failed (RPC down or slow, or BSC_RPC_URL not set).
     // History is still returned; spreads/opportunities come back empty
@@ -116,6 +125,7 @@ export async function GET(request: Request) {
       warmUp: {},
       history,
       threshold,
+      observations,
       error: `Live pool prices are temporarily unavailable (BNB Chain RPC: ${plainNetworkReason(err)}).`,
     });
   }
