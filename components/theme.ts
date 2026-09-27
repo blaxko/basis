@@ -15,15 +15,34 @@ export const BRAND = {
   white: "#FFFFFF", // main text
 } as const;
 
-// The few extra colours a dark, data-dense UI needs, chosen to pass WCAG AA
-// against the brand background (see CONTRAST_PAIRS).
+// The extra colours a dark, data-dense terminal needs: three slate-tinted
+// surface steps above the brand near-black, two text greys, and the state
+// colours. Chosen to pass WCAG AA on every surface (see CONTRAST_PAIRS).
 export const SUPPORT = {
-  surface: "#161A1E", // panels, one step up from the page background
-  grey: "#A7AEB8", // secondary text; also "pending / warming up"
+  subtle: "#0E131F", // sidebar, inputs, grouped strips
+  surface: "#121824", // panels
+  interactive: "#1A2234", // hover, active nav item
+  body: "#CBD5E1", // standard body text
+  grey: "#94A3B8", // secondary text: labels, help, axis
+  pending: "#A7AEB8", // "pending / warming up / no call yet" (with dashes and a label)
   lineGrey: "#848E9C", // chart zero line
-  gridLine: "#2B3139", // chart grid (decorative)
+  gridLine: "#232B3A", // chart grid (decorative)
   green: "#0ECB81", // pass / approved
   red: "#FF5A6E", // block / fail
+} as const;
+
+// Translucent tones for hairline borders and tinted badge backgrounds.
+// Decorative only: never the only carrier of meaning, never behind text
+// that isn't checked on the opaque surface beneath.
+export const ALPHA = {
+  hairline: "rgba(255,255,255,0.08)",
+  hairlineStrong: "rgba(255,255,255,0.16)",
+  accentTint: "rgba(240,185,11,0.10)",
+  accentLine: "rgba(240,185,11,0.35)",
+  passTint: "rgba(14,203,129,0.10)",
+  passLine: "rgba(14,203,129,0.35)",
+  failTint: "rgba(255,90,110,0.10)",
+  failLine: "rgba(255,90,110,0.40)",
 } as const;
 
 // What each colour means. Yellow is brand decoration only (accents, links,
@@ -33,8 +52,11 @@ export const SUPPORT = {
 // pass, a block, or the brand colour.
 export const TOKENS = {
   bg: BRAND.nearBlack,
+  subtle: SUPPORT.subtle,
   surface: SUPPORT.surface,
+  interactive: SUPPORT.interactive,
   text: BRAND.white,
+  body: SUPPORT.body,
   muted: SUPPORT.grey,
   border: BRAND.white,
   accent: BRAND.yellow,
@@ -44,7 +66,7 @@ export const TOKENS = {
   onPass: BRAND.nearBlack,
   fail: SUPPORT.red,
   onFail: BRAND.nearBlack, // white on this red is only 3.0:1
-  pending: SUPPORT.grey,
+  pending: SUPPORT.pending,
   chartGross: BRAND.yellow, // dashed
   chartNet: BRAND.white, // solid, thicker
   chartZero: SUPPORT.lineGrey,
@@ -60,9 +82,9 @@ export const CHART_BAND_OPACITY = 0.14;
 
 const cssName = (name: string) => `--color-${name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
 
-// ":root{--color-bg:#0B0E11;--color-on-accent:#0B0E11;…}"
+// ":root{--color-bg:#0B0E11;--color-on-accent:#0B0E11;…;--color-hairline:rgba(…)}"
 export function cssVariables(): string {
-  return `:root{${Object.entries(TOKENS)
+  return `:root{${[...Object.entries(TOKENS), ...Object.entries(ALPHA)]
     .map(([name, value]) => `${cssName(name)}:${value}`)
     .join(";")}}`;
 }
@@ -97,18 +119,29 @@ export function blend(fg: string, bg: string, alpha: number): string {
 // (WCAG AA, normal text). Disabled controls are dimmed and are exempt
 // under WCAG, so they aren't listed.
 export const CONTRAST_PAIRS: ReadonlyArray<{ fg: string; bg: string; where: string }> = [
-  { fg: TOKENS.text, bg: TOKENS.bg, where: "page text; header; terminal feeds (Advisory Feed, Audit Ledger)" },
-  { fg: TOKENS.text, bg: TOKENS.surface, where: "panel text; instruction input; chart tooltip" },
-  { fg: TOKENS.muted, bg: TOKENS.bg, where: "secondary text on the page background: ledger meta lines, footer" },
-  { fg: TOKENS.muted, bg: TOKENS.surface, where: "secondary text in panels: help text, check reasons, axis labels" },
+  { fg: TOKENS.text, bg: TOKENS.bg, where: "page text; the ledger's terminal viewport; the instruction input" },
+  { fg: TOKENS.text, bg: TOKENS.surface, where: "panel headings, metric values, chart tooltip" },
+  { fg: TOKENS.text, bg: TOKENS.subtle, where: "sidebar and ribbon text; result box headline" },
+  { fg: TOKENS.text, bg: TOKENS.interactive, where: "hovered rows, the active nav item" },
+  { fg: TOKENS.body, bg: TOKENS.surface, where: "body text in panels: cost table, guardrail rows" },
+  { fg: TOKENS.body, bg: TOKENS.bg, where: "ledger rows in the terminal viewport" },
+  { fg: TOKENS.body, bg: TOKENS.subtle, where: "status chips, example pills, result detail" },
+  { fg: TOKENS.muted, bg: TOKENS.bg, where: "secondary text on the page background: ledger timestamps, footer" },
+  { fg: TOKENS.muted, bg: TOKENS.surface, where: "secondary text in panels: labels, help text, limits, axis labels" },
+  { fg: TOKENS.muted, bg: TOKENS.subtle, where: "inactive killswitch buttons, nav items, sidebar footer" },
+  { fg: TOKENS.muted, bg: TOKENS.interactive, where: "secondary text on hovered rows" },
   { fg: TOKENS.pending, bg: TOKENS.surface, where: "[PENDING] / [WARMING UP] marks and the WARMING UP badge" },
   { fg: TOKENS.pending, bg: TOKENS.bg, where: "the 'can't judge it yet' result under the instruction box" },
-  { fg: TOKENS.pass, bg: TOKENS.surface, where: "[PASS] marks, APPROVED badge, positive net edge" },
-  { fg: TOKENS.pass, bg: TOKENS.bg, where: "status dots and approved results on the page background" },
+  { fg: TOKENS.pending, bg: TOKENS.subtle, where: "pending text in result boxes" },
+  { fg: TOKENS.pass, bg: TOKENS.surface, where: "[PASS] marks, the LIVE tag, positive net edge" },
+  { fg: TOKENS.pass, bg: TOKENS.bg, where: "positive values in the ledger" },
+  { fg: TOKENS.pass, bg: TOKENS.subtle, where: "status dots' labels in the ribbon" },
   { fg: TOKENS.fail, bg: TOKENS.surface, where: "[FAIL] marks, BLOCKED badge, negative net edge, error messages" },
-  { fg: TOKENS.fail, bg: TOKENS.bg, where: "errors on the page background" },
-  { fg: TOKENS.accent, bg: TOKENS.surface, where: "yellow text in panels: links, the 'Start here' accents" },
-  { fg: TOKENS.accent, bg: TOKENS.bg, where: "yellow text on the page background: header links, chart legend" },
+  { fg: TOKENS.fail, bg: TOKENS.bg, where: "negative values and errors in the ledger" },
+  { fg: TOKENS.fail, bg: TOKENS.subtle, where: "errors in result boxes" },
+  { fg: TOKENS.accent, bg: TOKENS.surface, where: "yellow text in panels: links, step numbers" },
+  { fg: TOKENS.accent, bg: TOKENS.bg, where: "the prompt caret on the input" },
+  { fg: TOKENS.accent, bg: TOKENS.subtle, where: "yellow text in the sidebar" },
   { fg: TOKENS.onAccent, bg: TOKENS.accent, where: "near-black text on yellow: Send button, active killswitch button" },
   { fg: TOKENS.onPass, bg: TOKENS.pass, where: "near-black text on green: the LIVE data tag" },
   { fg: TOKENS.onFail, bg: TOKENS.fail, where: "near-black text on red: the active LIVE killswitch button (local only)" },
