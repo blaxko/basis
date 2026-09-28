@@ -414,3 +414,13 @@ Whole run: first simulate 13:23:30.998 → ledger entry written 13:24:32.442 (61
 - A sell quote sized from that bad price (1.94 × 10⁻⁷ MSFTon → USDT) returned `code 40375`, `"Minimum order amount is 5 USD."`
 
 **Aggregator quote, MSFTB → USDT (sell), same time:** `vendorName` "LiquidMesh", `executionMode` "SWAP", `fromTokenAmount` "384948671409000000", `toTokenAmount` "199465748438336845536"; 1 route. bStocks per-share: buy 518.87, sell 517.48 (spread 0.27%).
+
+## 2026-09-27/28: Ondo sell quotes (hosted, Railway Singapore)
+
+- Source: recorder readings exported to a file outside the repo, 2026-09-28 ~20:10 UTC (5,661 readings, 2026-09-26 21:30 – 2026-09-28 20:15 UTC). Sell quotes: `GET /api/v1/dex/aggregator/quote`, MSFTon → USDT, sized as 200 USDT of MSFTon at the buy price, every 5 min.
+- 4,895 readings carry an MSFTon sell price. 4,695 of them (459 distinct sell quotes) give $254.76 – $255.06 per share (median $254.81), 0.49 – 0.51 × the bStocks MSFTB buy price per share in the same readings ($503.99 – $519.58). First 2026-09-27 03:00:02 UTC, last 2026-09-28 20:15:10 UTC.
+- The other 200 give $508.32 – $518.69 per share (2026-09-27 05:05 – 2026-09-28 13:14 UTC).
+- The recorder's version before `93ffafe` recorded the ~$254.8 values as prices. From `93ffafe` a sell price more than 20% from bStocks per share is recorded as an error, not a price. The raw sell quote wasn't kept by that earlier version, so the vendor and route for these sells aren't recorded here.
+
+**Aggregator quote, 200 USDT → MSFTon, 2026-09-28 ~20:19 UTC (a Monday), from the recorder's `lastQuotes`:** `vendorName` "LiquidMesh", `executionMode` "SWAP", `fromTokenAmount` "200000000000000000000", `toTokenAmount` "194042715285" (18 decimals: ~1.94 × 10⁻⁷ MSFTon, ~$1.03 × 10⁹ per token). Same shape as the 2026-09-27 02:05 UTC quote above. The recorder rejected it (20% check); no Ondo sell quote was requested from it.
+- No `40301`–`40304` on `/api/health`, `/api/status`, `/api/issuers`, `/api/opportunities` at 2026-09-28 ~20:40 UTC.
