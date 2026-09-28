@@ -195,6 +195,34 @@ describe("implausible quotes never become prices (live, 2026-09-27: MSFTon read 
     expect(raw).toMatchObject({ vendorName: "PcsXRfq", executionMode: "RFQ", toTokenAmount: "194110000000", toTokenDecimal: "18", toTokenSymbol: "MSFTon", toTokenUnitPrice: "523.1" });
   });
 
+  it("a sell quote more than 20% from bStocks' per-share price is an error too, and no round trip uses it (live, 2026-09-27/28: MSFTon sells at ~$254 vs ~$512)", async () => {
+    const request = vi.fn(async ({ path, query }: { path: string; query: URLSearchParams }) => {
+      if (path.endsWith("/rwa/price")) {
+        return {
+          httpStatus: 200,
+          body: { code: 0, data: [REAL_MSFTB_RWA, { tokenContractAddress: MSFTON!.address, platformId: "ondo", tokenPrice: "515.0", referencePrice: String(515 / MSFTON!.publishedMultiplier) }] },
+          text: "",
+          latencyMs: 1,
+        };
+      }
+      const fromUsdt = query.get("fromTokenAddress")!.toLowerCase() === "0x55d398326f99059ff775485246999027b3197955";
+      const toOndo = query.get("toTokenAddress")!.toLowerCase() === MSFTON!.address;
+      const fromOndo = query.get("fromTokenAddress")!.toLowerCase() === MSFTON!.address;
+      const amountIn = Number(query.get("amount")) / 1e18;
+      // Buys at ~$515 (plausible); Ondo sells return half the value, as observed live.
+      const out = fromUsdt ? amountIn / (toOndo ? 515 : 513) : amountIn * (fromOndo ? 256 : 511);
+      return { httpStatus: 200, body: { code: 0, data: [{ isBest: true, vendorName: "LiquidMesh", executionMode: "SWAP", toTokenAmount: String(BigInt(Math.round(out * 1e12)) * 1_000_000n), toToken: { decimal: "18" } }] }, text: "", latencyMs: 1 };
+    });
+    const rec = new CrossIssuerRecorder({ request: request as never, latestMsftbBuy: () => null, latestGasUsd: () => 0.024, now: () => 0, sleep: async () => {}, log: () => {} });
+    const r = (await rec.tick())!;
+    const ondo = r.tokens.find((t) => t.symbol === "MSFTon")!;
+    expect(ondo.buyPerShare).not.toBeNull(); // the buy is fine
+    expect(ondo.sellPerShare).toBeNull();
+    expect(ondo.error).toMatch(/implausible sell quote/);
+    expect(r.roundTrip?.sell).not.toBe("MSFTon");
+    expect(rec.status().lastQuotes.MSFTon_sell).toBeDefined(); // raw kept for checking
+  });
+
   it("says plainly when Binance returns a token without a platformId", () => {
     const c = confirmTokens([MSFTX!], [{ tokenContractAddress: MSFTX!.address, tokenPrice: "525", referencePrice: "522" }]);
     expect(c[0]!.reason).toBe("Binance's RWA API returned it without a platformId, so it can't be confirmed as xStocks");

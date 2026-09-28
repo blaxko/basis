@@ -258,11 +258,21 @@ export class CrossIssuerRecorder {
         if (perToken === undefined) continue;
         const tokensIn = QUOTE_SIZE_USD / perToken;
         const q = await this.quote(input.token.address, BSC_USDT_ADDRESS, parseUnits(tokensIn.toFixed(12), 18));
-        if (q.ok) {
-          this.rawQuotes[`${input.token.symbol}_sell`] = q.raw;
-          this.sells.set(input.token.symbol, { perToken: q.out / tokensIn, at: now });
+        // A failed or implausible sell also drops any earlier one, so an old
+        // number is never carried forward as if current.
+        if (!q.ok) {
+          this.sells.delete(input.token.symbol);
+          input.error = input.error ?? `sell quote: ${q.reason}`;
+          continue;
         }
-        else input.error = input.error ?? `sell quote: ${q.reason}`;
+        this.rawQuotes[`${input.token.symbol}_sell`] = q.raw;
+        const sellPerShare = q.out / tokensIn / input.multiplier;
+        if (anchorPerShare !== null && Math.abs(sellPerShare / anchorPerShare - 1) > PLAUSIBLE_DEVIATION) {
+          this.sells.delete(input.token.symbol);
+          input.error = input.error ?? `implausible sell quote: $${sellPerShare.toPrecision(6)} per share vs bStocks $${anchorPerShare.toFixed(2)} (raw quote in status)`;
+          continue;
+        }
+        this.sells.set(input.token.symbol, { perToken: q.out / tokensIn, at: now });
       }
     }
     for (const input of inputs) {
