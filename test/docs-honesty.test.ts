@@ -64,6 +64,15 @@ describe("PRD matches the code and the live site", () => {
     for (const now of ["hairline", "JetBrains Mono", "Inter", "#F0B90B", "prefers-reduced-motion", "Cost breakdown"]) expect(s).toContain(now);
   });
 
+  it("the issuer monitor panel is documented (PRD §9.2, how-to-use)", () => {
+    expect(section(prd, "9. Design & UI")).toContain("Issuer monitor");
+    const howTo = read("docs/how-to-use.md");
+    expect(howTo).toContain("### Issuer monitor");
+    expect(howTo).toContain("Monitor only: Basis doesn't trade across issuers");
+    expect(howTo).toMatch(/per share/);
+    expect(howTo).toMatch(/xStocks[^\n]*not included/);
+  });
+
   it("how-to-use covers the redesigned panels", () => {
     const howTo = read("docs/how-to-use.md");
     for (const now of ["Cost breakdown", "Export CSV", "Limit:", "Sell $50 of MSFT", "Advisory Feed", "sidebar"]) expect(howTo).toContain(now);

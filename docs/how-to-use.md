@@ -57,6 +57,17 @@ The main chart, with a strip of four numbers above it: the **0.25% pool** and **
 
 Why the net edge is what it is, for the latest evaluation of a $200 order: the **gross gap**, then each cost as a share of the order and in dollars (**buy-side fee** on the cheaper pool, **sell-side fee** on the dearer one, **slippage** as a fixed estimate, **gas** for both swaps, live), their **total**, and **net edge = gross gap + costs**. The time of that evaluation is in the corner. It's computed on the server with the same functions Basis decides with, so the net edge here is always the one on the chart. Normal on 2026-09-27: gross gap about +0.1%, total costs about −1.31%, net edge about −1.2%.
 
+### Issuer monitor (under the spread monitor)
+
+**Monitor only: Basis doesn't trade across issuers.** Microsoft's stock is tokenized by more than one issuer on BNB Chain. This panel compares **bStocks MSFTB** and **Ondo MSFTon** from Binance's quotes for $200 of USDT, **per share**: each token's price divided by its *shares multiplier* (how many shares one token stands for, which grows with dividends; Binance's figure, checked every 5 minutes against the one each issuer publishes).
+
+- **The table:** each issuer's multiplier, buy price per share (every 30 s) and sell price per share (every 5 min, with its age), from the latest reading only.
+- **No valid quote:** instead of a number it says `no valid quote` and why, e.g. Binance's only quote was implausible (more than 20% away from bStocks per share), or `Binance: The stock market is currently closed… (code 40367)`, and when the last valid quote was. Ondo often has no valid quote when its market is closed.
+- **Gap, latest reading:** which issuer is cheaper per share, and by how much.
+- **Would it clear costs?:** buying the cheaper issuer and selling the other, after the quotes' own fees and price impact and gas for two swaps. None of the 228 valid round trips recorded to 28 September 2026 cleared costs (best −0.013%).
+- **Last hour:** how many readings, how many had a valid price from every issuer, the largest gap and the best round trip.
+- **xStocks MSFTx is not included:** Binance's RWA API returns it with no platform and a price last updated 2026-09-08, so it can't be confirmed as xStocks.
+
 ### Advisory Feed (under the cost breakdown)
 
 Short lines generated from fixed templates (a sentence pattern filled with real numbers), not written by the AI; the panel says so under its title:
