@@ -37,7 +37,13 @@ export const MSFT_ISSUER_TOKENS: readonly IssuerToken[] = [
 ];
 
 export const QUOTE_SIZE_USD = 200; // same size as the cross-pool reference quote
+export const TICK_MS = 30_000; // one reading every 30 s
 export const SLOW_EVERY_TICKS = 10; // /rwa/price + sell quotes every 5 min
+// A round trip is estimated only when both legs were quoted at most this
+// long before the reading (two ticks). Buys are always within it (quoted
+// each tick, or the spread monitor's MSFTB quote when at most 60 s old);
+// sells are quoted every 5 min, so about 3 readings in 10 get an estimate.
+export const FRESH_QUOTE_MAX_AGE_S = 60;
 export const MULTIPLIER_TOLERANCE = 0.0005; // Binance-implied vs issuer-published
 // A per-share buy further than this from bStocks' per-share buy is treated
 // as a bad quote, not a price: recorded as an error with its raw fields.
@@ -109,6 +115,7 @@ export interface TokenInput {
   token: IssuerToken;
   multiplier: number;
   buyPerToken?: number; // USD per token, buying with USDT at QUOTE_SIZE_USD
+  buyAgeS?: number; // 0 when quoted this tick
   sellPerToken?: number; // USD per token, selling for USDT
   sellAgeS?: number;
   error?: string;
@@ -120,6 +127,7 @@ export interface TokenReading {
   multiplier: number;
   buyPerToken: number | null;
   buyPerShare: number | null;
+  buyAgeS?: number;
   sellPerShare: number | null;
   sellAgeS: number | null;
   error?: string;
@@ -133,6 +141,8 @@ export interface IssuerReading {
   // Best "buy one issuer, sell another" per share, after the quotes' own
   // fees and price impact and an estimate of gas for the two swaps.
   roundTrip: { buy: string; sell: string; netPct: number; gasUsd: number; clears: boolean } | null;
+  // Why there's no round trip when there were prices for one: a stale leg.
+  roundTripNote?: string;
 }
 
 export function buildReading(input: { t: number; tokens: TokenInput[]; gasUsd: number; sizeUsd: number }): IssuerReading {
@@ -142,6 +152,7 @@ export function buildReading(input: { t: number; tokens: TokenInput[]; gasUsd: n
     multiplier: x.multiplier,
     buyPerToken: x.buyPerToken ?? null,
     buyPerShare: x.buyPerToken !== undefined ? x.buyPerToken / x.multiplier : null,
+    ...(x.buyPerToken !== undefined ? { buyAgeS: x.buyAgeS ?? 0 } : {}),
     sellPerShare: x.sellPerToken !== undefined ? x.sellPerToken / x.multiplier : null,
     sellAgeS: x.sellAgeS ?? null,
     ...(x.error ? { error: x.error } : {}),
@@ -155,14 +166,23 @@ export function buildReading(input: { t: number; tokens: TokenInput[]; gasUsd: n
   }
   let roundTrip: IssuerReading["roundTrip"] = null;
   const gasFraction = input.sizeUsd > 0 ? input.gasUsd / input.sizeUsd : 0;
+  const fresh = (age: number | null | undefined) => (age ?? 0) <= FRESH_QUOTE_MAX_AGE_S;
+  const staleSells = new Set<TokenReading>(), staleBuys = new Set<TokenReading>();
   for (const a of bought) {
     for (const b of tokens) {
       if (a === b || b.sellPerShare === null) continue;
+      if (!fresh(b.sellAgeS)) staleSells.add(b);
+      if (!fresh(a.buyAgeS)) staleBuys.add(a);
+      if (!fresh(b.sellAgeS) || !fresh(a.buyAgeS)) continue;
       const netPct = (b.sellPerShare - a.buyPerShare!) / a.buyPerShare! - gasFraction;
       if (!roundTrip || netPct > roundTrip.netPct) roundTrip = { buy: a.symbol, sell: b.symbol, netPct, gasUsd: input.gasUsd, clears: netPct > 0 };
     }
   }
-  return { t: input.t, tokens, gap, roundTrip };
+  if (roundTrip || (staleSells.size === 0 && staleBuys.size === 0)) return { t: input.t, tokens, gap, roundTrip };
+  const parts: string[] = [];
+  if (staleSells.size) parts.push(`the sell ${staleSells.size > 1 ? "quotes are" : "quote is"} ${Math.min(...[...staleSells].map((x) => x.sellAgeS!))} s old`);
+  for (const b of staleBuys) parts.push(`the ${b.symbol} buy quote is ${b.buyAgeS} s old`);
+  return { t: input.t, tokens, gap, roundTrip, roundTripNote: `${parts.join(" and ")}; an estimate needs both quotes at most ${FRESH_QUOTE_MAX_AGE_S} s old` };
 }
 
 // ---- The recorder ------------------------------------------------------
@@ -226,8 +246,9 @@ export class CrossIssuerRecorder {
       const token = MSFT_ISSUER_TOKENS.find((t) => t.symbol === c.symbol)!;
       const input: TokenInput = { token, multiplier: c.multiplier! };
       const reused = token.symbol === "MSFTB" ? this.deps.latestMsftbBuy() : null;
-      if (reused && now - reused.at <= 60_000) {
+      if (reused && now - reused.at <= FRESH_QUOTE_MAX_AGE_S * 1000) {
         input.buyPerToken = reused.priceUsdPerToken;
+        input.buyAgeS = Math.round((now - reused.at) / 1000);
       } else {
         const q = await this.quote(BSC_USDT_ADDRESS, token.address, parseUnits(QUOTE_SIZE_USD.toFixed(6), 18));
         if (q.ok) {

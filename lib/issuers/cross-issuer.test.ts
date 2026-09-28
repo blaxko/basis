@@ -8,6 +8,7 @@ import {
   buildReading,
   CrossIssuerRecorder,
   MAX_READINGS,
+  FRESH_QUOTE_MAX_AGE_S,
   type RwaPriceRow,
 } from "./cross-issuer";
 
@@ -90,6 +91,83 @@ describe("gaps and round-trip costs", () => {
     expect(r.gap).toBeNull();
     expect(r.roundTrip).toBeNull();
     expect(r.tokens[1]).toMatchObject({ symbol: "MSFTon", error: "code 40367: market closed" });
+  });
+});
+
+describe("a round trip is estimated only from fresh quotes (live, 2026-09-28 08:18 UTC: +0.023% 'cleared' on a 210-s-old sell)", () => {
+  const pair = (sellAgeS: number, msftbBuyAgeS = 0) =>
+    buildReading({
+      t: 0,
+      tokens: [
+        { token: MSFTB!, multiplier: 1, buyPerToken: 516.39, buyAgeS: msftbBuyAgeS, sellPerToken: 516.38, sellAgeS },
+        { token: MSFTON!, multiplier: 1, buyPerToken: 516.19, buyAgeS: 0 },
+      ],
+      gasUsd: 0.024,
+      sizeUsd: 200,
+    });
+
+  it(`both legs at most ${FRESH_QUOTE_MAX_AGE_S} s old: estimated`, () => {
+    expect(FRESH_QUOTE_MAX_AGE_S).toBe(60);
+    const r = pair(60);
+    expect(r.roundTrip).toMatchObject({ buy: "MSFTon", sell: "MSFTB", clears: true });
+    expect(r.roundTripNote).toBeUndefined();
+  });
+
+  it("a stale sell: no estimate, and the reading says why", () => {
+    const r = pair(210);
+    expect(r.roundTrip).toBeNull();
+    expect(r.roundTripNote).toBe("the sell quote is 210 s old; an estimate needs both quotes at most 60 s old");
+    expect(r.gap).not.toBeNull(); // the gap uses buys only, all fresh
+  });
+
+  it("a stale buy (the spread monitor's reused MSFTB quote) can't be a leg either", () => {
+    const r = buildReading({
+      t: 0,
+      tokens: [
+        { token: MSFTB!, multiplier: 1, buyPerToken: 500, buyAgeS: 75, sellPerToken: 499, sellAgeS: 0 },
+        { token: MSFTON!, multiplier: 1, buyPerToken: 510, buyAgeS: 0, sellPerToken: 508, sellAgeS: 0 },
+      ],
+      gasUsd: 0.2,
+      sizeUsd: 200,
+    });
+    expect(r.roundTrip).toMatchObject({ buy: "MSFTon", sell: "MSFTB" }); // MSFTB→MSFTon (the better one) is skipped
+    expect(r.tokens[0]!.buyAgeS).toBe(75);
+  });
+
+  it("the recorder: sells every 5 min, so readings 0, 30 and 60 s after a sell quote have an estimate and later ones don't", async () => {
+    let now = 1_000_000;
+    const request = vi.fn(async ({ path, query }: { path: string; query: URLSearchParams }) => {
+      if (path.endsWith("/rwa/price")) {
+        return {
+          httpStatus: 200,
+          body: { code: 0, data: [REAL_MSFTB_RWA, { tokenContractAddress: MSFTON!.address, platformId: "ondo", tokenPrice: "523.0", referencePrice: String(523 / MSFTON!.publishedMultiplier) }] },
+          text: "",
+          latencyMs: 1,
+        };
+      }
+      const fromUsdt = query.get("fromTokenAddress")!.toLowerCase() === "0x55d398326f99059ff775485246999027b3197955";
+      const amountIn = Number(query.get("amount")) / 1e18;
+      const out = fromUsdt ? amountIn / 520 : amountIn * 518;
+      return { httpStatus: 200, body: { code: 0, data: [{ isBest: true, vendorName: "LiquidMesh", toTokenAmount: String(BigInt(Math.round(out * 1e12)) * 1_000_000n), toToken: { decimal: "18" }, dexRouterList: [] }] }, text: "", latencyMs: 1 };
+    });
+    const rec = new CrossIssuerRecorder({
+      request: request as never,
+      latestMsftbBuy: () => ({ priceUsdPerToken: 519.5, at: now - 20_000 }),
+      latestGasUsd: () => 0.024,
+      now: () => now,
+      sleep: async () => {},
+      log: () => {},
+    });
+    const withEstimate: boolean[] = [];
+    for (let i = 0; i < 10; i++) {
+      const r = await rec.tick();
+      withEstimate.push(r!.roundTrip !== null);
+      now += 30_000;
+    }
+    expect(withEstimate).toEqual([true, true, true, false, false, false, false, false, false, false]);
+    const r = rec.readings()[3]!;
+    expect(r.roundTripNote).toBe("the sell quotes are 90 s old; an estimate needs both quotes at most 60 s old");
+    expect(r.tokens.find((t) => t.symbol === "MSFTB")!.buyAgeS).toBe(20);
   });
 });
 

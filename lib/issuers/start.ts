@@ -1,4 +1,4 @@
-import { defaultRecorder } from "./cross-issuer";
+import { defaultRecorder, TICK_MS } from "./cross-issuer";
 import { defaultLedger } from "../execution/audit-ledger";
 import { getTradingWalletAddress } from "../execution/agentic-wallet";
 import { logServerError } from "../errors/public-error";
@@ -8,7 +8,7 @@ import { logServerError } from "../errors/public-error";
 // two don't call Binance in the same second. Wires it to the scheduler's
 // latest MSFTB quote and gas estimate (reused from the ledger, so no extra
 // calls). The wallet address is public: RFQ quotes (bStocks, Ondo) need it.
-export const RECORDER_INTERVAL_MS = 30_000;
+export const RECORDER_INTERVAL_MS = TICK_MS;
 const STATE_KEY = Symbol.for("basis.crossIssuer.timer");
 
 export function startCrossIssuerRecorder(): void {
