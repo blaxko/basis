@@ -7,6 +7,7 @@ import { PoolSpreadMonitor } from "../components/pool-spread-monitor";
 import { GuardrailChecklist } from "../components/guardrail-checklist";
 import { AuditLedger } from "../components/audit-ledger";
 import { SidebarNav } from "../components/sidebar-nav";
+import { IssuerMonitor } from "../components/issuer-monitor";
 import { publicReadOnlyFromEnv } from "../components/public-mode";
 
 // Rendered per request: whether this is the public read-only demo, and
@@ -28,6 +29,7 @@ export default async function Home() {
         <div className="bento-grid">
           <InstructionBox />
           <PoolSpreadMonitor />
+          <IssuerMonitor />
           <div className="gate-ledger">
             <GuardrailChecklist />
             <AuditLedger />

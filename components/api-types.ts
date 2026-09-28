@@ -353,3 +353,34 @@ export interface InstructionSuccess {
   outcome: PipelineOutcome;
   ledgerEntryId: string;
 }
+
+// GET /api/issuers/summary (lib/issuers/panel-summary.ts).
+export interface IssuerPanelToken {
+  symbol: string;
+  issuer: string;
+  status: "ok" | "no_quote";
+  multiplier: number | null;
+  publishedMultiplier: number;
+  buyPerShare: number | null;
+  sellPerShare: number | null;
+  sellAgeS: number | null;
+  reason?: string;
+  sellReason?: string;
+  lastValidAt: string | null;
+}
+
+export interface IssuerPanelSummary {
+  label: string;
+  sizeUsd: number;
+  at: string | null;
+  tokens: IssuerPanelToken[];
+  gap: { cheapest: string; dearest: string; grossPct: number } | null;
+  roundTrip: { buy: string; sell: string; netPct: number; gasUsd: number; clears: boolean } | null;
+  lastHour: {
+    readings: number;
+    withEveryPrice: number;
+    largestGap: { grossPct: number; at: string } | null;
+    bestRoundTrip: { netPct: number; buy: string; sell: string; clears: boolean; at: string } | null;
+  };
+  excluded: Array<{ symbol: string; issuer: string; reason: string }>;
+}

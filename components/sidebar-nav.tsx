@@ -4,6 +4,7 @@ const SECTIONS: ReadonlyArray<{ href: string; label: string; onlyWithStartHere?:
   { href: "#instruction", label: "Instruction" },
   { href: "#spread", label: "Spread monitor" },
   { href: "#costs", label: "Cost breakdown" },
+  { href: "#issuers", label: "Issuer monitor" },
   { href: "#gate", label: "Guardrail gate" },
   { href: "#ledger", label: "Audit ledger" },
   { href: "#start", label: "How it works", onlyWithStartHere: true },
