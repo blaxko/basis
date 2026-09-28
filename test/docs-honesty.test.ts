@@ -71,6 +71,9 @@ describe("PRD matches the code and the live site", () => {
     expect(howTo).toContain("Monitor only: Basis doesn't trade across issuers");
     expect(howTo).toMatch(/per share/);
     expect(howTo).toMatch(/xStocks[^\n]*not included/);
+    // "would clear costs" only from fresh quotes: the limit is documented
+    expect(howTo).toMatch(/both of its quotes are at most 60 s old/);
+    expect(section(prd, "9. Design & UI")).toMatch(/at most 60 s old/);
   });
 
   it("how-to-use covers the redesigned panels", () => {
