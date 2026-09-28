@@ -83,3 +83,7 @@ export const OPPORTUNITIES_RATE_LIMIT: RateLimitRule = { name: "opportunities", 
 // /api/issuers: read from memory only, but the response can be large (up to
 // 24 h of readings), so it's limited on every deployment.
 export const ISSUERS_RATE_LIMIT: RateLimitRule = { name: "issuers", perIp: 6, global: 60, windowMs: 60_000 };
+
+// /api/issuers/summary: the issuer monitor panel polls it every 30 s (2 a
+// minute per open tab). Read from memory only.
+export const ISSUERS_SUMMARY_RATE_LIMIT: RateLimitRule = { name: "issuers-summary", perIp: 12, global: 300, windowMs: 60_000 };
