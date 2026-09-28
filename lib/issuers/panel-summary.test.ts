@@ -74,6 +74,23 @@ describe("issuerPanelSummary", () => {
     expect(s.at).toBe("2026-09-28T17:00:00.000Z");
   });
 
+  it("no round trip because a quote is stale: says why, and when the next sell quotes are due", () => {
+    const stale = { ...reading(0, [msftb(512.6, 511.0), ondoOk(512.2, 510.4)], { cheapest: "MSFTon", dearest: "MSFTB", grossPct: 0.00078 }), roundTripNote: "the sell quotes are 90 s old; an estimate needs both quotes at most 60 s old" };
+    stale.tokens = stale.tokens.map((t) => ({ ...t, sellAgeS: 90 }));
+    const s = issuerPanelSummary([stale], conf, T);
+    expect(s.roundTrip).toBeNull();
+    // sells were quoted at 16:58:30; they're quoted every 5 min
+    expect(s.roundTripNote).toBe("the sell quotes are 90 s old; an estimate needs both quotes at most 60 s old. Next sell quotes due about 17:03:30 UTC.");
+    expect(s.freshLimitS).toBe(60);
+  });
+
+  it("with a fresh round trip there's no note", () => {
+    const rt = { buy: "MSFTon", sell: "MSFTB", netPct: -0.0015, gasUsd: 0.024, clears: false };
+    const s = issuerPanelSummary([reading(0, [msftb(512.6, 511.0), ondoOk(512.2, 510.4)], null, rt)], conf, T);
+    expect(s.roundTrip).toEqual(rt);
+    expect(s.roundTripNote).toBeNull();
+  });
+
   it("explains xStocks' exclusion with Binance's real, stale date", () => {
     const s = issuerPanelSummary([], conf, T);
     expect(s.excluded).toEqual([

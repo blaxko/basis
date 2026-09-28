@@ -35,7 +35,7 @@ export function IssuerMonitor() {
           <p className="panel-note">
             Prices are compared <strong>per share</strong>: each token's price ÷ its shares multiplier (Binance's sharesMultiplier, checked
             every 5 minutes against the one each issuer publishes). Quotes are Binance Trading API quotes for ${summary.sizeUsd} of USDT;
-            buys every 30 s, sells every 5 min.
+            buys every 30 s, sells every 5 min. A round trip is estimated only when both of its quotes are at most {summary.freshLimitS} s old.
           </p>
 
           {summary.at === null ? (
@@ -97,6 +97,8 @@ export function IssuerMonitor() {
                     quotes' own fees and price impact and ${summary.roundTrip.gasUsd.toFixed(3)} of gas for the two swaps.{" "}
                     {summary.roundTrip.clears ? "It would clear costs." : "It would not clear costs."}
                   </span>
+                ) : summary.roundTripNote ? (
+                  <span>no estimate: {summary.roundTripNote}</span>
                 ) : (
                   <span>no estimate: it needs a valid buy on one issuer and a valid sell on another.</span>
                 )}

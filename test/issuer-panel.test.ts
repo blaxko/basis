@@ -44,6 +44,9 @@ describe("the panel", () => {
     expect(panel).toMatch(/per share/i);
     expect(panel).toMatch(/sharesMultiplier|shares multiplier/);
     expect(panel).toMatch(/fees and price impact/);
+    // "would clear costs" only from fresh quotes; otherwise the reason
+    expect(panel).toContain("summary.freshLimitS");
+    expect(panel).toContain("summary.roundTripNote");
     expect(panel).toContain('id="issuers"');
     expect(panel).toContain('"/api/issuers/summary"');
   });

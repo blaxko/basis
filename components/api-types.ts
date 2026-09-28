@@ -376,6 +376,8 @@ export interface IssuerPanelSummary {
   tokens: IssuerPanelToken[];
   gap: { cheapest: string; dearest: string; grossPct: number } | null;
   roundTrip: { buy: string; sell: string; netPct: number; gasUsd: number; clears: boolean } | null;
+  roundTripNote: string | null;
+  freshLimitS: number;
   lastHour: {
     readings: number;
     withEveryPrice: number;

@@ -1,4 +1,4 @@
-import { LABEL, QUOTE_SIZE_USD, type IssuerReading, type TokenConfirmation } from "./cross-issuer";
+import { FRESH_QUOTE_MAX_AGE_S, LABEL, QUOTE_SIZE_USD, SLOW_EVERY_TICKS, TICK_MS, type IssuerReading, type TokenConfirmation } from "./cross-issuer";
 
 // What the dashboard's issuer monitor panel shows, from the recorder's own
 // readings. Only the LATEST reading's numbers are shown. A token without a
@@ -27,6 +27,10 @@ export interface IssuerPanelSummary {
   tokens: PanelToken[];
   gap: IssuerReading["gap"];
   roundTrip: IssuerReading["roundTrip"];
+  // Why the latest reading has no round trip although it has prices (a
+  // stale leg), and when the next sell quotes are due.
+  roundTripNote: string | null;
+  freshLimitS: number;
   lastHour: {
     readings: number;
     withEveryPrice: number;
@@ -103,6 +107,13 @@ export function issuerPanelSummary(readings: readonly IssuerReading[], confirmat
       return { symbol: c.symbol, issuer: c.issuer, reason };
     });
 
+  let roundTripNote: string | null = null;
+  if (latest?.roundTripNote) {
+    const ages = latest.tokens.map((t) => t.sellAgeS).filter((a): a is number => a !== null);
+    const next = ages.length ? ` Next sell quotes due about ${iso(latest.t - Math.max(...ages) * 1000 + SLOW_EVERY_TICKS * TICK_MS).slice(11, 19)} UTC.` : "";
+    roundTripNote = `${latest.roundTripNote}.${next}`;
+  }
+
   return {
     label: LABEL,
     sizeUsd: QUOTE_SIZE_USD,
@@ -110,6 +121,8 @@ export function issuerPanelSummary(readings: readonly IssuerReading[], confirmat
     tokens,
     gap: latest?.gap ?? null,
     roundTrip: latest?.roundTrip ?? null,
+    roundTripNote,
+    freshLimitS: FRESH_QUOTE_MAX_AGE_S,
     lastHour: { readings: hour.length, withEveryPrice: hour.filter((r) => r.tokens.length >= 2 && r.tokens.every((t) => t.buyPerShare !== null)).length, largestGap, bestRoundTrip },
     excluded,
   };
