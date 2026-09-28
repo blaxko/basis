@@ -64,7 +64,7 @@ Why the net edge is what it is, for the latest evaluation of a $200 order: the *
 - **The table:** each issuer's multiplier, buy price per share (every 30 s) and sell price per share (every 5 min, with its age), from the latest reading only.
 - **No valid quote:** instead of a number it says `no valid quote` and why, e.g. Binance's only quote was implausible (more than 20% away from bStocks per share), or `Binance: The stock market is currently closed… (code 40367)`, and when the last valid quote was. Ondo often has no valid quote when its market is closed.
 - **Gap, latest reading:** which issuer is cheaper per share, and by how much.
-- **Would it clear costs?:** buying the cheaper issuer and selling the other, after the quotes' own fees and price impact and gas for two swaps. None of the 228 valid round trips recorded to 28 September 2026 cleared costs (best −0.013%).
+- **Would it clear costs?:** buying the cheaper issuer and selling the other, after the quotes' own fees and price impact and gas for two swaps. Of the 375 valid round trips recorded from 26 to 28 September 2026 (to 20:15 UTC), one cleared costs, by +0.023%, and it paired a fresh Ondo buy with a bStocks sell quote 3.5 minutes old. The median was −0.21%. The sell price's age is shown next to it on the panel.
 - **Last hour:** how many readings, how many had a valid price from every issuer, the largest gap and the best round trip.
 - **xStocks MSFTx is not included:** Binance's RWA API returns it with no platform and a price last updated 2026-09-08, so it can't be confirmed as xStocks.
 
