@@ -134,9 +134,10 @@ export function blend(fg: string, bg: string, alpha: number): string {
   return "#" + f.map((x, i) => Math.round(x * alpha + b[i]! * (1 - alpha)).toString(16).padStart(2, "0")).join("");
 }
 
-// The hero's glass card at its brightest: the glass fill over the densest
-// point of the yellow light blob behind it. Text on the card is checked
-// on this as well as on the plain surface.
+// The landing page's glass (the hero card, the cards, the guardrails
+// table and the FAQ) at its brightest: the glass fill over the densest
+// point of a yellow light blob behind it. Text on the glass is checked on
+// this as well as on the plain surface.
 const GLASS_FILL_ALPHA = 0.62;
 const ACCENT_GLOW_ALPHA = 0.26;
 export const GLASS_OVER_GLOW = blend(SUPPORT.surface, blend(BRAND.yellow, SUPPORT.page, ACCENT_GLOW_ALPHA), GLASS_FILL_ALPHA);
@@ -171,9 +172,10 @@ export const CONTRAST_PAIRS: ReadonlyArray<{ fg: string; bg: string; where: stri
   { fg: TOKENS.onAccent, bg: TOKENS.accent, where: "near-black text on yellow: primary buttons, Send, the active mode button" },
   { fg: TOKENS.onPass, bg: TOKENS.pass, where: "near-black text on green: the LIVE data tag" },
   { fg: TOKENS.onFail, bg: TOKENS.fail, where: "near-black text on red: the active LIVE killswitch button (local only)" },
-  { fg: TOKENS.text, bg: GLASS_OVER_GLOW, where: "prices and net edge on the hero's glass card" },
-  { fg: TOKENS.body, bg: GLASS_OVER_GLOW, where: "row labels on the hero's glass card" },
-  { fg: TOKENS.muted, bg: GLASS_OVER_GLOW, where: "labels, time and footnote on the hero's glass card" },
+  { fg: TOKENS.text, bg: GLASS_OVER_GLOW, where: "prices and net edge on the hero's glass card; headings and values on glass cards" },
+  { fg: TOKENS.body, bg: GLASS_OVER_GLOW, where: "row labels on the hero's glass card; body text on glass cards, the table and the FAQ" },
+  { fg: TOKENS.muted, bg: GLASS_OVER_GLOW, where: "labels, time and footnote on the hero's glass card; table headers and labels on glass" },
+  { fg: TOKENS.accent, bg: GLASS_OVER_GLOW, where: "step numbers and tags on glass cards" },
   { fg: TOKENS.pass, bg: GLASS_OVER_GLOW, where: "positive net edge on the hero's glass card" },
   { fg: TOKENS.fail, bg: GLASS_OVER_GLOW, where: "costs and negative net edge on the hero's glass card" },
   { fg: TOKENS.chartBand, bg: blend(TOKENS.chartBand, TOKENS.surface, CHART_BAND_OPACITY), where: "the band's label 'below zero: doesn't clear costs'" },

@@ -1,7 +1,7 @@
 import { LandingLiveReading } from "../components/landing-live-reading";
 import { DEMO_VIDEO_URL, GITHUB_URL, LANDING } from "../components/landing-content";
 import { LandingMotion, MOTION_BOOT } from "../components/landing-motion";
-import { FactTicker, HeroBackdrop, PoolRings } from "../components/landing-visuals";
+import { FactTicker, HeroBackdrop, PageBackdrop, PoolRings } from "../components/landing-visuals";
 
 // The landing page: what Basis is, how it decides, and what it found.
 // Server-rendered; the client code is the live reading in the hero and
@@ -14,6 +14,7 @@ export default function Landing() {
     <div className="landing">
       <script dangerouslySetInnerHTML={{ __html: MOTION_BOOT }} />
       <LandingMotion />
+      <PageBackdrop />
       <header className="topbar">
         <div className="topbar-inner topbar-inner--landing">
           <a className="wordmark" href="/">
@@ -94,7 +95,8 @@ export default function Landing() {
         <section className="l-section" id="guardrails">
           <div className="l-wrap">
             <h2 className="l-h2" data-reveal>{LANDING.guardrailsTitle}</h2>
-            <table className="l-table" data-reveal>
+            <div className="l-glass l-glass--table" data-reveal>
+            <table className="l-table">
               <thead>
                 <tr>
                   <th scope="col">Check</th>
@@ -114,6 +116,7 @@ export default function Landing() {
                 ))}
               </tbody>
             </table>
+            </div>
             <p className="l-sub">{LANDING.guardrailsNote}</p>
           </div>
         </section>
@@ -163,7 +166,7 @@ export default function Landing() {
         <section className="l-section" id="faq">
           <div className="l-wrap">
             <h2 className="l-h2" data-reveal>Questions</h2>
-            <div className="l-faq" data-reveal>
+            <div className="l-faq l-glass" data-reveal>
               {faq.map((f, i) => (
                 <details key={f.q} open={i === 0}>
                   <summary>{f.q}</summary>

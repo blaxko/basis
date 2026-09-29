@@ -1663,7 +1663,17 @@ details.toggles > :not(summary) {
 
 .landing {
   position: relative;
+  isolation: isolate;
   overflow-x: clip;
+}
+
+/* Light behind the whole page, fixed to the screen (see PageBackdrop). */
+.l-page-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
 }
 
 .landing .topbar {
@@ -1743,6 +1753,79 @@ details.toggles > :not(summary) {
   background: radial-gradient(circle, var(--color-accent-glow-soft), var(--color-clear) 70%);
 }
 
+.l-orb--p1 {
+  width: 520px;
+  height: 520px;
+  left: 2%;
+  top: 18%;
+  background: radial-gradient(circle, var(--color-accent-glow-soft), var(--color-clear) 70%);
+}
+
+.l-orb--p2 {
+  width: 440px;
+  height: 440px;
+  right: 8%;
+  top: 48%;
+  background: radial-gradient(circle, var(--color-accent-glow), var(--color-clear) 70%);
+  opacity: 0.6;
+}
+
+.l-orb--p3 {
+  width: 380px;
+  height: 380px;
+  left: 35%;
+  bottom: -160px;
+  background: radial-gradient(circle, var(--color-pass-glow), var(--color-clear) 70%);
+}
+
+/* Glass across the page: the cards, the guardrails table and the FAQ
+   get the hero card's frosted fill, a sheen from the top-left and a lit
+   top edge. Same fill as the hero card, so the same contrast checks
+   cover the text on them. */
+.landing .l-tile,
+.l-glass {
+  background: linear-gradient(160deg, var(--color-glass-sheen), var(--color-clear) 40%), var(--color-glass-fill);
+  border: 1px solid var(--color-glass-edge);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  backdrop-filter: blur(18px) saturate(170%);
+  box-shadow: inset 0 1px 0 var(--color-glass-specular), 0 18px 40px -28px var(--color-bg);
+}
+
+.l-glass {
+  border-radius: 16px;
+  padding: 8px 20px;
+}
+
+.l-glass--table {
+  margin-top: 32px;
+}
+
+.l-glass--table .l-table {
+  margin-top: 0;
+}
+
+.l-glass--table thead th {
+  padding-top: 16px;
+}
+
+.l-glass--table tbody tr:last-child th,
+.l-glass--table tbody tr:last-child td,
+.l-faq.l-glass details:last-child {
+  border-bottom: 0;
+}
+
+@media (max-width: 767px) {
+  .l-glass--table tbody tr:last-child {
+    border-bottom: 0;
+  }
+}
+
+@media (min-width: 768px) {
+  .l-glass {
+    padding: 8px 28px;
+  }
+}
+
 /* The hero card column: the pool rings sit behind the glass card. */
 .l-hero-card {
   position: relative;
@@ -1814,9 +1897,11 @@ details.toggles > :not(summary) {
   mask: linear-gradient(var(--color-bg), var(--color-bg)) content-box exclude, linear-gradient(var(--color-bg), var(--color-bg));
 }
 
-/* Without backdrop-filter, the card falls back to the solid surface. */
+/* Without backdrop-filter, the glass falls back to the solid surface. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .l-hero .live-card {
+  .l-hero .live-card,
+  .landing .l-tile,
+  .l-glass {
     background: var(--color-surface);
   }
 }
