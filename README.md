@@ -2,13 +2,13 @@
 
 ## For judges: start here
 
-**Live demo: https://basis-production-c229.up.railway.app** (no wallet, deposit or sign-up needed)
+**Live demo: https://basis-production-c229.up.railway.app** (no wallet, deposit or sign-up needed). The landing page explains Basis and shows the live reading; the dashboard is at **https://basis-production-c229.up.railway.app/app**.
 
 Basis watches the two PancakeSwap pools where MSFTB (tokenized Microsoft stock) trades on BNB Chain, and would only trade when the price gap between them beats every cost: both pools' fees, slippage and gas. So far, on every reading, the gap has been far smaller than those costs, so Basis correctly says no, and records why.
 
 **Try it**
 
-1. In the **Give an instruction** box, click an example instruction, then **Send**.
+1. Open the dashboard (**Open the dashboard** on the landing page, or `/app`). In the **Instruction** box, click an example instruction, then **Send**.
 2. Watch the **Guardrail Gate** and the **Audit Ledger** update, about 10 seconds later.
 3. Try **Buy $1000 of MSFT** to see a safety block: it's over the $500 per-trade limit.
 
@@ -36,7 +36,7 @@ Built for the BNB Chain Tokenized Stocks hackathon on the **Binance Web3 API**:
   - MSFTB approve: [`0xa3dc00ab…0493`](https://bscscan.com/tx/0xa3dc00ab5312623e223965e25baf2944cd07decbff1f2f6d64527c42dd3e0493)
   - Sell MSFTB → 4.975 USDT: [`0xc77ffb10…c1ff`](https://bscscan.com/tx/0xc77ffb104e42303913745f519922af6d61dc3f988f5940c53a9e388e689cc1ff)
   - Full record: [`docs/devex-log.md`](docs/devex-log.md), [`docs/PRD.md`](docs/PRD.md) §16.
-- **The public demo is read-only**: it holds no wallet key, so Live is greyed out there, and the dashboard says why. See [`docs/how-to-use.md`](docs/how-to-use.md).
+- **The public demo is read-only**: it holds no wallet key, so Live is greyed out there; the dashboard says so in one line and the landing page's FAQ explains it. See [`docs/how-to-use.md`](docs/how-to-use.md).
 
 ## Run it locally
 
