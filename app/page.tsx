@@ -1,14 +1,19 @@
 import { LandingLiveReading } from "../components/landing-live-reading";
 import { DEMO_VIDEO_URL, GITHUB_URL, LANDING } from "../components/landing-content";
+import { LandingMotion, MOTION_BOOT } from "../components/landing-motion";
+import { FactTicker, HeroBackdrop, PoolRings } from "../components/landing-visuals";
 
 // The landing page: what Basis is, how it decides, and what it found.
-// Server-rendered; the only client code is the live reading in the hero.
+// Server-rendered; the client code is the live reading in the hero and
+// the decorative motion (components/landing-motion.tsx).
 // Words from components/landing-content.ts (basis-project-details.md).
 export default function Landing() {
   const { hero, problem, how, findings, issuers, limits, faq, footer } = LANDING;
 
   return (
     <div className="landing">
+      <script dangerouslySetInnerHTML={{ __html: MOTION_BOOT }} />
+      <LandingMotion />
       <header className="topbar">
         <div className="topbar-inner topbar-inner--landing">
           <a className="wordmark" href="/">
@@ -29,8 +34,9 @@ export default function Landing() {
 
       <main>
         <section className="l-hero">
+          <HeroBackdrop />
           <div className="l-wrap l-hero-grid">
-            <div>
+            <div className="l-hero-copy" data-hero>
               <h1 className="l-h1">{hero.title}</h1>
               <p className="l-lede">{hero.lede}</p>
               <div className="l-ctas">
@@ -50,12 +56,16 @@ export default function Landing() {
                 )}
               </p>
             </div>
-            <LandingLiveReading />
+            <div className="l-hero-card" data-hero>
+              <PoolRings />
+              <LandingLiveReading />
+            </div>
           </div>
+          <FactTicker />
         </section>
 
         <section className="l-section" id="problem">
-          <div className="l-wrap">
+          <div className="l-wrap" data-reveal>
             <h2 className="l-h2">{problem.title}</h2>
             {problem.body.map((p) => (
               <p className="l-sub" key={p.slice(0, 24)}>
@@ -67,10 +77,10 @@ export default function Landing() {
 
         <section className="l-section" id="how">
           <div className="l-wrap">
-            <h2 className="l-h2">{how.title}</h2>
-            <ol className="l-steps">
+            <h2 className="l-h2" data-reveal>{how.title}</h2>
+            <ol className="l-steps" data-reveal>
               {how.steps.map((s, i) => (
-                <li className="l-tile" key={s.title}>
+                <li className="l-tile" key={s.title} style={{ "--i": i } as React.CSSProperties}>
                   <span className="l-step mono">0{i + 1}</span>
                   <h3 className="l-h3">{s.title}</h3>
                   <p>{s.body}</p>
@@ -83,8 +93,8 @@ export default function Landing() {
 
         <section className="l-section" id="guardrails">
           <div className="l-wrap">
-            <h2 className="l-h2">{LANDING.guardrailsTitle}</h2>
-            <table className="l-table">
+            <h2 className="l-h2" data-reveal>{LANDING.guardrailsTitle}</h2>
+            <table className="l-table" data-reveal>
               <thead>
                 <tr>
                   <th scope="col">Check</th>
@@ -110,10 +120,10 @@ export default function Landing() {
 
         <section className="l-section" id="findings">
           <div className="l-wrap">
-            <h2 className="l-h2">{findings.title}</h2>
-            <div className="l-grid l-grid--2">
-              {findings.items.map((f) => (
-                <div className="l-tile" key={f.title}>
+            <h2 className="l-h2" data-reveal>{findings.title}</h2>
+            <div className="l-grid l-grid--2" data-reveal>
+              {findings.items.map((f, i) => (
+                <div className="l-tile" key={f.title} style={{ "--i": i } as React.CSSProperties}>
                   <span className="l-tag">{f.tag}</span>
                   <h3 className="l-h3">{f.title}</h3>
                   <p>{f.body}</p>
@@ -126,9 +136,9 @@ export default function Landing() {
             </h2>
             <p className="l-sub">{issuers.body}</p>
             <p className="monitor-only">{issuers.label}</p>
-            <div className="l-grid l-grid--3">
-              {issuers.facts.map((f) => (
-                <div className="l-tile" key={f.label}>
+            <div className="l-grid l-grid--3" data-reveal>
+              {issuers.facts.map((f, i) => (
+                <div className="l-tile" key={f.label} style={{ "--i": i } as React.CSSProperties}>
                   <div className="l-label">{f.label}</div>
                   <div className="l-metric mono">{f.value}</div>
                   <p>{f.body}</p>
@@ -140,8 +150,8 @@ export default function Landing() {
 
         <section className="l-section" id="limits">
           <div className="l-wrap">
-            <h2 className="l-h2">{limits.title}</h2>
-            <ul className="l-list">
+            <h2 className="l-h2" data-reveal>{limits.title}</h2>
+            <ul className="l-list" data-reveal>
               {limits.items.map((item) => (
                 <li key={item}>{item}</li>
               ))}
@@ -152,8 +162,8 @@ export default function Landing() {
 
         <section className="l-section" id="faq">
           <div className="l-wrap">
-            <h2 className="l-h2">Questions</h2>
-            <div className="l-faq">
+            <h2 className="l-h2" data-reveal>Questions</h2>
+            <div className="l-faq" data-reveal>
               {faq.map((f, i) => (
                 <details key={f.q} open={i === 0}>
                   <summary>{f.q}</summary>
