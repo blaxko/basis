@@ -9,7 +9,8 @@ import { publicReadOnlyFromEnv } from "../../components/public-mode";
 
 export const metadata: Metadata = { title: "Basis · Dashboard" };
 
-// Rendered per request: whether this is the public read-only demo is
+// Served at /app (next.config.ts rewrites /app here). Rendered per
+// request: whether this is the public read-only demo is
 // decided on the server, so the header is right in the first paint.
 export const dynamic = "force-dynamic";
 

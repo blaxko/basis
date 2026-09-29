@@ -18,9 +18,17 @@ const landingSrc = LANDING_FILES.map((f) => read(f)).join("\n");
 const landingText = JSON.stringify(LANDING);
 
 describe("routes", () => {
-  it("the landing page is at /, the dashboard at /app, and every API route is unchanged", () => {
+  it("the landing page is at /, the dashboard at /app, and every API route is unchanged", async () => {
     expect(existsSync(join(ROOT, "app", "page.tsx"))).toBe(true);
-    expect(existsSync(join(ROOT, "app", "app", "page.tsx"))).toBe(true);
+    // The dashboard's file is app/dashboard/page.tsx, served at /app by a
+    // rewrite. A route folder named "app" breaks Next's build when the
+    // project root is itself /app (Railway's container): / rendered the
+    // dashboard (live, 2026-09-29; reproduced in WSL).
+    expect(existsSync(join(ROOT, "app", "dashboard", "page.tsx"))).toBe(true);
+    expect(existsSync(join(ROOT, "app", "app"))).toBe(false);
+    const config = (await import("../next.config")).default;
+    expect(await config.rewrites!()).toEqual([{ source: "/app", destination: "/dashboard" }]);
+    expect(await config.redirects!()).toEqual([{ source: "/dashboard", destination: "/app", permanent: false }]);
     for (const r of ["execution-test", "health", "instruction", "issuers", "issuers/summary", "killswitch", "ledger", "opportunities", "status"]) {
       expect(existsSync(join(ROOT, "app", "api", r, "route.ts")), r).toBe(true);
     }
@@ -150,7 +158,7 @@ describe("the landing page's live reading", () => {
 });
 
 describe("the dashboard shows only what's live", () => {
-  const ui = ["app/app/page.tsx", "components/header.tsx", "components/pool-spread-monitor.tsx", "components/instruction-box.tsx", "components/guardrail-checklist.tsx", "components/audit-ledger.tsx", "components/issuer-monitor.tsx", "components/advisory-feed.tsx", "components/read-only-note.ts"].map((f) => read(f)).join("\n");
+  const ui = ["app/dashboard/page.tsx", "components/header.tsx", "components/pool-spread-monitor.tsx", "components/instruction-box.tsx", "components/guardrail-checklist.tsx", "components/audit-ledger.tsx", "components/issuer-monitor.tsx", "components/advisory-feed.tsx", "components/read-only-note.ts"].map((f) => read(f)).join("\n");
 
   it("no Start here panel, sidebar, BscScan links, test trade or hackathon", () => {
     for (const gone of ["components/start-here.tsx", "components/start-here-content.ts", "components/sidebar-nav.tsx"]) expect(existsSync(join(ROOT, gone)), gone).toBe(false);
@@ -158,7 +166,7 @@ describe("the dashboard shows only what's live", () => {
   });
 
   it("keeps the live parts, in the phone order: live reading, instruction, gate, ledger, issuer monitor", () => {
-    const page = read("app/app/page.tsx");
+    const page = read("app/dashboard/page.tsx");
     const order = ["<PoolSpreadMonitor />", "<InstructionBox />", "<GuardrailChecklist />", "<AuditLedger />", "<IssuerMonitor />"].map((c) => page.indexOf(c));
     expect(order.every((i) => i > 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);

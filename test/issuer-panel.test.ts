@@ -51,7 +51,7 @@ describe("the panel", () => {
     expect(panel).toContain('"/api/issuers/summary"');
   });
   it("is on the dashboard", () => {
-    expect(readFileSync(join(ROOT, "app", "app", "page.tsx"), "utf8")).toContain("<IssuerMonitor />");
+    expect(readFileSync(join(ROOT, "app", "dashboard", "page.tsx"), "utf8")).toContain("<IssuerMonitor />");
   });
   it("never keeps an earlier reading's price (no state beyond the poll)", () => {
     expect(panel).not.toMatch(/useState|useRef/);

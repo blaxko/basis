@@ -1,4 +1,4 @@
-// The PUBLIC_READ_ONLY rule, for app/app/page.tsx, which renders the header
+// The PUBLIC_READ_ONLY rule, for app/dashboard/page.tsx, which renders the header
 // on the server and may not import lib/ (test/architecture.test.ts).
 // Same fail-closed parse as lib/config/deployment.ts's isPublicReadOnly():
 // unset, "" or "false" is normal mode; anything else is read-only.

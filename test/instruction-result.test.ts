@@ -108,7 +108,7 @@ describe("describeInstructionResult — rate limit, warm-up and errors", () => {
 describe("dashboard wiring", () => {
   const root = join(__dirname, "..");
   it("the instruction box is on the page and says the AI only reads the instruction", () => {
-    expect(readFileSync(join(root, "app", "app", "page.tsx"), "utf8")).toContain("<InstructionBox />");
+    expect(readFileSync(join(root, "app", "dashboard", "page.tsx"), "utf8")).toContain("<InstructionBox />");
     const box = readFileSync(join(root, "components", "instruction-box.tsx"), "utf8");
     expect(box).toContain('fetch("/api/instruction"');
     expect(box).toContain("The AI only reads your sentence");

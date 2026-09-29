@@ -13,7 +13,7 @@ const MODES: PipelineMode[] = ["simulation", "dry-run", "live"];
 
 // The dashboard's top bar (home, How it works, GitHub) and its status
 // strip: the read-only line, health chips and the mode switch.
-// publicReadOnly comes from the server (app/app/page.tsx), so the note and
+// publicReadOnly comes from the server (app/dashboard/page.tsx), so the note and
 // the locked Live button are in the first paint; the mode shown is always
 // the server's (/api/status), never what was clicked.
 export function Header({ publicReadOnly }: { publicReadOnly: boolean }) {

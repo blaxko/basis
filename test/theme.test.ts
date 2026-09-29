@@ -94,7 +94,7 @@ describe("brand usage rules", () => {
   });
 
   it("both pages' footers say 'Built on BNB Chain' in plain text", () => {
-    expect(readFileSync(join(root, "app", "app", "page.tsx"), "utf8")).toContain('<footer className="footer">Basis · Built on BNB Chain');
+    expect(readFileSync(join(root, "app", "dashboard", "page.tsx"), "utf8")).toContain('<footer className="footer">Basis · Built on BNB Chain');
     expect(readFileSync(join(root, "components", "landing-content.ts"), "utf8")).toContain('name: "Basis · Built on BNB Chain"');
   });
 });
