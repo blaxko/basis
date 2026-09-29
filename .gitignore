@@ -1,4 +1,7 @@
-.claude/
+.claude/*
+# The project settings travel with the repo (cloud sessions read them):
+# commit and PR attribution stay off. Local settings stay ignored.
+!.claude/settings.json
 node_modules/
 .next/
 out/
