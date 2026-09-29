@@ -35,7 +35,7 @@ export default function Dashboard() {
           <IssuerMonitor />
         </div>
       </main>
-      <footer className="footer">Basis · Built on BNB Chain · Not financial advice.</footer>
+      <footer className="footer">Basis · Built on BNB Chain</footer>
     </>
   );
 }

@@ -139,5 +139,5 @@ export const LANDING = {
       a: "Basis only trades tokens whose pools it has verified on-chain. Adding a stock means finding and verifying its pools first; Basis won't guess.",
     },
   ],
-  footer: { name: "Basis · Built on BNB Chain", risk: "Not financial advice. Tokenized stocks and on-chain trading carry risk." },
+  footer: { name: "Basis · Built on BNB Chain" },
 } as const;

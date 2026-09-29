@@ -34,13 +34,12 @@ describe("routes", () => {
     }
   });
 
-  it("links both ways: the landing page's main button opens /app; the dashboard links home, How it works and GitHub", () => {
+  it("links both ways: the landing page's main button opens /app; the dashboard's wordmark goes home", () => {
     expect(LANDING.hero.primary).toEqual({ label: "Open the dashboard", href: "/app" });
     expect(read("app/page.tsx")).toContain("LANDING.hero.primary.href");
-    const header = read("components/header.tsx");
-    expect(header).toContain('href="/"');
-    expect(header).toContain('href="/#how"');
-    expect(header).toContain("href={GITHUB_URL}");
+    expect(read("components/header.tsx")).toContain('href="/"');
+    // GitHub stays reachable from the landing page's "Read the code" button.
+    expect(LANDING.hero.secondary.href).toBe(GITHUB_URL);
     expect(GITHUB_URL).toBe("https://github.com/blaxko/basis");
     for (const id of ["how", "guardrails", "findings", "faq"]) expect(read("app/page.tsx")).toContain(`id="${id}"`);
   });
@@ -192,5 +191,75 @@ describe("the dashboard shows only what's live", () => {
     const monitor = read("components/pool-spread-monitor.tsx");
     expect(monitor).toMatch(/<details[^>]*id="costs"/);
     expect(read("components/advisory-feed.tsx")).toContain("<details");
+  });
+});
+
+describe("headers, footers, menu and theme toggle", () => {
+  const landing = () => read("app/page.tsx");
+  const dashboard = () => read("app/dashboard/page.tsx");
+  const header = () => read("components/header.tsx");
+
+  it("both footers say only 'Basis · Built on BNB Chain'", () => {
+    expect(LANDING.footer).toEqual({ name: "Basis · Built on BNB Chain" });
+    const footer = landing().slice(landing().indexOf("<footer"), landing().indexOf("</footer>"));
+    expect(footer).toContain("{footer.name}");
+    expect(footer).not.toMatch(/href=|risk|Not financial advice/);
+    expect(dashboard()).toContain('<footer className="footer">Basis · Built on BNB Chain</footer>');
+  });
+
+  it("the dashboard header links only home: no How it works, no GitHub", () => {
+    expect(header()).toContain('href="/"');
+    expect(header()).not.toMatch(/How it works|GITHUB_URL|github\.com/);
+  });
+
+  it("each page's menu lists only that page's own sections, all of which exist; never How it works or GitHub", async () => {
+    const { LANDING_SECTIONS, DASHBOARD_SECTIONS } = await import("../components/site-sections");
+    for (const [sections, src] of [
+      [LANDING_SECTIONS, landing() + read("components/landing-content.ts")],
+      [DASHBOARD_SECTIONS, ["app/dashboard/page.tsx", "components/pool-spread-monitor.tsx", "components/instruction-box.tsx", "components/guardrail-checklist.tsx", "components/audit-ledger.tsx", "components/issuer-monitor.tsx"].map((f) => read(f)).join("\n")],
+    ] as const) {
+      expect(sections.length).toBeGreaterThan(3);
+      for (const s of sections) {
+        expect(s.href).toMatch(/^#[a-z-]+$/);
+        expect(src, s.href).toContain(`id="${s.href.slice(1)}"`);
+        expect(s.label).not.toMatch(/How it works|GitHub/i);
+      }
+    }
+    expect(landing()).toContain("<SiteMenu sections={LANDING_SECTIONS} />");
+    expect(header()).toContain("<SiteMenu sections={DASHBOARD_SECTIONS} />");
+    expect(landing()).not.toContain("topnav--wide");
+  });
+
+  it("the menu is accessible: expanded state, controls, labels, Escape, outside tap, focus", () => {
+    const menu = read("components/site-menu.tsx");
+    for (const needle of ["aria-expanded={open}", "aria-controls={id}", '"Close menu"', '"Open menu"', '"Escape"', '"pointerdown"', ".focus()"]) {
+      expect(menu, needle).toContain(needle);
+    }
+  });
+
+  it("the theme toggle is on both pages, labelled, and remembers the choice", () => {
+    const toggle = read("components/theme-toggle.tsx");
+    expect(toggle).toContain("THEME_STORAGE_KEY");
+    expect(toggle).toContain('setAttribute("data-theme"');
+    expect(toggle).toMatch(/aria-label=\{`Switch to \$\{/);
+    expect(landing()).toContain("<ThemeToggle />");
+    expect(header()).toContain("<ThemeToggle />");
+  });
+
+  it("the chart follows the theme and its hover box stays compact enough to fit a phone", () => {
+    const chart = read("components/spread-chart.tsx");
+    expect(chart).not.toMatch(/TOKENS\./);
+    expect(chart).toContain('"var(--color-chart-gross)"');
+    expect(chart).toContain("TOOLTIP_NAMES");
+    expect(chart).toContain("allowEscapeViewBox={{ x: false, y: false }}");
+  });
+
+  it("status chips wrap instead of being clipped", () => {
+    const css = read("app/globals.css");
+    const start = css.search(/^\.status-row \{/m);
+    const rule = css.slice(start, css.indexOf("}", start));
+    expect(start).toBeGreaterThan(0);
+    expect(rule).toContain("flex-wrap: wrap");
+    expect(rule).not.toMatch(/overflow-x:\s*auto/);
   });
 });

@@ -47,7 +47,8 @@ describe("no fake decoration or false claims from the reference files", () => {
 describe("navigation", () => {
   it("every in-page link on either page jumps to a section that exists", () => {
     const all = ui.map(({ src }) => src).join("\n");
-    const hrefs = [...all.matchAll(/href="\/?#([a-z-]+)"/g)].map((m) => m[1]!);
+    // Links in markup (href="#x") and in the menus' section lists (href: "#x").
+    const hrefs = [...all.matchAll(/href(?:=|: )"\/?#([a-z-]+)"/g)].map((m) => m[1]!);
     expect(hrefs.length).toBeGreaterThan(3);
     for (const id of hrefs) expect(all, `#${id}`).toMatch(new RegExp(`id="${id}"`));
   });

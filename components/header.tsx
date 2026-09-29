@@ -7,11 +7,13 @@ import { readOnlyNote, revertLabel } from "./read-only-note";
 import { healthChip, type ChipState } from "./health-chip";
 import { walletChipLabel } from "./format-balance";
 import { showWalletChips } from "./public-mode";
-import { GITHUB_URL } from "./landing-content";
+import { SiteMenu } from "./site-menu";
+import { DASHBOARD_SECTIONS } from "./site-sections";
+import { ThemeToggle } from "./theme-toggle";
 
 const MODES: PipelineMode[] = ["simulation", "dry-run", "live"];
 
-// The dashboard's top bar (home, How it works, GitHub) and its status
+// The dashboard's top bar (home, the theme switch, the section menu) and its status
 // strip: the read-only line, health chips and the mode switch.
 // publicReadOnly comes from the server (app/dashboard/page.tsx), so the note and
 // the locked Live button are in the first paint; the mode shown is always
@@ -54,10 +56,10 @@ export function Header({ publicReadOnly }: { publicReadOnly: boolean }) {
           <a className="wordmark" href="/">
             Basis
           </a>
-          <nav className="topnav" aria-label="Site">
-            <a href="/#how">How it works</a>
-            <a href={GITHUB_URL}>GitHub</a>
-          </nav>
+          <div className="topbar-actions">
+            <ThemeToggle />
+            <SiteMenu sections={DASHBOARD_SECTIONS} />
+          </div>
         </div>
       </header>
 

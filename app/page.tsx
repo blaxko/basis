@@ -1,5 +1,8 @@
 import { LandingLiveReading } from "../components/landing-live-reading";
-import { DEMO_VIDEO_URL, GITHUB_URL, LANDING } from "../components/landing-content";
+import { DEMO_VIDEO_URL, LANDING } from "../components/landing-content";
+import { SiteMenu } from "../components/site-menu";
+import { LANDING_SECTIONS } from "../components/site-sections";
+import { ThemeToggle } from "../components/theme-toggle";
 import { LandingMotion, MOTION_BOOT } from "../components/landing-motion";
 import { FactTicker, HeroBackdrop, PageBackdrop, PoolRings } from "../components/landing-visuals";
 
@@ -20,16 +23,13 @@ export default function Landing() {
           <a className="wordmark" href="/">
             Basis
           </a>
-          <nav className="topnav topnav--wide" aria-label="Sections">
-            <a href="#how">How it works</a>
-            <a href="#guardrails">Guardrails</a>
-            <a href="#findings">Findings</a>
-            <a href="#faq">FAQ</a>
-            <a href={GITHUB_URL}>GitHub</a>
-          </nav>
-          <a className="btn btn--primary topbar-cta" href={LANDING.hero.primary.href}>
-            {hero.primary.label}
-          </a>
+          <div className="topbar-actions">
+            <a className="btn btn--primary topbar-cta" href={LANDING.hero.primary.href}>
+              {hero.primary.label}
+            </a>
+            <ThemeToggle />
+            <SiteMenu sections={LANDING_SECTIONS} />
+          </div>
         </div>
       </header>
 
@@ -180,14 +180,7 @@ export default function Landing() {
 
       <footer className="l-footer">
         <div className="l-wrap l-footer-inner">
-          <div>
-            <div className="l-footer-name">{footer.name}</div>
-            <div>{footer.risk}</div>
-          </div>
-          <nav className="l-footer-links" aria-label="Links">
-            <a href={LANDING.hero.primary.href}>Dashboard</a>
-            <a href={GITHUB_URL}>GitHub</a>
-          </nav>
+          <div className="l-footer-name">{footer.name}</div>
         </div>
       </footer>
     </div>
