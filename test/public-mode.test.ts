@@ -2,8 +2,8 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { publicReadOnlyFromEnv } from "../components/public-mode";
 import { isPublicReadOnly } from "../lib/config/deployment";
 
-// app/page.tsx decides on the server whether to render the Start here panel
-// (so it's in the first paint, with no layout shift), but app/ may not
+// app/app/page.tsx decides on the server whether this is the public demo
+// (so the header is right in the first paint, with no layout shift), but app/ may not
 // import lib/. components/public-mode.ts parses PUBLIC_READ_ONLY itself;
 // it must agree with lib/config/deployment.ts on every input.
 

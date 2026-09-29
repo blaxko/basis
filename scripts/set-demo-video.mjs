@@ -2,7 +2,7 @@
 //
 //   npm run set-demo-video -- https://youtu.be/…
 //
-// - components/start-here-content.ts: DEMO_VIDEO_URL (the Start here panel)
+// - components/landing-content.ts: DEMO_VIDEO_URL (the landing page's hero)
 // - README.md and docs/how-to-use.md: the text between
 //   <!-- demo-video --> and <!-- /demo-video -->
 //
@@ -31,7 +31,7 @@ function update(file, transform) {
   console.log(`updated ${file}`);
 }
 
-update("components/start-here-content.ts", (s) =>
+update("components/landing-content.ts", (s) =>
   s.replace(/export const DEMO_VIDEO_URL: string \| null = (?:null|"[^"]*");/, `export const DEMO_VIDEO_URL: string | null = ${JSON.stringify(url)};`)
 );
 

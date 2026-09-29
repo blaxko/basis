@@ -6,12 +6,16 @@ import type { MarketStatus, PipelineMode, StatusResponse } from "./api-types";
 import { readOnlyNote, revertLabel } from "./read-only-note";
 import { healthChip, type ChipState } from "./health-chip";
 import { walletChipLabel } from "./format-balance";
+import { showWalletChips } from "./public-mode";
+import { GITHUB_URL } from "./landing-content";
 
 const MODES: PipelineMode[] = ["simulation", "dry-run", "live"];
 
-// publicReadOnly comes from the server (app/page.tsx), so the read-only
-// badge, note and the locked Live button are in the first paint; the mode
-// shown is always the server's (/api/status), never what was clicked.
+// The dashboard's top bar (home, How it works, GitHub) and its status
+// strip: the read-only line, health chips and the mode switch.
+// publicReadOnly comes from the server (app/app/page.tsx), so the note and
+// the locked Live button are in the first paint; the mode shown is always
+// the server's (/api/status), never what was clicked.
 export function Header({ publicReadOnly }: { publicReadOnly: boolean }) {
   const status = usePoll<StatusResponse>("/api/status", 5000);
   const [posting, setPosting] = useState(false);
@@ -44,15 +48,64 @@ export function Header({ publicReadOnly }: { publicReadOnly: boolean }) {
   const note = readOnlyNote(readOnly);
 
   return (
-    <header className="header" id="top">
-      <div className="header-top">
-        <div className="brand">
-          <h1 className="header-title">Basis</h1>
-          <p className="header-subtitle">Cross-pool gaps, counted only after every cost.</p>
+    <>
+      <header className="topbar">
+        <div className="topbar-inner">
+          <a className="wordmark" href="/">
+            Basis
+          </a>
+          <nav className="topnav" aria-label="Site">
+            <a href="/#how">How it works</a>
+            <a href={GITHUB_URL}>GitHub</a>
+          </nav>
         </div>
+      </header>
 
-        <div className="killswitch" role="group" aria-label="Killswitch">
-          <div className="killswitch-buttons">
+      <div className="strip" id="top">
+        <div className="strip-inner">
+          {note && (
+            <span className="strip-note">
+              {note.text} ·{" "}
+              <a href={note.linkUrl}>{note.linkLabel}</a>
+            </span>
+          )}
+          {/* Fixed-height row: placeholders hold its place until /api/status
+              answers, so nothing below moves (no layout shift). */}
+          <div className="status-row" aria-live="polite">
+            {!status.data && <span className="status-chip status-chip--placeholder">Loading system status…</span>}
+            {status.data && (
+              <>
+                <HealthChip chip={healthChip("BSC RPC", status.data.bscRpc, Date.now())} />
+                <StatusChip
+                  label={binanceChipLabel(status.data.binanceWeb3Api)}
+                  ok={status.data.binanceWeb3Api.configured && (status.data.binanceWeb3Api.calls[0]?.ok ?? false)}
+                />
+                <HealthChip chip={healthChip("Groq", status.data.groq, Date.now())} />
+                {Object.entries(status.data.marketStatus).map(([ticker, market]) => (
+                  <StatusChip key={ticker} label={marketChipLabel(ticker, market)} ok={marketChipOk(market)} />
+                ))}
+                {showWalletChips(readOnly) && (
+                  <>
+                    <StatusChip
+                      label={
+                        status.data.tradingWallet.address
+                          ? `Trading wallet ${status.data.tradingWallet.address.slice(0, 6)}…${status.data.tradingWallet.address.slice(-4)}`
+                          : status.data.tradingWallet.error
+                            ? "Trading wallet key invalid"
+                            : "Trading wallet key"
+                      }
+                      ok={status.data.tradingWallet.configured}
+                    />
+                    <StatusChip
+                      label={status.data.walletBalances.status === "ok" ? walletChipLabel(status.data.walletBalances) : "Wallet balances unavailable"}
+                      ok={status.data.walletBalances.status === "ok"}
+                    />
+                  </>
+                )}
+              </>
+            )}
+          </div>
+          <div className="killswitch" role="group" aria-label="Mode">
             {MODES.map((mode) => (
               <button
                 key={mode}
@@ -74,66 +127,15 @@ export function Header({ publicReadOnly }: { publicReadOnly: boolean }) {
             ))}
           </div>
         </div>
-
-        {readOnly && <span className="mode-badge">Public demo · read-only</span>}
-      </div>
-
-      {(status.data?.killswitchRevertsAt || note) && (
-        <div className="header-notes">
-          {status.data?.killswitchRevertsAt && (
-            <p className="killswitch-note">
-              <strong>{revertLabel(status.data.killswitchRevertsAt)}</strong> Changes on this public demo are shared by every
-              visitor, so they don't last.
-            </p>
-          )}
-          {note && (
-            <p className="killswitch-note">
-              {note.text}{" "}
-              <a href={note.linkUrl} target="_blank" rel="noreferrer">
-                {note.linkLabel}
-              </a>
-            </p>
-          )}
-        </div>
-      )}
-
-      {status.error && <p className="state-message state-message--error">Status unavailable: {status.error}</p>}
-      {postError && <p className="killswitch-error">Killswitch update failed: {postError}</p>}
-
-      {/* Fixed-height ribbon: placeholders hold its place until /api/status
-          answers, so nothing below moves (no layout shift). */}
-      <div className="status-row" aria-live="polite">
-        {!status.data && <span className="status-chip status-chip--placeholder">Loading system status…</span>}
-        {status.data && (
-          <>
-            {status.data.publicReadOnly && <StatusChip label="Public read-only: no sending" ok={true} />}
-            <HealthChip chip={healthChip("Groq", status.data.groq, Date.now())} />
-            <HealthChip chip={healthChip("BSC RPC", status.data.bscRpc, Date.now())} />
-            <StatusChip
-              label={
-                status.data.tradingWallet.address
-                  ? `Trading wallet ${status.data.tradingWallet.address.slice(0, 6)}…${status.data.tradingWallet.address.slice(-4)}`
-                  : status.data.tradingWallet.error
-                    ? "Trading wallet key invalid"
-                    : "Trading wallet key"
-              }
-              ok={status.data.tradingWallet.configured}
-            />
-            <StatusChip
-              label={binanceChipLabel(status.data.binanceWeb3Api)}
-              ok={status.data.binanceWeb3Api.configured && (status.data.binanceWeb3Api.calls[0]?.ok ?? false)}
-            />
-            <StatusChip
-              label={status.data.walletBalances.status === "ok" ? walletChipLabel(status.data.walletBalances) : "Wallet balances unavailable"}
-              ok={status.data.walletBalances.status === "ok"}
-            />
-            {Object.entries(status.data.marketStatus).map(([ticker, market]) => (
-              <StatusChip key={ticker} label={marketChipLabel(ticker, market)} ok={marketChipOk(market)} />
-            ))}
-          </>
+        {status.data?.killswitchRevertsAt && (
+          <p className="strip-line">
+            <strong>{revertLabel(status.data.killswitchRevertsAt)}</strong> Changes on this public demo are shared by every visitor, so they don't last.
+          </p>
         )}
+        {status.error && <p className="strip-line state-message--error">Status unavailable: {status.error}</p>}
+        {postError && <p className="strip-line killswitch-error">Mode change failed: {postError}</p>}
       </div>
-    </header>
+    </>
   );
 }
 

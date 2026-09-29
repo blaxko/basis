@@ -1,18 +1,18 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { readOnlyNote, revertLabel, LIVE_PROOF_TX, LIVE_PROOF_URL } from "../components/read-only-note";
+import { readOnlyNote, revertLabel } from "../components/read-only-note";
 
-// The public demo greys out Live; the dashboard must say why.
+// The public demo greys out Live; the dashboard says so in one short line
+// that links the landing page's explanation (its FAQ).
 
 describe("readOnlyNote", () => {
-  it("explains the disabled Live button on a read-only deployment and points to the proof", () => {
+  it("one short line on a read-only deployment, linking the landing page's FAQ, and the Live button's tooltip", () => {
     const note = readOnlyNote(true)!;
-    expect(note.text).toContain("Live trading is switched off on this public demo");
-    expect(note.text).toContain("can't send transactions");
-    expect(note.text).toContain("proven separately on BNB Chain mainnet on 2026-09-25");
-    expect(note.linkUrl).toBe(LIVE_PROOF_URL);
+    expect(note.text).toBe("Public demo: read-only");
+    expect(note.linkUrl).toBe("/#faq");
     expect(note.liveButtonTitle).toContain("read-only");
+    expect(note.liveButtonTitle).toContain("nothing can be sent");
   });
 
   it("says nothing when the deployment isn't read-only, or before status has loaded", () => {
@@ -20,12 +20,9 @@ describe("readOnlyNote", () => {
     expect(readOnlyNote(undefined)).toBeNull();
   });
 
-  it("the link lands on the README's Status section, which links the transaction on BscScan", () => {
-    const readme = readFileSync(join(__dirname, "..", "README.md"), "utf8");
-    expect(LIVE_PROOF_URL.endsWith("#status")).toBe(true);
-    expect(readme).toMatch(/^## Status$/m);
-    const status = readme.slice(readme.indexOf("## Status"), readme.indexOf("## Run it locally"));
-    expect(status).toContain(`https://bscscan.com/tx/${LIVE_PROOF_TX}`);
+  it("the landing page's FAQ answers it", () => {
+    expect(readFileSync(join(__dirname, "..", "app", "page.tsx"), "utf8")).toContain('id="faq"');
+    expect(readFileSync(join(__dirname, "..", "components", "landing-content.ts"), "utf8")).toContain("The public demo is read-only by design.");
   });
 
   it("the header renders the note and the button tooltip", () => {
@@ -34,7 +31,7 @@ describe("readOnlyNote", () => {
     // the note and the locked Live button are in the first paint.
     expect(header).toContain("const readOnly = status.data?.publicReadOnly ?? publicReadOnly;");
     expect(header).toContain("readOnlyNote(readOnly)");
-    expect(header).toContain('className="killswitch-note"');
+    expect(header).toContain('className="strip-note"');
     expect(header).toContain("note.liveButtonTitle");
   });
 });

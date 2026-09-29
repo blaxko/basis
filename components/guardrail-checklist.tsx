@@ -64,7 +64,6 @@ export function GuardrailChecklist() {
                 <span className={"check-mark mono " + markClass(c)}>{markLabel(c)}</span>
                 <span className="check-body">
                   <span className="check-name mono">{c.name}</span>
-                  <span className="check-desc">{CHECK_DESCRIPTIONS[c.name] ?? ""}</span>
                   {c.limit && <span className="check-limit">Limit: {c.limit}</span>}
                   {(!c.ok || c.pending) && c.reason && <span className="check-reason">{c.reason}</span>}
                 </span>
@@ -77,6 +76,18 @@ export function GuardrailChecklist() {
           </ul>
         </>
       )}
+
+      <details className="toggles">
+        <summary>What each check does</summary>
+        <dl className="check-help">
+          {Object.entries(CHECK_DESCRIPTIONS).map(([name, desc]) => (
+            <div key={name}>
+              <dt className="mono">{name}</dt>
+              <dd>{desc}</dd>
+            </div>
+          ))}
+        </dl>
+      </details>
     </section>
   );
 }

@@ -58,7 +58,7 @@ export function InstructionBox() {
   return (
     <section className="panel instruction-panel" id="instruction">
       <div className="panel-head">
-        <h2 className="panel-title">Give an instruction</h2>
+        <h2 className="panel-title">Instruction</h2>
         <span className="pill pill--plain">AI reads it · guardrails decide</span>
       </div>
 
@@ -88,10 +88,7 @@ export function InstructionBox() {
         </button>
       </form>
 
-      <p className="instruction-help">
-        Type an order in plain English. The AI only reads your sentence into a stock, buy or sell, and a dollar amount;
-        whether anything happens is decided by the guardrails and live market data, never by the AI. Other languages work too.
-      </p>
+      <p className="instruction-help">The AI only reads your sentence; the guardrails decide. Other languages work too.</p>
 
       <div className="instruction-examples">
         <span className="examples-label">Try:</span>

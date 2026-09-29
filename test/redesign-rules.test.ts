@@ -44,12 +44,11 @@ describe("no fake decoration or false claims from the reference files", () => {
   });
 });
 
-describe("sidebar", () => {
-  it("every link jumps to a panel that exists on the page", () => {
-    const nav = readFileSync(join(ROOT, "components", "sidebar-nav.tsx"), "utf8");
-    const hrefs = [...nav.matchAll(/href: "#([a-z-]+)"/g)].map((m) => m[1]!);
-    expect(hrefs.length).toBeGreaterThan(3);
+describe("navigation", () => {
+  it("every in-page link on either page jumps to a section that exists", () => {
     const all = ui.map(({ src }) => src).join("\n");
+    const hrefs = [...all.matchAll(/href="\/?#([a-z-]+)"/g)].map((m) => m[1]!);
+    expect(hrefs.length).toBeGreaterThan(3);
     for (const id of hrefs) expect(all, `#${id}`).toMatch(new RegExp(`id="${id}"`));
   });
 });

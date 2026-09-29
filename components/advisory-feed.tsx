@@ -4,8 +4,8 @@ import type { Observation, PreviewOpportunity } from "./api-types";
 // real numbers — the server's observations (largest gap in the last hour,
 // market-status changes; lib/orchestration/observations.ts) and any
 // opportunity that clears the threshold (lib/llm/proposal-narrator.ts).
-// No AI writes them. Rendered inside the spread monitor's side column,
-// from the same /api/opportunities poll.
+// No AI writes them. A toggle inside the spread monitor, from the same
+// /api/opportunities poll.
 export function AdvisoryFeed({
   observations,
   opportunities,
@@ -16,10 +16,10 @@ export function AdvisoryFeed({
   loading: boolean;
 }) {
   return (
-    <section className="advisory" aria-labelledby="advisory-title">
-      <div className="panel-head panel-head--sub">
-        <h2 className="panel-title" id="advisory-title">Advisory Feed</h2>
-      </div>
+    <details className="advisory">
+      <summary>
+        <span>Advisory Feed</span> · {observations.length + opportunities.length} {observations.length + opportunities.length === 1 ? "line" : "lines"}
+      </summary>
       <p className="panel-sub">generated from fixed templates, not written by the AI</p>
 
       <div className="advisory-lines">
@@ -37,6 +37,6 @@ export function AdvisoryFeed({
           <p className="advisory-line advisory-line--quiet mono">{loading ? "connecting…" : "no opportunities currently clear the threshold."}</p>
         )}
       </div>
-    </section>
+    </details>
   );
 }

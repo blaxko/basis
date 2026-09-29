@@ -78,7 +78,7 @@ describe("PRD matches the code and the live site", () => {
 
   it("how-to-use covers the redesigned panels", () => {
     const howTo = read("docs/how-to-use.md");
-    for (const now of ["Cost breakdown", "Export CSV", "Limit:", "Sell $50 of MSFT", "Advisory Feed", "sidebar"]) expect(howTo).toContain(now);
+    for (const now of ["Cost breakdown", "Export CSV", "Limit:", "Sell $50 of MSFT", "Advisory Feed", "/app", "landing page"]) expect(howTo).toContain(now);
     expect(howTo).not.toContain("**Normal: empty**");
   });
 
@@ -135,8 +135,8 @@ describe("README and how-to-use match the code and the live site", () => {
 describe("the demo video link is updated in one step", () => {
   const MARK = /<!-- demo-video -->([\s\S]*?)<!-- \/demo-video -->/;
 
-  it("README and how-to-use each have exactly one marked video spot, matching start-here-content.ts", () => {
-    const content = read("components/start-here-content.ts");
+  it("README and how-to-use each have exactly one marked video spot, matching landing-content.ts", () => {
+    const content = read("components/landing-content.ts");
     const url = content.match(/DEMO_VIDEO_URL: string \| null = (null|"([^"]+)")/);
     expect(url).not.toBeNull();
     for (const doc of [read("README.md"), read("docs/how-to-use.md")]) {
@@ -149,13 +149,13 @@ describe("the demo video link is updated in one step", () => {
 
   it("`npm run set-demo-video <url>` updates all three places", () => {
     const dir = mkdtempSync(join(tmpdir(), "basis-video-"));
-    for (const f of ["README.md", "docs/how-to-use.md", "components/start-here-content.ts"]) {
+    for (const f of ["README.md", "docs/how-to-use.md", "components/landing-content.ts"]) {
       mkdirSync(join(dir, f, ".."), { recursive: true });
       copyFileSync(join(ROOT, f), join(dir, f));
     }
     const url = "https://youtu.be/EXAMPLE123";
     execFileSync(process.execPath, [join(ROOT, "scripts/set-demo-video.mjs"), url, "--root", dir]);
-    expect(readFileSync(join(dir, "components/start-here-content.ts"), "utf8")).toContain(`DEMO_VIDEO_URL: string | null = "${url}";`);
+    expect(readFileSync(join(dir, "components/landing-content.ts"), "utf8")).toContain(`DEMO_VIDEO_URL: string | null = "${url}";`);
     for (const f of ["README.md", "docs/how-to-use.md"]) {
       const inner = readFileSync(join(dir, f), "utf8").match(MARK)![1]!;
       expect(inner).toContain(`](${url})`);

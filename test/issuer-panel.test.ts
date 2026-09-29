@@ -50,9 +50,8 @@ describe("the panel", () => {
     expect(panel).toContain('id="issuers"');
     expect(panel).toContain('"/api/issuers/summary"');
   });
-  it("is on the page and in the sidebar", () => {
-    expect(readFileSync(join(ROOT, "app", "page.tsx"), "utf8")).toContain("<IssuerMonitor />");
-    expect(readFileSync(join(ROOT, "components", "sidebar-nav.tsx"), "utf8")).toContain('href: "#issuers"');
+  it("is on the dashboard", () => {
+    expect(readFileSync(join(ROOT, "app", "app", "page.tsx"), "utf8")).toContain("<IssuerMonitor />");
   });
   it("never keeps an earlier reading's price (no state beyond the poll)", () => {
     expect(panel).not.toMatch(/useState|useRef/);

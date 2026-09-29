@@ -11,7 +11,7 @@ const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", displ
 
 export const metadata: Metadata = {
   title: "Basis",
-  description: "Cross-pool gaps, counted only after every cost.",
+  description: "An arbitrage agent for tokenized stocks that knows when not to trade.",
 };
 
 export const viewport: Viewport = { themeColor: TOKENS.bg };
