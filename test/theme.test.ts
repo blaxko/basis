@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { BRAND, TOKENS, CONTRAST_PAIRS, contrastRatio, cssVariables } from "../components/theme";
+import { BRAND, SUPPORT, TOKENS, CONTRAST_PAIRS, contrastRatio, cssVariables } from "../components/theme";
 
 const root = join(__dirname, "..");
 
@@ -15,8 +15,17 @@ describe("palette", () => {
   it("uses BNB Chain's three brand colours exactly (bnbchain.org/en/brand-guidelines)", () => {
     expect(BRAND).toEqual({ yellow: "#F0B90B", nearBlack: "#0B0E11", white: "#FFFFFF" });
     expect(TOKENS.accent).toBe(BRAND.yellow);
-    expect(TOKENS.bg).toBe(BRAND.nearBlack);
     expect(TOKENS.text).toBe(BRAND.white);
+  });
+
+  it("surfaces and greys are the ones measured on bnbchain.org (computed styles, 2026-09-28)", () => {
+    expect(TOKENS.bg).toBe("#14151A");
+    expect(TOKENS.surface).toBe("#181A1E");
+    expect(TOKENS.subtle).toBe("#1E2026");
+    expect(TOKENS.line).toBe("#1E2026");
+    expect(TOKENS.body).toBe("#C4C5CB");
+    expect(TOKENS.muted).toBe("#8C8F9B");
+    expect(SUPPORT.light).toBe("#F7F7F8");
   });
 
   it("text on yellow (and on red and green) is near-black, never white", () => {
@@ -84,7 +93,8 @@ describe("brand usage rules", () => {
     }
   });
 
-  it("the footer says 'Built on BNB Chain' in plain text", () => {
-    expect(readFileSync(join(root, "app", "page.tsx"), "utf8")).toContain('<footer className="footer">Built on BNB Chain</footer>');
+  it("both pages' footers say 'Built on BNB Chain' in plain text", () => {
+    expect(readFileSync(join(root, "app", "app", "page.tsx"), "utf8")).toContain('<footer className="footer">Basis · Built on BNB Chain');
+    expect(readFileSync(join(root, "components", "landing-content.ts"), "utf8")).toContain('name: "Basis · Built on BNB Chain"');
   });
 });
