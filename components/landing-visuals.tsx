@@ -19,6 +19,19 @@ export function HeroBackdrop() {
   );
 }
 
+// Behind the whole landing page: soft light blobs fixed to the screen,
+// so every glass panel has light to blur as the page scrolls past. They
+// drift like the hero's.
+export function PageBackdrop() {
+  return (
+    <div className="l-page-bg" aria-hidden="true">
+      <div className="l-orb l-orb--p1" data-drift="3" />
+      <div className="l-orb l-orb--p2" data-drift="4" />
+      <div className="l-orb l-orb--p3" data-drift="5" />
+    </div>
+  );
+}
+
 // Faint rings behind the live card, echoing the two pools it reads.
 // Drawn inline; nothing here is to scale.
 export function PoolRings() {
