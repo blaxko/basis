@@ -1,9 +1,9 @@
-// The dashboard's colours, defined once. Every colour on the page comes
-// from here: the root layout injects TOKENS as CSS variables
-// (cssVariables()), globals.css uses only those variables, and the chart
-// reads TOKENS directly. test/theme.test.ts fails on a hex colour anywhere
-// else in app/ or components/, and checks every text/background pair
-// below against WCAG AA.
+// The site's colours, defined once, for both themes. Every colour on the
+// page comes from here: the root layout injects the tokens as CSS
+// variables (cssVariables()), globals.css and the chart use only those
+// variables. test/theme.test.ts fails on a hex colour anywhere else in
+// app/ or components/, and checks every text/background pair below
+// against WCAG AA in both themes.
 
 // BNB Chain's brand colours, from bnbchain.org/en/brand-guidelines
 // ("Colours", checked 2026-09-26). Colours only: the BNB Chain logo is not
@@ -35,6 +35,27 @@ export const SUPPORT = {
   red: "#FF5A6E", // block / fail
 } as const;
 
+// The light theme's own colours: white and very light surfaces with
+// near-black text. Yellow stays a fill only (with near-black text on it);
+// text, links and thin lines that are yellow in the dark theme are
+// near-black here. Green, red and the chart's gross-gap gold are darker so
+// they reach AA on white (4.5:1 for text, 3:1 for lines and icons).
+export const LIGHT = {
+  page: "#F4F5F7",
+  subtle: "#EEF0F3",
+  surface: "#FFFFFF",
+  interactive: "#E4E7EB",
+  body: "#2B3038",
+  grey: "#5B6270",
+  pending: "#555C69",
+  lineGrey: "#6B7280",
+  gridLine: "#E1E4E8",
+  line: "#E1E4E8",
+  green: "#05744A",
+  red: "#C3202F",
+  gold: "#8C6400", // the chart's gross-gap line
+} as const;
+
 // Translucent tones for hairline borders and tinted badge backgrounds.
 // Decorative only: never the only carrier of meaning, never behind text
 // that isn't checked on the opaque surface beneath.
@@ -62,6 +83,30 @@ export const ALPHA = {
   clear: "rgba(0,0,0,0)",
 } as const;
 
+// The same tones for the light theme. The glass is white at the same
+// density, over softer yellow light; its edges and hairlines are dark;
+// "accentLine" (thin lines) is near-black, never yellow, on light.
+export const LIGHT_ALPHA: { [K in keyof typeof ALPHA]: string } = {
+  hairline: "rgba(11,14,17,0.08)",
+  hairlineStrong: "rgba(11,14,17,0.16)",
+  accentTint: "rgba(240,185,11,0.16)",
+  accentLine: "rgba(11,14,17,0.28)",
+  passTint: "rgba(5,116,74,0.08)",
+  passLine: "rgba(5,116,74,0.35)",
+  failTint: "rgba(195,32,47,0.07)",
+  failLine: "rgba(195,32,47,0.40)",
+  glassFill: "rgba(255,255,255,0.62)", // GLASS_FILL_ALPHA below
+  glassEdge: "rgba(11,14,17,0.10)",
+  glassSheen: "rgba(255,255,255,0.55)",
+  glassSpecular: "rgba(255,255,255,0.85)",
+  barGlass: "rgba(244,245,247,0.78)",
+  accentGlow: "rgba(240,185,11,0.22)", // LIGHT_ACCENT_GLOW_ALPHA below
+  accentGlowSoft: "rgba(240,185,11,0.09)",
+  passGlow: "rgba(5,116,74,0.08)",
+  gridLine: "rgba(11,14,17,0.05)",
+  clear: "rgba(255,255,255,0)",
+};
+
 // What each colour means. Yellow is brand decoration only (accents, links,
 // the primary button) — it never signals a state. Pass is green, block is
 // red, and pending / warming up is neutral grey *plus* a dashed outline and
@@ -78,7 +123,8 @@ export const TOKENS = {
   border: BRAND.white,
   line: SUPPORT.subtle, // solid 1px hairlines: panel edges, top bar, footer
   light: SUPPORT.light,
-  accent: BRAND.yellow,
+  accent: BRAND.yellow, // fills: primary buttons, the active mode
+  accentInk: BRAND.yellow, // yellow as text, focus rings and thin lines (dark theme only)
   onAccent: BRAND.nearBlack, // text on yellow: never white
   link: BRAND.yellow,
   pass: SUPPORT.green,
@@ -96,16 +142,58 @@ export const TOKENS = {
 
 export type TokenName = keyof typeof TOKENS;
 
+export const LIGHT_TOKENS: { [K in TokenName]: string } = {
+  bg: LIGHT.page,
+  subtle: LIGHT.subtle,
+  surface: LIGHT.surface,
+  interactive: LIGHT.interactive,
+  text: BRAND.nearBlack,
+  body: LIGHT.body,
+  muted: LIGHT.grey,
+  border: BRAND.nearBlack,
+  line: LIGHT.line,
+  light: BRAND.nearBlack, // outline buttons: a dark outline on light
+  accent: BRAND.yellow, // fills only, always with near-black text
+  accentInk: BRAND.nearBlack, // never yellow text or thin lines on light
+  onAccent: BRAND.nearBlack,
+  link: BRAND.nearBlack, // links stay underlined
+  pass: LIGHT.green,
+  onPass: BRAND.white, // near-black on this darker green is under 4.5:1
+  fail: LIGHT.red,
+  onFail: BRAND.white,
+  pending: LIGHT.pending,
+  chartGross: LIGHT.gold,
+  chartNet: BRAND.nearBlack,
+  chartZero: LIGHT.lineGrey,
+  chartBand: LIGHT.red,
+  chartGrid: LIGHT.gridLine,
+  chartAxis: LIGHT.grey,
+};
+
+export type ThemeName = "dark" | "light";
+
 // Opacity of the red "doesn't clear costs" band over the panel surface.
 export const CHART_BAND_OPACITY = 0.14;
 
-const cssName = (name: string) => `--color-${name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
+// A visitor's manual choice, remembered in their browser. Without one the
+// site follows the device (prefers-color-scheme).
+export const THEME_STORAGE_KEY = "basis.theme";
 
-// ":root{--color-bg:#0B0E11;--color-on-accent:#0B0E11;…;--color-hairline:rgba(…)}"
+// Runs in <head> before the page paints, so a remembered choice never
+// flashes the other theme first. The device default needs no script: the
+// CSS below follows prefers-color-scheme.
+export const THEME_INIT_SCRIPT = `try{var t=localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)});if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}`;
+
+const cssName = (name: string) => `--color-${name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
+const declarations = (tokens: Record<string, string>, alpha: Record<string, string>, scheme: ThemeName) =>
+  [...Object.entries(tokens), ...Object.entries(alpha)].map(([name, value]) => `${cssName(name)}:${value}`).join(";") + `;color-scheme:${scheme}`;
+
+// Dark by default; light when the device prefers it (unless the visitor
+// chose dark), or when the visitor chose light.
 export function cssVariables(): string {
-  return `:root{${[...Object.entries(TOKENS), ...Object.entries(ALPHA)]
-    .map(([name, value]) => `${cssName(name)}:${value}`)
-    .join(";")}}`;
+  const dark = declarations(TOKENS, ALPHA, "dark");
+  const light = declarations(LIGHT_TOKENS, LIGHT_ALPHA, "light");
+  return `:root{${dark}}@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){${light}}}:root[data-theme="light"]{${light}}`;
 }
 
 // --- WCAG contrast ---------------------------------------------------------
@@ -140,44 +228,75 @@ export function blend(fg: string, bg: string, alpha: number): string {
 // this as well as on the plain surface.
 const GLASS_FILL_ALPHA = 0.62;
 const ACCENT_GLOW_ALPHA = 0.26;
+const LIGHT_ACCENT_GLOW_ALPHA = 0.22;
 export const GLASS_OVER_GLOW = blend(SUPPORT.surface, blend(BRAND.yellow, SUPPORT.page, ACCENT_GLOW_ALPHA), GLASS_FILL_ALPHA);
+export const LIGHT_GLASS_OVER_GLOW = blend(LIGHT.surface, blend(BRAND.yellow, LIGHT.page, LIGHT_ACCENT_GLOW_ALPHA), GLASS_FILL_ALPHA);
 
-// Every text-on-background pair the dashboard uses. Each must reach 4.5:1
+type Tokens = { [K in TokenName]: string };
+type Pair = { fg: string; bg: string; where: string };
+
+// Every text-on-background pair the site uses. Each must reach 4.5:1
 // (WCAG AA, normal text). Disabled controls are dimmed and are exempt
 // under WCAG, so they aren't listed.
-export const CONTRAST_PAIRS: ReadonlyArray<{ fg: string; bg: string; where: string }> = [
-  { fg: TOKENS.text, bg: TOKENS.bg, where: "page text and landing headings; the ledger's terminal viewport; the instruction input; outline buttons" },
-  { fg: TOKENS.text, bg: TOKENS.surface, where: "panel headings, metric values, chart tooltip" },
-  { fg: TOKENS.text, bg: TOKENS.subtle, where: "chip text; toggle labels; result box headline" },
-  { fg: TOKENS.text, bg: TOKENS.interactive, where: "hovered rows and buttons" },
-  { fg: TOKENS.body, bg: TOKENS.surface, where: "body text in panels: cost table, guardrail rows" },
-  { fg: TOKENS.body, bg: TOKENS.bg, where: "ledger rows in the terminal viewport; landing body text" },
-  { fg: TOKENS.body, bg: TOKENS.subtle, where: "status chips, example pills, result detail" },
-  { fg: TOKENS.muted, bg: TOKENS.bg, where: "secondary text on the page background: status strip, footers, landing notes" },
-  { fg: TOKENS.muted, bg: TOKENS.surface, where: "secondary text in panels: labels, help text, limits, axis labels" },
-  { fg: TOKENS.muted, bg: TOKENS.subtle, where: "inactive mode buttons, chip labels" },
-  { fg: TOKENS.muted, bg: TOKENS.interactive, where: "secondary text on hovered rows" },
-  { fg: TOKENS.pending, bg: TOKENS.surface, where: "[PENDING] / [WARMING UP] marks and the WARMING UP badge" },
-  { fg: TOKENS.pending, bg: TOKENS.bg, where: "the 'can't judge it yet' result under the instruction box" },
-  { fg: TOKENS.pending, bg: TOKENS.subtle, where: "pending text in result boxes" },
-  { fg: TOKENS.pass, bg: TOKENS.surface, where: "[PASS] marks, the LIVE tag, positive net edge" },
-  { fg: TOKENS.pass, bg: TOKENS.bg, where: "positive values in the ledger" },
-  { fg: TOKENS.pass, bg: TOKENS.subtle, where: "status dots' labels in the ribbon" },
-  { fg: TOKENS.fail, bg: TOKENS.surface, where: "[FAIL] marks, BLOCKED badge, negative net edge, error messages" },
-  { fg: TOKENS.fail, bg: TOKENS.bg, where: "negative values and errors in the ledger" },
-  { fg: TOKENS.fail, bg: TOKENS.subtle, where: "errors in result boxes" },
-  { fg: TOKENS.accent, bg: TOKENS.surface, where: "yellow text in panels and landing cards: links, step numbers, tags" },
-  { fg: TOKENS.accent, bg: TOKENS.bg, where: "the prompt caret; links on the page background" },
-  { fg: TOKENS.accent, bg: TOKENS.subtle, where: "yellow text in toggles and chips" },
-  { fg: TOKENS.onAccent, bg: TOKENS.accent, where: "near-black text on yellow: primary buttons, Send, the active mode button" },
-  { fg: TOKENS.onPass, bg: TOKENS.pass, where: "near-black text on green: the LIVE data tag" },
-  { fg: TOKENS.onFail, bg: TOKENS.fail, where: "near-black text on red: the active LIVE killswitch button (local only)" },
-  { fg: TOKENS.text, bg: GLASS_OVER_GLOW, where: "prices and net edge on the hero's glass card; headings and values on glass cards" },
-  { fg: TOKENS.body, bg: GLASS_OVER_GLOW, where: "row labels on the hero's glass card; body text on glass cards, the table and the FAQ" },
-  { fg: TOKENS.muted, bg: GLASS_OVER_GLOW, where: "labels, time and footnote on the hero's glass card; table headers and labels on glass" },
-  { fg: TOKENS.accent, bg: GLASS_OVER_GLOW, where: "step numbers and tags on glass cards" },
-  { fg: TOKENS.pass, bg: GLASS_OVER_GLOW, where: "positive net edge on the hero's glass card" },
-  { fg: TOKENS.fail, bg: GLASS_OVER_GLOW, where: "costs and negative net edge on the hero's glass card" },
-  { fg: TOKENS.chartBand, bg: blend(TOKENS.chartBand, TOKENS.surface, CHART_BAND_OPACITY), where: "the band's label 'below zero: doesn't clear costs'" },
-  { fg: TOKENS.text, bg: blend(TOKENS.chartBand, TOKENS.surface, CHART_BAND_OPACITY), where: "the zero-line label where it sits over the band" },
-];
+function textPairs(T: Tokens, glass: string): Pair[] {
+  return [
+    { fg: T.text, bg: T.bg, where: "page text and landing headings; the ledger's terminal viewport; the instruction input; outline buttons" },
+    { fg: T.text, bg: T.surface, where: "panel headings, metric values, chart tooltip, the menu" },
+    { fg: T.text, bg: T.subtle, where: "chip text; toggle labels; result box headline" },
+    { fg: T.text, bg: T.interactive, where: "hovered rows, buttons and menu items" },
+    { fg: T.body, bg: T.surface, where: "body text in panels: cost table, guardrail rows" },
+    { fg: T.body, bg: T.bg, where: "ledger rows in the terminal viewport; landing body text" },
+    { fg: T.body, bg: T.subtle, where: "status chips, example pills, result detail" },
+    { fg: T.muted, bg: T.bg, where: "secondary text on the page background: status strip, footers, landing notes" },
+    { fg: T.muted, bg: T.surface, where: "secondary text in panels: labels, help text, limits, axis labels" },
+    { fg: T.muted, bg: T.subtle, where: "inactive mode buttons, chip labels" },
+    { fg: T.muted, bg: T.interactive, where: "secondary text on hovered rows" },
+    { fg: T.pending, bg: T.surface, where: "[PENDING] / [WARMING UP] marks and the WARMING UP badge" },
+    { fg: T.pending, bg: T.bg, where: "the 'can't judge it yet' result under the instruction box" },
+    { fg: T.pending, bg: T.subtle, where: "pending text in result boxes" },
+    { fg: T.pass, bg: T.surface, where: "[PASS] marks, the LIVE tag, positive net edge" },
+    { fg: T.pass, bg: T.bg, where: "positive values in the ledger" },
+    { fg: T.pass, bg: T.subtle, where: "status dots' labels in the ribbon" },
+    { fg: T.fail, bg: T.surface, where: "[FAIL] marks, BLOCKED badge, negative net edge, error messages" },
+    { fg: T.fail, bg: T.bg, where: "negative values and errors in the ledger" },
+    { fg: T.fail, bg: T.subtle, where: "errors in result boxes" },
+    { fg: T.accentInk, bg: T.surface, where: "accent text in panels and landing cards: step numbers, tags" },
+    { fg: T.accentInk, bg: T.bg, where: "the prompt caret on the page background" },
+    { fg: T.accentInk, bg: T.subtle, where: "accent text in toggles and chips" },
+    { fg: T.link, bg: T.bg, where: "links on the page background" },
+    { fg: T.link, bg: T.surface, where: "links in panels" },
+    { fg: T.onAccent, bg: T.accent, where: "text on yellow: primary buttons, Send, the active mode button" },
+    { fg: T.onPass, bg: T.pass, where: "text on green: the LIVE data tag" },
+    { fg: T.onFail, bg: T.fail, where: "text on red: the active LIVE mode button (local only)" },
+    { fg: T.text, bg: glass, where: "prices and net edge on the hero's glass card; headings and values on glass cards" },
+    { fg: T.body, bg: glass, where: "row labels on the hero's glass card; body text on glass cards, the table and the FAQ" },
+    { fg: T.muted, bg: glass, where: "labels, time and footnote on the hero's glass card; table headers and labels on glass" },
+    { fg: T.accentInk, bg: glass, where: "step numbers and tags on glass cards" },
+    { fg: T.pass, bg: glass, where: "positive net edge on the hero's glass card" },
+    { fg: T.fail, bg: glass, where: "costs and negative net edge on the hero's glass card" },
+    { fg: T.chartBand, bg: blend(T.chartBand, T.surface, CHART_BAND_OPACITY), where: "the band's label 'below zero: doesn't clear costs'" },
+    { fg: T.text, bg: blend(T.chartBand, T.surface, CHART_BAND_OPACITY), where: "the zero-line label where it sits over the band" },
+  ];
+}
+
+// Lines and icons (WCAG 1.4.11, 3:1): the chart's lines, status dots, the
+// focus ring and the header's icon buttons.
+function graphicPairs(T: Tokens): Pair[] {
+  return [
+    { fg: T.chartGross, bg: T.surface, where: "the chart's gross-gap line" },
+    { fg: T.chartNet, bg: T.surface, where: "the chart's net-edge line" },
+    { fg: T.chartZero, bg: T.surface, where: "the chart's zero line" },
+    { fg: T.chartNet, bg: blend(T.chartBand, T.surface, CHART_BAND_OPACITY), where: "the net-edge line over the red band" },
+    { fg: T.pass, bg: T.bg, where: "green status dots" },
+    { fg: T.fail, bg: T.bg, where: "red status dots" },
+    { fg: T.pending, bg: T.bg, where: "grey dashed status dots" },
+    { fg: T.accentInk, bg: T.bg, where: "the focus ring" },
+    { fg: T.text, bg: T.bg, where: "the theme and menu icons" },
+    { fg: T.light, bg: T.bg, where: "outline button borders" },
+  ];
+}
+
+export const CONTRAST_PAIRS: ReadonlyArray<Pair> = textPairs(TOKENS, GLASS_OVER_GLOW);
+export const LIGHT_CONTRAST_PAIRS: ReadonlyArray<Pair> = textPairs(LIGHT_TOKENS, LIGHT_GLASS_OVER_GLOW);
+export const GRAPHIC_PAIRS: ReadonlyArray<Pair> = graphicPairs(TOKENS);
+export const LIGHT_GRAPHIC_PAIRS: ReadonlyArray<Pair> = graphicPairs(LIGHT_TOKENS);

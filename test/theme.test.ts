@@ -1,7 +1,21 @@
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { BRAND, SUPPORT, TOKENS, CONTRAST_PAIRS, contrastRatio, cssVariables } from "../components/theme";
+import {
+  BRAND,
+  SUPPORT,
+  TOKENS,
+  LIGHT_TOKENS,
+  CONTRAST_PAIRS,
+  LIGHT_CONTRAST_PAIRS,
+  GRAPHIC_PAIRS,
+  LIGHT_GRAPHIC_PAIRS,
+  THEME_INIT_SCRIPT,
+  THEME_STORAGE_KEY,
+  contrastRatio,
+  relativeLuminance,
+  cssVariables,
+} from "../components/theme";
 
 const root = join(__dirname, "..");
 
@@ -28,8 +42,9 @@ describe("palette", () => {
     expect(SUPPORT.light).toBe("#F7F7F8");
   });
 
-  it("text on yellow (and on red and green) is near-black, never white", () => {
+  it("text on yellow is near-black in both themes; on red and green it is near-black in dark (white on the darker light-theme green and red)", () => {
     expect(TOKENS.onAccent).toBe(BRAND.nearBlack);
+    expect(LIGHT_TOKENS.onAccent).toBe(BRAND.nearBlack);
     expect(TOKENS.onPass).toBe(BRAND.nearBlack);
     expect(TOKENS.onFail).toBe(BRAND.nearBlack);
   });
@@ -71,6 +86,51 @@ describe("colours are defined once", () => {
     expect(readFileSync(join(root, "app", "layout.tsx"), "utf8")).toContain("<style>{cssVariables()}</style>");
     expect(cssVariables()).toContain("--color-on-accent:#0B0E11");
   });
+});
+
+describe("light theme", () => {
+  it("has the same tokens as the dark theme", () => {
+    expect(Object.keys(LIGHT_TOKENS).sort()).toEqual(Object.keys(TOKENS).sort());
+  });
+
+  it("white or very light surfaces, near-black text", () => {
+    for (const k of ["bg", "surface", "subtle", "interactive"] as const) expect(relativeLuminance(LIGHT_TOKENS[k]), k).toBeGreaterThan(0.75);
+    expect(LIGHT_TOKENS.text).toBe(BRAND.nearBlack);
+  });
+
+  it("yellow only as a fill with dark text: never as text, links or thin lines", () => {
+    expect(LIGHT_TOKENS.accent).toBe(BRAND.yellow);
+    expect(LIGHT_TOKENS.onAccent).toBe(BRAND.nearBlack);
+    for (const k of ["accentInk", "link", "text", "body", "muted", "light", "chartNet", "chartZero", "chartGrid", "chartAxis"] as const) {
+      expect(LIGHT_TOKENS[k], k).not.toBe(BRAND.yellow);
+    }
+    // The CSS never uses the fill colour for text, borders or outlines.
+    const css = readFileSync(join(root, "app", "globals.css"), "utf8");
+    expect(css).not.toMatch(/(^|[^-])(color|border(-[a-z]+)?|outline|stroke):[^;]*var\(--color-accent\)/m);
+  });
+
+  it("the page follows the device, a remembered choice wins, and it is set before paint", () => {
+    const css = cssVariables();
+    expect(css).toContain("@media (prefers-color-scheme: light){:root:not([data-theme=\"dark\"]){");
+    expect(css).toContain(":root[data-theme=\"light\"]{");
+    expect(css).toContain("color-scheme:light");
+    expect(THEME_INIT_SCRIPT).toContain(`localStorage.getItem("${THEME_STORAGE_KEY}")`);
+    const layout = readFileSync(join(root, "app", "layout.tsx"), "utf8");
+    expect(layout).toMatch(/<head>[\s\S]*THEME_INIT_SCRIPT[\s\S]*<\/head>/);
+  });
+});
+
+describe("contrast (WCAG AA), both themes", () => {
+  it.each(LIGHT_CONTRAST_PAIRS.map((p) => [p.where, p.fg, p.bg] as const))("light text, %s: %s on %s", (_where, fg, bg) => {
+    expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it.each([...GRAPHIC_PAIRS.map((p) => ["dark", p.where, p.fg, p.bg] as const), ...LIGHT_GRAPHIC_PAIRS.map((p) => ["light", p.where, p.fg, p.bg] as const)])(
+    "%s lines and icons, %s: %s on %s (3:1)",
+    (_theme, _where, fg, bg) => {
+      expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(3);
+    }
+  );
 });
 
 describe("contrast (WCAG AA, 4.5:1 for normal text)", () => {

@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { cssVariables, TOKENS } from "../components/theme";
+import { cssVariables, LIGHT_TOKENS, THEME_INIT_SCRIPT, TOKENS } from "../components/theme";
 
 // Fonts are self-hosted by next/font (downloaded at build time, served from
 // this site) with size-adjusted fallbacks, so text doesn't jump when they
@@ -14,14 +14,22 @@ export const metadata: Metadata = {
   description: "An arbitrage agent for tokenized stocks that knows when not to trade.",
 };
 
-export const viewport: Viewport = { themeColor: TOKENS.bg };
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: LIGHT_TOKENS.bg },
+    { media: "(prefers-color-scheme: dark)", color: TOKENS.bg },
+  ],
+};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${inter.variable} ${mono.variable}`} suppressHydrationWarning>
       <head>
-        {/* The palette, from components/theme.ts — the only place colours are defined. */}
+        {/* The palette, both themes, from components/theme.ts — the only place colours are defined. */}
         <style>{cssVariables()}</style>
+        {/* A remembered light/dark choice is applied before the page paints
+            (no flash); without one, the CSS follows the device. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body>{children}</body>
     </html>
