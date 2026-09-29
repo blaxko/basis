@@ -13,7 +13,7 @@ import type { OpportunitiesResponse } from "../components/api-types";
 
 const ROOT = join(__dirname, "..");
 const read = (...p: string[]) => readFileSync(join(ROOT, ...p), "utf8");
-const LANDING_FILES = ["app/page.tsx", "components/landing-content.ts", "components/landing-live-reading.tsx", "components/live-reading-view.ts"];
+const LANDING_FILES = ["app/page.tsx", "components/landing-content.ts", "components/landing-live-reading.tsx", "components/live-reading-view.ts", "components/landing-visuals.tsx", "components/landing-motion.tsx"];
 const landingSrc = LANDING_FILES.map((f) => read(f)).join("\n");
 const landingText = JSON.stringify(LANDING);
 
