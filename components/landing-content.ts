@@ -22,6 +22,17 @@ export const LANDING = {
     videoLabel: "Demo video",
     videoPending: "Demo video coming soon",
   },
+  // The strip under the hero: the rules, restated from the sections below.
+  ticker: [
+    "Both pools read every 30 s",
+    "0.25% + 1% in fees to clear first",
+    "Six guardrails, one failure blocks",
+    "$500 per trade",
+    "$2,000 per UTC day",
+    "Dry run returns at least 98%",
+    "Every decision logged, including \"no\"",
+    "Public demo: read-only",
+  ],
   problem: {
     title: "A price gap isn't a profit.",
     body: [

@@ -47,6 +47,19 @@ export const ALPHA = {
   passLine: "rgba(14,203,129,0.35)",
   failTint: "rgba(255,90,110,0.10)",
   failLine: "rgba(255,90,110,0.40)",
+  // The landing page's decoration: the hero's liquid-glass card and top
+  // bar, the light blobs behind them, and the background grid. The glass
+  // fill is dense enough that text on it reads as on the surface colour.
+  glassFill: "rgba(24,26,30,0.62)", // GLASS_FILL_ALPHA below,
+  glassEdge: "rgba(255,255,255,0.14)",
+  glassSheen: "rgba(255,255,255,0.10)",
+  glassSpecular: "rgba(255,255,255,0.22)",
+  barGlass: "rgba(20,21,26,0.72)",
+  accentGlow: "rgba(240,185,11,0.26)", // ACCENT_GLOW_ALPHA below,
+  accentGlowSoft: "rgba(240,185,11,0.08)",
+  passGlow: "rgba(14,203,129,0.14)",
+  gridLine: "rgba(255,255,255,0.045)",
+  clear: "rgba(0,0,0,0)",
 } as const;
 
 // What each colour means. Yellow is brand decoration only (accents, links,
@@ -121,6 +134,13 @@ export function blend(fg: string, bg: string, alpha: number): string {
   return "#" + f.map((x, i) => Math.round(x * alpha + b[i]! * (1 - alpha)).toString(16).padStart(2, "0")).join("");
 }
 
+// The hero's glass card at its brightest: the glass fill over the densest
+// point of the yellow light blob behind it. Text on the card is checked
+// on this as well as on the plain surface.
+const GLASS_FILL_ALPHA = 0.62;
+const ACCENT_GLOW_ALPHA = 0.26;
+export const GLASS_OVER_GLOW = blend(SUPPORT.surface, blend(BRAND.yellow, SUPPORT.page, ACCENT_GLOW_ALPHA), GLASS_FILL_ALPHA);
+
 // Every text-on-background pair the dashboard uses. Each must reach 4.5:1
 // (WCAG AA, normal text). Disabled controls are dimmed and are exempt
 // under WCAG, so they aren't listed.
@@ -151,6 +171,11 @@ export const CONTRAST_PAIRS: ReadonlyArray<{ fg: string; bg: string; where: stri
   { fg: TOKENS.onAccent, bg: TOKENS.accent, where: "near-black text on yellow: primary buttons, Send, the active mode button" },
   { fg: TOKENS.onPass, bg: TOKENS.pass, where: "near-black text on green: the LIVE data tag" },
   { fg: TOKENS.onFail, bg: TOKENS.fail, where: "near-black text on red: the active LIVE killswitch button (local only)" },
+  { fg: TOKENS.text, bg: GLASS_OVER_GLOW, where: "prices and net edge on the hero's glass card" },
+  { fg: TOKENS.body, bg: GLASS_OVER_GLOW, where: "row labels on the hero's glass card" },
+  { fg: TOKENS.muted, bg: GLASS_OVER_GLOW, where: "labels, time and footnote on the hero's glass card" },
+  { fg: TOKENS.pass, bg: GLASS_OVER_GLOW, where: "positive net edge on the hero's glass card" },
+  { fg: TOKENS.fail, bg: GLASS_OVER_GLOW, where: "costs and negative net edge on the hero's glass card" },
   { fg: TOKENS.chartBand, bg: blend(TOKENS.chartBand, TOKENS.surface, CHART_BAND_OPACITY), where: "the band's label 'below zero: doesn't clear costs'" },
   { fg: TOKENS.text, bg: blend(TOKENS.chartBand, TOKENS.surface, CHART_BAND_OPACITY), where: "the zero-line label where it sits over the band" },
 ];

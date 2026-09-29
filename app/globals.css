@@ -1201,7 +1201,7 @@ details.toggles > :not(summary) {
    bnbchain.org's patterns: a 1200px container, generous section spacing,
    large bold headings in sentence case, cards on the surface colour with a 1px
    hairline, 8px-radius buttons, pill-shaped yellow-outlined tags. No
-   animation, no images. */
+   images. The decoration and motion are in "Landing visuals" below. */
 
 .landing {
   font-size: 16px;
@@ -1651,6 +1651,341 @@ details.toggles > :not(summary) {
 }
 
 /* --- End landing page --- */
+
+/* --- Landing visuals ---
+   Decoration only, behind or around the content above: a line grid and
+   drifting light blobs behind the hero, a liquid-glass live card, the two
+   pool rings, the fact strip, a glass top bar, pointer-lit cards and
+   rise-in on scroll. Motion is CSS transitions driven by
+   components/landing-motion.tsx; no keyframes. Everything below
+   "html.motion-ok" only applies when the visitor hasn't asked for reduced
+   motion and the script is running. */
+
+.landing {
+  position: relative;
+  overflow-x: clip;
+}
+
+.landing .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.landing .topbar.is-scrolled {
+  background: var(--color-bar-glass);
+  border-bottom-color: var(--color-glass-edge);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(160%);
+}
+
+.l-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
+.l-hero-bg {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.l-hero-grid-lines {
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(var(--color-grid-line) 1px, var(--color-clear) 1px),
+    linear-gradient(90deg, var(--color-grid-line) 1px, var(--color-clear) 1px);
+  background-size: 56px 56px;
+  background-position: center top;
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 60% 40%, var(--color-bg) 30%, var(--color-clear) 80%);
+  mask-image: radial-gradient(ellipse 70% 60% at 60% 40%, var(--color-bg) 30%, var(--color-clear) 80%);
+}
+
+/* `translate` is the slow drift (set by the script), `transform` the
+   lean toward the pointer, deeper blobs leaning further. */
+.l-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  --depth: 24px;
+  transform: translate3d(calc(var(--px, 0) * var(--depth)), calc(var(--py, 0) * var(--depth)), 0);
+  transition: translate 14s ease-in-out, transform 1.4s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform, translate;
+}
+
+.l-orb--a {
+  width: 360px;
+  height: 360px;
+  right: 4%;
+  top: 12%;
+  background: radial-gradient(circle, var(--color-accent-glow), var(--color-clear) 70%);
+}
+
+.l-orb--b {
+  --depth: 40px;
+  width: 280px;
+  height: 280px;
+  right: 22%;
+  top: 46%;
+  background: radial-gradient(circle, var(--color-pass-glow), var(--color-clear) 70%);
+}
+
+.l-orb--c {
+  --depth: 12px;
+  width: 420px;
+  height: 420px;
+  left: -140px;
+  top: -120px;
+  background: radial-gradient(circle, var(--color-accent-glow-soft), var(--color-clear) 70%);
+}
+
+/* The hero card column: the pool rings sit behind the glass card. */
+.l-hero-card {
+  position: relative;
+}
+
+.l-rings {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 150%;
+  max-width: 640px;
+  transform: translate(-50%, -50%);
+  z-index: -1;
+  pointer-events: none;
+}
+
+.l-ring {
+  fill: none;
+  stroke: var(--color-hairline);
+  stroke-width: 1;
+}
+
+.l-ring--outer {
+  stroke: var(--color-accent-line);
+  stroke-opacity: 0.5;
+}
+
+.l-ring--dash {
+  stroke-dasharray: 2 8;
+  stroke: var(--color-hairline-strong);
+}
+
+/* Liquid glass: a frosted, colour-lifting fill over the blobs, a bright
+   rim that fades around the edge, an inner sheen from the top, and a
+   specular highlight that follows the pointer (--gx, --gy). */
+.l-hero .live-card {
+  position: relative;
+  isolation: isolate;
+  background: var(--color-glass-fill);
+  border-color: var(--color-glass-edge);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  box-shadow: inset 0 1px 0 var(--color-glass-specular), inset 0 -1px 0 var(--color-hairline),
+    0 24px 60px -24px var(--color-accent-glow-soft), 0 2px 12px -4px var(--color-bg);
+  overflow: hidden;
+}
+
+.l-hero .live-card::before,
+.l-hero .live-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.l-hero .live-card::before {
+  background: linear-gradient(160deg, var(--color-glass-sheen), var(--color-clear) 38%),
+    radial-gradient(420px circle at var(--gx, 70%) var(--gy, 0%), var(--color-glass-sheen), var(--color-clear) 60%);
+  transition: opacity 0.4s ease;
+}
+
+.l-hero .live-card::after {
+  padding: 1px;
+  background: linear-gradient(140deg, var(--color-glass-specular), var(--color-clear) 30%, var(--color-clear) 65%, var(--color-accent-line));
+  -webkit-mask: linear-gradient(var(--color-bg), var(--color-bg)) content-box, linear-gradient(var(--color-bg), var(--color-bg));
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(var(--color-bg), var(--color-bg)) content-box exclude, linear-gradient(var(--color-bg), var(--color-bg));
+}
+
+/* Without backdrop-filter, the card falls back to the solid surface. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .l-hero .live-card {
+    background: var(--color-surface);
+  }
+}
+
+/* The fact strip under the hero. */
+.l-ticker {
+  margin-top: 56px;
+  border-top: 1px solid var(--color-line);
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, var(--color-clear), var(--color-bg) 8%, var(--color-bg) 92%, var(--color-clear));
+  mask-image: linear-gradient(90deg, var(--color-clear), var(--color-bg) 8%, var(--color-bg) 92%, var(--color-clear));
+}
+
+.l-ticker-track {
+  display: flex;
+  width: max-content;
+  will-change: transform;
+}
+
+.l-ticker-list {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 16px 0;
+}
+
+.l-ticker-list li {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 24px;
+  font-size: 13px;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.l-ticker-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+
+/* Cards: a soft light under the pointer (--tx, --ty) and a lift on hover. */
+.landing .l-tile {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  transition: border-color 0.25s ease, transform 0.25s ease;
+}
+
+.landing .l-tile::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(260px circle at var(--tx, 50%) var(--ty, 0%), var(--color-accent-glow-soft), var(--color-clear) 70%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.landing .l-tile:hover {
+  border-color: var(--color-accent-line);
+  transform: translateY(-2px);
+}
+
+.landing .l-tile:hover::before {
+  opacity: 1;
+}
+
+.btn {
+  transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.landing .btn--primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px -8px var(--color-accent-glow);
+}
+
+/* The five steps: a line that draws across them as they come into view. */
+@media (min-width: 900px) {
+  .landing .l-steps {
+    position: relative;
+  }
+
+  .landing .l-steps::before {
+    content: "";
+    position: absolute;
+    left: 20px;
+    right: 20px;
+    top: -14px;
+    height: 1px;
+    background: linear-gradient(90deg, var(--color-accent-line), var(--color-accent), var(--color-accent-line));
+    transform-origin: left center;
+  }
+
+  html.motion-ok .landing .l-steps::before {
+    transform: scaleX(0);
+    transition: transform 1.2s cubic-bezier(0.22, 1, 0.36, 1) 0.2s;
+  }
+
+  html.motion-ok .landing .l-steps.is-in::before {
+    transform: scaleX(1);
+  }
+}
+
+/* Hero entrance, then rise-in on scroll (children of a revealed grid or
+   list follow one another, --i steps of 80ms). */
+html.motion-ok [data-hero] {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.9s ease, transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html.motion-ok [data-hero] + [data-hero] {
+  transition-delay: 0.15s;
+}
+
+html.motion-ok.hero-in [data-hero] {
+  opacity: 1;
+  transform: none;
+}
+
+html.motion-ok [data-reveal] {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.8s ease, transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html.motion-ok [data-reveal].is-in {
+  opacity: 1;
+  transform: none;
+}
+
+html.motion-ok .l-steps[data-reveal],
+html.motion-ok .l-grid[data-reveal] {
+  opacity: 1;
+  transform: none;
+}
+
+html.motion-ok .l-steps[data-reveal] > .l-tile,
+html.motion-ok .l-grid[data-reveal] > .l-tile {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.7s ease calc(var(--i, 0) * 80ms), transform 0.7s cubic-bezier(0.22, 1, 0.36, 1) calc(var(--i, 0) * 80ms),
+    border-color 0.25s ease;
+}
+
+html.motion-ok .l-steps.is-in > .l-tile,
+html.motion-ok .l-grid.is-in > .l-tile {
+  opacity: 1;
+  transform: none;
+}
+
+html.motion-ok .l-steps.is-in > .l-tile:hover,
+html.motion-ok .l-grid.is-in > .l-tile:hover {
+  transform: translateY(-2px);
+  transition-delay: 0s;
+}
+
+@media (min-width: 1024px) {
+  .l-ticker {
+    margin-top: 88px;
+  }
+}
+
+/* --- End landing visuals --- */
+
 
 /* --- Motion --- */
 
