@@ -43,7 +43,7 @@ a {
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-accent-ink);
   outline-offset: 2px;
 }
 
@@ -115,6 +115,97 @@ pre {
 
 .topnav a:hover {
   color: var(--color-text);
+}
+
+/* The header's right-hand group: (landing) the dashboard button, then the
+   theme switch and the section menu, on both pages at every width. */
+.topbar-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-actions .topbar-cta {
+  margin-left: 0;
+}
+
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  background: var(--color-interactive);
+}
+
+.site-menu {
+  position: relative;
+}
+
+.site-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 50;
+  min-width: 220px;
+  max-width: calc(100vw - 32px);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px -12px var(--color-clear), 0 12px 32px -8px var(--color-hairline-strong);
+  padding: 6px;
+}
+
+.site-menu-panel[hidden] {
+  display: none;
+}
+
+.site-menu-panel ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.site-menu-panel a {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: var(--color-text);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.site-menu-panel a:hover,
+.site-menu-panel a:focus-visible {
+  background: var(--color-interactive);
+}
+
+/* Phones: the landing page's dashboard button, the theme switch and the
+   menu fit at 375 px beside the wordmark. */
+@media (max-width: 480px) {
+  .topbar-inner {
+    gap: 12px;
+  }
+
+  .topbar-actions .topbar-cta {
+    min-height: 40px;
+    padding: 0 12px;
+    font-size: 13px;
+  }
 }
 
 .btn {
@@ -403,15 +494,17 @@ pre {
 
 /* The chips keep their row's height while /api/status loads (no layout
    shift): one scrolling row on phones, wrapping on wider screens. */
+/* Chips wrap, so none is ever clipped. The row keeps room for three lines
+   on phones and one on wider screens, so nothing below moves when
+   /api/status answers (no layout shift). */
 .status-row {
   width: 100%;
   display: flex;
   gap: 4px 16px;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  height: 22px;
+  flex-wrap: wrap;
+  min-height: 62px;
+  align-content: flex-start;
   align-items: center;
-  scrollbar-width: none;
 }
 
 .status-chip {
@@ -455,6 +548,10 @@ pre {
     padding-right: 32px;
   }
 
+  .status-row {
+    min-height: 20px;
+  }
+
   .strip-inner {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
@@ -489,11 +586,11 @@ pre {
 }
 
 .prompt:focus-within {
-  border-color: var(--color-accent);
+  border-color: var(--color-accent-ink);
 }
 
 .prompt-caret {
-  color: var(--color-accent);
+  color: var(--color-accent-ink);
   font-size: 15px;
 }
 
@@ -1106,7 +1203,7 @@ details.toggles > :not(summary) {
 
 .chip-btn--on {
   color: var(--color-text);
-  border-color: var(--color-accent);
+  border-color: var(--color-accent-ink);
 }
 
 .chip-btn:disabled {
@@ -1185,8 +1282,14 @@ details.toggles > :not(summary) {
   .btn,
   .toggles summary,
   details.toggles > summary,
-  .l-faq summary {
+  .l-faq summary,
+  .site-menu-panel a {
     min-height: var(--tap);
+  }
+
+  .icon-btn {
+    width: var(--tap);
+    height: var(--tap);
   }
 
   .topnav a,
@@ -1268,9 +1371,23 @@ details.toggles > :not(summary) {
   border: 1px solid var(--color-line);
   border-radius: 24px;
   padding: 24px;
-  min-height: 312px;
+  /* Its loaded height at each width (measured), so the card and the rings
+     centred on it don't move when the numbers arrive. */
+  min-height: 348px;
   display: flex;
   flex-direction: column;
+}
+
+@media (max-width: 389px) {
+  .live-card {
+    min-height: 384px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .live-card {
+    min-height: 364px;
+  }
 }
 
 .live-head {
@@ -1432,13 +1549,13 @@ details.toggles > :not(summary) {
 
 .l-step {
   font-size: 12px;
-  color: var(--color-accent);
+  color: var(--color-accent-ink);
 }
 
 .l-tag {
   display: inline-block;
-  border: 1px solid var(--color-accent);
-  color: var(--color-accent);
+  border: 1px solid var(--color-accent-ink);
+  color: var(--color-accent-ink);
   border-radius: 40px;
   font-size: 12px;
   line-height: 16px;
@@ -1542,7 +1659,7 @@ details.toggles > :not(summary) {
   top: 12px;
   width: 8px;
   height: 1px;
-  background: var(--color-accent);
+  background: var(--color-accent-ink);
 }
 
 .l-faq {
@@ -1942,7 +2059,7 @@ details.toggles > :not(summary) {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--color-accent);
+  background: var(--color-accent-ink);
 }
 
 /* Cards: a soft light under the pointer (--tx, --ty) and a lift on hover. */
@@ -1995,7 +2112,7 @@ details.toggles > :not(summary) {
     right: 20px;
     top: -14px;
     height: 1px;
-    background: linear-gradient(90deg, var(--color-accent-line), var(--color-accent), var(--color-accent-line));
+    background: linear-gradient(90deg, var(--color-accent-line), var(--color-accent-ink), var(--color-accent-line));
     transform-origin: left center;
   }
 

@@ -2,16 +2,32 @@
 
 import { CartesianGrid, Legend, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { SpreadSeries } from "./api-types";
-import { TOKENS, CHART_BAND_OPACITY } from "./theme";
+import { CHART_BAND_OPACITY } from "./theme";
 
 // The Pool Spread Monitor's chart. Loaded lazily (next/dynamic, no SSR) into
 // a fixed-height box, so the charting library doesn't hold up first paint
 // and nothing moves when it arrives.
 
-const AXIS_TICK = { fontSize: 10, fill: TOKENS.chartAxis, fontFamily: "var(--font-mono)" };
+// Colours as CSS variables (components/theme.ts), so the chart follows the
+// light/dark theme without re-rendering.
+const C = {
+  gross: "var(--color-chart-gross)",
+  net: "var(--color-chart-net)",
+  zero: "var(--color-chart-zero)",
+  band: "var(--color-chart-band)",
+  grid: "var(--color-chart-grid)",
+  axis: "var(--color-chart-axis)",
+  text: "var(--color-text)",
+  surface: "var(--color-surface)",
+} as const;
+
+const AXIS_TICK = { fontSize: 10, fill: C.axis, fontFamily: "var(--font-mono)" };
 export const GROSS_GAP = "Gross gap between pools";
 export const NET_EDGE = "Net edge after fees, slippage, gas";
 export const CHART_HEIGHT = 240;
+
+// Short names in the hover box, so it fits beside the pointer on a phone.
+const TOOLTIP_NAMES: Record<string, string> = { [GROSS_GAP]: "Gross gap", [NET_EDGE]: "Net edge" };
 
 function signedPct(value: number, digits = 2): string {
   return `${value > 0 ? "+" : ""}${(value * 100).toFixed(digits)}%`;
@@ -44,28 +60,30 @@ export default function SpreadChart({ series }: { series: SpreadSeries }) {
   return (
     <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
       <LineChart data={chartData} margin={{ top: 8, right: 28, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke={TOKENS.chartGrid} />
+        <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
         <ReferenceArea
           y1={yMin}
           y2={0}
-          fill={TOKENS.chartBand}
+          fill={C.band}
           fillOpacity={CHART_BAND_OPACITY}
           ifOverflow="hidden"
-          label={{ value: "below zero: doesn't clear costs", position: "center", fontSize: 11, fill: TOKENS.chartBand }}
+          label={{ value: "below zero: doesn't clear costs", position: "center", fontSize: 11, fill: C.band }}
         />
-        <XAxis dataKey="time" tick={AXIS_TICK} stroke={TOKENS.chartAxis} minTickGap={24} />
-        <YAxis domain={[yMin, yMax]} ticks={ticks} tickFormatter={(v: number) => signedPct(v)} tick={AXIS_TICK} stroke={TOKENS.chartAxis} width={64} />
-        <ReferenceLine y={0} stroke={TOKENS.chartZero} strokeWidth={1.5} strokeDasharray="3 3" label={{ value: "0 = break-even", position: "insideTopLeft", offset: 6, fontSize: 10, fill: TOKENS.text }} />
+        <XAxis dataKey="time" tick={AXIS_TICK} stroke={C.axis} minTickGap={24} />
+        <YAxis domain={[yMin, yMax]} ticks={ticks} tickFormatter={(v: number) => signedPct(v)} tick={AXIS_TICK} stroke={C.axis} width={64} />
+        <ReferenceLine y={0} stroke={C.zero} strokeWidth={1.5} strokeDasharray="3 3" label={{ value: "0 = break-even", position: "insideTopLeft", offset: 6, fontSize: 10, fill: C.text }} />
         <Tooltip
-          formatter={(value) => signedPct(Number(value), 3)}
-          contentStyle={{ background: TOKENS.surface, border: `1px solid ${TOKENS.chartGrid}`, color: TOKENS.text, fontFamily: "var(--font-mono)", fontSize: 12 }}
-          labelStyle={{ color: TOKENS.text }}
+          formatter={(value, name) => [signedPct(Number(value), 3), TOOLTIP_NAMES[String(name)] ?? String(name)]}
+          allowEscapeViewBox={{ x: false, y: false }}
+          contentStyle={{ background: C.surface, border: `1px solid ${C.grid}`, color: C.text, fontFamily: "var(--font-mono)", fontSize: 11, padding: "6px 8px", whiteSpace: "nowrap" }}
+          labelStyle={{ color: C.text }}
+          itemStyle={{ padding: 0 }}
         />
         <Legend wrapperStyle={{ fontSize: 11 }} />
         {/* Same axis for both lines on purpose: the distance between them
             is the real cost of trading, not an artifact of two scales. */}
-        <Line type="monotone" dataKey={GROSS_GAP} stroke={TOKENS.chartGross} strokeWidth={1.75} strokeDasharray="4 3" dot={false} isAnimationActive={false} />
-        <Line type="monotone" dataKey={NET_EDGE} stroke={TOKENS.chartNet} strokeWidth={2.25} dot={false} isAnimationActive={false} />
+        <Line type="monotone" dataKey={GROSS_GAP} stroke={C.gross} strokeWidth={1.75} strokeDasharray="4 3" dot={false} isAnimationActive={false} />
+        <Line type="monotone" dataKey={NET_EDGE} stroke={C.net} strokeWidth={2.25} dot={false} isAnimationActive={false} />
       </LineChart>
     </ResponsiveContainer>
   );
