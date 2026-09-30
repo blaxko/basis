@@ -26,6 +26,30 @@ Built for the BNB Chain Tokenized Stocks hackathon on the **Binance Web3 API**:
 
 **What runs on the deployed site:** `aggregator/quote` and `rwa/underlying-market`, every 30 seconds and for each typed instruction, plus BSC RPC reads of the two pools. It holds no key, so it never signs or broadcasts; its [`/api/status`](https://basis-production-c229.up.railway.app/api/status) lists every recent Binance call with its status and latency. **Cross-issuer recorder** (Monitor only: Basis doesn't trade across issuers): every 30 s, `aggregator/quote` buy quotes ($200 of USDT) for xStocks MSFTx and Ondo MSFTon (bStocks MSFTB reuses the tick's own quote); every 5 min, one batched `rwa/price` (confirms each token's issuer and gives its `sharesMultiplier`) and a sell quote per token. About 4.8 extra calls a minute. Readings are per share, from memory, at [`/api/issuers`](https://basis-production-c229.up.railway.app/api/issuers).
 
+## Findings, and what Basis won't do
+
+The landing page keeps these short; the detail is here.
+
+**Tested and rejected**
+- **Dividend timing.** On Microsoft's ex-dividend day (20 Aug 2026) the real stock fell, but the bStocks, xStocks and Ondo tokens all rose together by a similar amount. No issuer behaved differently to trade against.
+- **Weekend gaps.** Over the weekend of 18–21 Sep 2026, Ondo's and bStocks' Microsoft tokens kept moving together, day by day.
+- **The aggregator erases the gap.** Binance's aggregator routes each trade to the best price, which erases the gap between pools. So Basis reads the pools directly.
+- **The pool pair starts 1.25% behind** (the 0.25% and 1% fees) before slippage and gas; no reading so far has cleared it.
+
+**Across issuers (monitor only: Basis doesn't trade across issuers)**
+- Basis compares Microsoft's token from bStocks (MSFTB) and Ondo (MSFTon) per share, using each token's share multiplier (1.0013140 and 1.0057309, matching each issuer's published figures).
+- 114 round trips on fresh quotes (both quotes at most 60 s old), recorded 26–29 Sep 2026: none cleared costs (best −0.013%, median −0.21%).
+- Only 498 of 5,780 readings were fully valid (28 Sep 2026): Binance's Ondo quote repeatedly returned an implausible price (about $1.03 billion per token). Basis shows "no valid quote" with the reason instead of using it.
+- xStocks is excluded: Binance's RWA Data API returns its MSFT token with no platform and a price stamped 8 September.
+
+**What it won't do**
+- No two-sided arbitrage. That stays off until it's built and verified.
+- No trading from the public demo: it holds no wallet key, and the server refuses live mode.
+- No guessing: one stock (Microsoft), one exchange (PancakeSwap V3), two pools.
+- No lasting history: the audit log lives in memory and resets on restart.
+
+Next steps: two-sided execution, more verified tokens and pools, persistence for the audit log, and better handling of issuers whose quotes stop outside US market hours.
+
 ## Status
 
 - Detection, guardrails, the audit ledger and the dashboard run live.
