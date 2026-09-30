@@ -65,6 +65,8 @@ describe("motion", () => {
   it("respects prefers-reduced-motion and has no pulsing animation", () => {
     const css = readFileSync(join(ROOT, "app", "globals.css"), "utf8");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
-    expect(css).not.toMatch(/@keyframes|animation:(?!\s*none)/);
+    for (const f of ["globals.css", "landing.css"]) {
+      expect(readFileSync(join(ROOT, "app", f), "utf8"), f).not.toMatch(/@keyframes|animation:(?!\s*none)/);
+    }
   });
 });

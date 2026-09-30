@@ -1,0 +1,1018 @@
+/* The landing page's styles, loaded only by the landing page (app/page.tsx),
+   so the dashboard doesn't download them. Colours only from the theme
+   variables (components/theme.ts). */
+
+/* --- Landing page (/) ---
+   bnbchain.org's patterns: a 1200px container, generous section spacing,
+   large bold headings in sentence case, cards on the surface colour with a 1px
+   hairline, 8px-radius buttons, pill-shaped yellow-outlined tags. No
+   images. The decoration and motion are in "Landing visuals" below. */
+
+.landing {
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.topbar-inner--landing {
+  max-width: 1200px;
+}
+
+.topnav--wide {
+  display: none;
+}
+
+.topbar-cta {
+  margin-left: auto;
+}
+
+.l-wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.l-hero {
+  padding: 48px 0 56px;
+}
+
+.l-hero-grid {
+  display: grid;
+  gap: 40px;
+}
+
+.l-h1 {
+  font-size: 34px;
+  line-height: 42px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.l-lede {
+  margin-top: 20px;
+  font-size: 18px;
+  line-height: 28px;
+  max-width: 580px;
+}
+
+.l-ctas {
+  margin-top: 28px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.l-micro {
+  margin-top: 16px;
+  font-size: 14px;
+  color: var(--color-muted);
+}
+
+/* The live reading card keeps one size in every state (no layout shift). */
+.live-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 24px;
+  padding: 24px;
+  /* Its loaded height at each width (measured), so the card and the rings
+     centred on it don't move when the numbers arrive. */
+  min-height: 348px;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 389px) {
+  .live-card {
+    min-height: 384px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .live-card {
+    min-height: 364px;
+  }
+}
+
+.live-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.live-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-body);
+}
+
+.live-time {
+  color: var(--color-muted);
+}
+
+.live-pools {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.live-label,
+.l-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-muted);
+}
+
+.live-price {
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.live-rows {
+  margin: 20px 0 0;
+  border-top: 1px solid var(--color-hairline);
+}
+
+.live-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-hairline);
+  font-size: 14px;
+}
+
+.live-row dd {
+  margin: 0;
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.live-row--net {
+  border-bottom: 0;
+  padding-top: 14px;
+}
+
+.live-row--net dt {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.live-row--net dd {
+  font-size: 22px;
+}
+
+.live-row .neg,
+.live-card .neg {
+  color: var(--color-fail);
+}
+
+.live-row .pos {
+  color: var(--color-pass);
+}
+
+.live-foot {
+  margin-top: auto;
+  padding-top: 8px;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.live-empty {
+  margin: auto 0;
+  color: var(--color-body);
+  display: grid;
+  gap: 8px;
+}
+
+.l-section {
+  padding: 56px 0;
+  border-top: 1px solid var(--color-line);
+}
+
+.l-h2 {
+  font-size: 30px;
+  line-height: 38px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  max-width: 760px;
+}
+
+.l-h2--minor {
+  margin-top: 64px;
+  font-size: 24px;
+  line-height: 32px;
+}
+
+.l-h3 {
+  margin-top: 8px;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 700;
+}
+
+.l-sub {
+  margin-top: 16px;
+  max-width: 720px;
+  font-size: 17px;
+  line-height: 27px;
+}
+
+.l-steps {
+  list-style: none;
+  margin: 32px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.l-grid {
+  margin-top: 32px;
+  display: grid;
+  gap: 12px;
+}
+
+.l-tile {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.l-tile p {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.l-step {
+  font-size: 12px;
+  color: var(--color-accent-ink);
+}
+
+.l-tag {
+  display: inline-block;
+  border: 1px solid var(--color-accent-ink);
+  color: var(--color-accent-ink);
+  border-radius: 40px;
+  font-size: 12px;
+  line-height: 16px;
+  padding: 1px 8px;
+}
+
+.l-metric {
+  margin-top: 4px;
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.landing .monitor-only {
+  margin-top: 16px;
+  display: inline-block;
+}
+
+.l-table {
+  margin-top: 32px;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+
+.l-table th,
+.l-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 16px 16px 16px 0;
+  border-bottom: 1px solid var(--color-hairline);
+}
+
+.l-table thead th {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-muted);
+  padding-top: 0;
+  border-bottom-color: var(--color-hairline-strong);
+}
+
+.l-table tbody th {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.l-limit {
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+/* Phones: each check stacks, with its limit labelled. */
+@media (max-width: 767px) {
+  .l-table thead {
+    display: none;
+  }
+
+  .l-table tr {
+    display: block;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--color-hairline);
+  }
+
+  .l-table th,
+  .l-table td {
+    display: block;
+    border: 0;
+    padding: 2px 0;
+  }
+
+  .l-table .l-limit {
+    white-space: normal;
+  }
+
+  .l-table .l-limit::before {
+    content: attr(data-label) ": ";
+    color: var(--color-muted);
+    font-family: var(--font-ui), system-ui, sans-serif;
+  }
+}
+
+.l-list {
+  margin: 28px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 12px;
+  max-width: 820px;
+}
+
+.l-list li {
+  position: relative;
+  padding-left: 20px;
+}
+
+.l-list li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 12px;
+  width: 8px;
+  height: 1px;
+  background: var(--color-accent-ink);
+}
+
+.l-faq {
+  margin-top: 16px;
+}
+
+.l-faq details {
+  border-bottom: 1px solid var(--color-hairline);
+  padding: 16px 0;
+}
+
+.l-faq summary {
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+}
+
+.l-faq p {
+  margin-top: 10px;
+  max-width: 760px;
+}
+
+.l-footer {
+  border-top: 1px solid var(--color-line);
+  padding: 32px 0 40px;
+  font-size: 14px;
+  color: var(--color-muted);
+}
+
+.l-footer-inner {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.l-footer-name {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.l-footer-links {
+  display: flex;
+  gap: 20px;
+}
+
+.l-footer-links a {
+  color: var(--color-body);
+}
+
+@media (min-width: 768px) {
+  .l-wrap {
+    padding: 0 32px;
+  }
+
+  .l-h1 {
+    font-size: 52px;
+    line-height: 60px;
+  }
+
+  .l-h2 {
+    font-size: 40px;
+    line-height: 48px;
+  }
+
+  .l-grid--2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .l-grid--3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .live-card {
+    padding: 32px;
+  }
+}
+
+@media (min-width: 900px) {
+  .topnav--wide {
+    display: flex;
+  }
+
+  .l-steps {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .l-hero {
+    padding: 96px 0 104px;
+  }
+
+  .l-hero-grid {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    align-items: center;
+    gap: 64px;
+  }
+
+  .l-section {
+    padding: 96px 0;
+  }
+}
+
+/* The shorter page: three steps, a formula line, guardrail limits as the
+   card's value, and a closing call to action. */
+@media (min-width: 900px) {
+  .l-steps--3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.l-formula {
+  margin-top: 24px;
+  font-size: 15px;
+  color: var(--color-text);
+}
+
+.l-limit-value {
+  margin-top: 6px;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.l-closing {
+  text-align: center;
+}
+
+.l-closing .l-h2 {
+  margin: 0 auto 28px;
+}
+
+
+/* The reworked page: an identity line above the claim, fluid type
+   (clamp) from 320 px phones to 2560 px screens, four link cards into the
+   dashboard, and "Built with" as plain text. */
+.l-eyebrow {
+  margin-bottom: 14px;
+  font-size: clamp(13px, 0.4vw + 12px, 15px);
+  font-weight: 600;
+  color: var(--color-accent-ink);
+}
+
+.l-h1 {
+  font-size: clamp(32px, 5vw + 12px, 60px);
+  line-height: 1.08;
+}
+
+.l-h2 {
+  font-size: clamp(26px, 2.6vw + 16px, 44px);
+  line-height: 1.15;
+}
+
+.l-lede {
+  font-size: clamp(16px, 0.5vw + 14.5px, 20px);
+  line-height: 1.55;
+}
+
+.l-lede + .l-lede {
+  margin-top: 10px;
+}
+
+.l-sub {
+  font-size: clamp(16px, 0.3vw + 15px, 18px);
+}
+
+.l-section {
+  padding: clamp(48px, 7vw, 96px) 0;
+}
+
+.l-section--tight {
+  padding: clamp(40px, 5vw, 72px) 0;
+}
+
+.l-grid--4 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 640px) {
+  .l-grid--4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1100px) {
+  .l-grid--4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.l-tile--link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.l-tile--link:hover,
+.l-tile--link:focus-visible {
+  border-color: var(--color-accent-line);
+}
+
+.l-built {
+  list-style: none;
+  margin: 20px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+}
+
+.l-built li {
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: 40px;
+  padding: 6px 14px;
+  font-size: 14px;
+  color: var(--color-body);
+}
+
+/* The top bar's button: the full label, or "Dashboard" on the narrowest
+   phones, so the button, the theme switch and the menu fit at 320 px. */
+.cta-short {
+  display: none;
+}
+
+@media (max-width: 400px) {
+  .cta-long {
+    display: none;
+  }
+
+  .cta-short {
+    display: inline;
+  }
+}
+
+
+/* A lighter glass where blur costs most or isn't wanted: phones, and
+   visitors who prefer reduced motion or reduced transparency. No
+   backdrop blur, solid fills, and the light blobs stay still and
+   unblurred (they are soft gradients already). */
+@media (max-width: 767px), (prefers-reduced-motion: reduce), (prefers-reduced-transparency: reduce) {
+  .l-hero .live-card,
+  .landing .topbar.is-scrolled {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .l-hero .live-card {
+    background: var(--color-surface);
+  }
+
+  .landing .topbar.is-scrolled {
+    background: var(--color-bg);
+  }
+
+  .landing .l-tile,
+  .l-glass {
+    background: linear-gradient(160deg, var(--color-glass-sheen), var(--color-clear) 40%), var(--color-surface);
+  }
+
+  .l-orb {
+    filter: none;
+    transition: none;
+    will-change: auto;
+  }
+}
+
+/* --- End landing page --- */
+
+/* --- Landing visuals ---
+   Decoration only, behind or around the content above: a line grid and
+   drifting light blobs behind the hero, a liquid-glass live card, the two
+   pool rings, the fact strip, a glass top bar, pointer-lit cards and
+   rise-in on scroll. Motion is CSS transitions driven by
+   components/landing-motion.tsx; no keyframes. Everything below
+   "html.motion-ok" only applies when the visitor hasn't asked for reduced
+   motion and the script is running. */
+
+.landing {
+  position: relative;
+  isolation: isolate;
+  overflow-x: clip;
+}
+
+/* Light behind the whole page, fixed to the screen (see PageBackdrop). */
+.l-page-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.landing .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.landing .topbar.is-scrolled {
+  background: var(--color-bar-glass);
+  border-bottom-color: var(--color-glass-edge);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(160%);
+}
+
+.l-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
+.l-hero-bg {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.l-hero-grid-lines {
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(var(--color-grid-line) 1px, var(--color-clear) 1px),
+    linear-gradient(90deg, var(--color-grid-line) 1px, var(--color-clear) 1px);
+  background-size: 56px 56px;
+  background-position: center top;
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 60% 40%, var(--color-bg) 30%, var(--color-clear) 80%);
+  mask-image: radial-gradient(ellipse 70% 60% at 60% 40%, var(--color-bg) 30%, var(--color-clear) 80%);
+}
+
+/* `translate` is the slow drift (set by the script), `transform` the
+   lean toward the pointer, deeper blobs leaning further. */
+.l-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  --depth: 24px;
+  transform: translate3d(calc(var(--px, 0) * var(--depth)), calc(var(--py, 0) * var(--depth)), 0);
+  transition: translate 14s ease-in-out, transform 1.4s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform, translate;
+}
+
+.l-orb--a {
+  width: 360px;
+  height: 360px;
+  right: 4%;
+  top: 12%;
+  background: radial-gradient(circle, var(--color-accent-glow), var(--color-clear) 70%);
+}
+
+.l-orb--b {
+  --depth: 40px;
+  width: 280px;
+  height: 280px;
+  right: 22%;
+  top: 46%;
+  background: radial-gradient(circle, var(--color-pass-glow), var(--color-clear) 70%);
+}
+
+.l-orb--c {
+  --depth: 12px;
+  width: 420px;
+  height: 420px;
+  left: -140px;
+  top: -120px;
+  background: radial-gradient(circle, var(--color-accent-glow-soft), var(--color-clear) 70%);
+}
+
+.l-orb--p1 {
+  width: 520px;
+  height: 520px;
+  left: 2%;
+  top: 18%;
+  background: radial-gradient(circle, var(--color-accent-glow-soft), var(--color-clear) 70%);
+}
+
+.l-orb--p2 {
+  width: 440px;
+  height: 440px;
+  right: 8%;
+  top: 48%;
+  background: radial-gradient(circle, var(--color-accent-glow), var(--color-clear) 70%);
+  opacity: 0.6;
+}
+
+.l-orb--p3 {
+  width: 380px;
+  height: 380px;
+  left: 35%;
+  bottom: -160px;
+  background: radial-gradient(circle, var(--color-pass-glow), var(--color-clear) 70%);
+}
+
+/* Glass across the page: the cards and the FAQ get the hero card's
+   fill, a sheen from the top-left and a lit top edge, without a backdrop
+   blur of their own (blur is costly, so only the hero card and the
+   scrolled top bar have it). Same fill as the hero card, so the same
+   contrast checks cover the text on them. */
+.landing .l-tile,
+.l-glass {
+  background: linear-gradient(160deg, var(--color-glass-sheen), var(--color-clear) 40%), var(--color-glass-fill);
+  border: 1px solid var(--color-glass-edge);
+  box-shadow: inset 0 1px 0 var(--color-glass-specular), 0 18px 40px -28px var(--color-bg);
+}
+
+.l-glass {
+  border-radius: 16px;
+  padding: 8px 20px;
+}
+
+.l-glass--table {
+  margin-top: 32px;
+}
+
+.l-glass--table .l-table {
+  margin-top: 0;
+}
+
+.l-glass--table thead th {
+  padding-top: 16px;
+}
+
+.l-glass--table tbody tr:last-child th,
+.l-glass--table tbody tr:last-child td,
+.l-faq.l-glass details:last-child {
+  border-bottom: 0;
+}
+
+@media (max-width: 767px) {
+  .l-glass--table tbody tr:last-child {
+    border-bottom: 0;
+  }
+}
+
+@media (min-width: 768px) {
+  .l-glass {
+    padding: 8px 28px;
+  }
+}
+
+/* The hero card column: the pool rings sit behind the glass card. */
+.l-hero-card {
+  position: relative;
+}
+
+.l-rings {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 150%;
+  max-width: 640px;
+  transform: translate(-50%, -50%);
+  z-index: -1;
+  pointer-events: none;
+}
+
+.l-ring {
+  fill: none;
+  stroke: var(--color-hairline);
+  stroke-width: 1;
+}
+
+.l-ring--outer {
+  stroke: var(--color-accent-line);
+  stroke-opacity: 0.5;
+}
+
+.l-ring--dash {
+  stroke-dasharray: 2 8;
+  stroke: var(--color-hairline-strong);
+}
+
+/* Liquid glass: a frosted, colour-lifting fill over the blobs, a bright
+   rim that fades around the edge, an inner sheen from the top, and a
+   specular highlight that follows the pointer (--gx, --gy). */
+.l-hero .live-card {
+  position: relative;
+  isolation: isolate;
+  background: var(--color-glass-fill);
+  border-color: var(--color-glass-edge);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  box-shadow: inset 0 1px 0 var(--color-glass-specular), inset 0 -1px 0 var(--color-hairline),
+    0 24px 60px -24px var(--color-accent-glow-soft), 0 2px 12px -4px var(--color-bg);
+  overflow: hidden;
+}
+
+.l-hero .live-card::before,
+.l-hero .live-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.l-hero .live-card::before {
+  background: linear-gradient(160deg, var(--color-glass-sheen), var(--color-clear) 38%),
+    radial-gradient(420px circle at var(--gx, 70%) var(--gy, 0%), var(--color-glass-sheen), var(--color-clear) 60%);
+  transition: opacity 0.4s ease;
+}
+
+.l-hero .live-card::after {
+  padding: 1px;
+  background: linear-gradient(140deg, var(--color-glass-specular), var(--color-clear) 30%, var(--color-clear) 65%, var(--color-accent-line));
+  -webkit-mask: linear-gradient(var(--color-bg), var(--color-bg)) content-box, linear-gradient(var(--color-bg), var(--color-bg));
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(var(--color-bg), var(--color-bg)) content-box exclude, linear-gradient(var(--color-bg), var(--color-bg));
+}
+
+/* Without backdrop-filter, the glass falls back to the solid surface. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .l-hero .live-card,
+  .landing .l-tile,
+  .l-glass {
+    background: var(--color-surface);
+  }
+}
+
+/* Cards: a soft light under the pointer (--tx, --ty) and a lift on hover. */
+.landing .l-tile {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  transition: border-color 0.25s ease, transform 0.25s ease;
+}
+
+.landing .l-tile::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(260px circle at var(--tx, 50%) var(--ty, 0%), var(--color-accent-glow-soft), var(--color-clear) 70%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.landing .l-tile:hover {
+  border-color: var(--color-accent-line);
+  transform: translateY(-2px);
+}
+
+.landing .l-tile:hover::before {
+  opacity: 1;
+}
+
+.btn {
+  transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.landing .btn--primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px -8px var(--color-accent-glow);
+}
+
+/* The five steps: a line that draws across them as they come into view. */
+@media (min-width: 900px) {
+  .landing .l-steps {
+    position: relative;
+  }
+
+  .landing .l-steps::before {
+    content: "";
+    position: absolute;
+    left: 20px;
+    right: 20px;
+    top: -14px;
+    height: 1px;
+    background: linear-gradient(90deg, var(--color-accent-line), var(--color-accent-ink), var(--color-accent-line));
+    transform-origin: left center;
+  }
+
+  html.motion-ok .landing .l-steps::before {
+    transform: scaleX(0);
+    transition: transform 1.2s cubic-bezier(0.22, 1, 0.36, 1) 0.2s;
+  }
+
+  html.motion-ok .landing .l-steps.is-in::before {
+    transform: scaleX(1);
+  }
+}
+
+/* Hero entrance, then rise-in on scroll (children of a revealed grid or
+   list follow one another, --i steps of 80ms). */
+/* The hero only rises: it is never hidden, so it paints at once (it is
+   the page's largest content). */
+html.motion-ok [data-hero] {
+  transform: translateY(12px);
+  transition: transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html.motion-ok [data-hero] + [data-hero] {
+  transition-delay: 0.15s;
+}
+
+html.motion-ok.hero-in [data-hero] {
+  transform: none;
+}
+
+html.motion-ok [data-reveal] {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.8s ease, transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html.motion-ok [data-reveal].is-in {
+  opacity: 1;
+  transform: none;
+}
+
+html.motion-ok .l-steps[data-reveal],
+html.motion-ok .l-grid[data-reveal] {
+  opacity: 1;
+  transform: none;
+}
+
+html.motion-ok .l-steps[data-reveal] > .l-tile,
+html.motion-ok .l-grid[data-reveal] > .l-tile {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.7s ease calc(var(--i, 0) * 80ms), transform 0.7s cubic-bezier(0.22, 1, 0.36, 1) calc(var(--i, 0) * 80ms),
+    border-color 0.25s ease;
+}
+
+html.motion-ok .l-steps.is-in > .l-tile,
+html.motion-ok .l-grid.is-in > .l-tile {
+  opacity: 1;
+  transform: none;
+}
+
+html.motion-ok .l-steps.is-in > .l-tile:hover,
+html.motion-ok .l-grid.is-in > .l-tile:hover {
+  transform: translateY(-2px);
+  transition-delay: 0s;
+}
+
+/* --- End landing visuals --- */
+
+/* Sections below the hero are laid out only when they come near the
+   screen, so the first layout (and the web fonts' swap) covers just the
+   visible part. The size is remembered once rendered; until then each
+   reserves a typical height. */
+.l-section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 640px;
+}

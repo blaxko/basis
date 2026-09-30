@@ -22,6 +22,10 @@ export function LandingMotion() {
     root.classList.add("motion-live", "hero-in");
     const cleanups: Array<() => void> = [];
 
+    // Everything below is decoration, so it starts once the browser is
+    // idle rather than during the first load.
+    const start = () => {
+
     // Rise in on scroll.
     const io = new IntersectionObserver(
       (entries) => {
@@ -96,25 +100,15 @@ export function LandingMotion() {
     });
     cleanups.push(() => orbs.forEach((orb) => orb.removeEventListener("transitionend", onDriftEnd)));
 
-    // The fact strip: one linear transition across the first copy of the
-    // list, then an instant jump back (the second copy looks identical),
-    // and again.
-    const track = document.querySelector<HTMLElement>("[data-marquee-track]");
-    const run = () => {
-      if (!track) return;
-      const half = track.scrollWidth / 2;
-      track.style.transition = "none";
-      track.style.transform = "translate3d(0, 0, 0)";
-      void track.offsetWidth; // apply the jump before the next transition starts
-      track.style.transition = `transform ${Math.round(half / 32)}s linear`;
-      track.style.transform = `translate3d(${-half}px, 0, 0)`;
     };
-    const onLoopEnd = (e: TransitionEvent) => {
-      if (e.propertyName === "transform") run();
-    };
-    track?.addEventListener("transitionend", onLoopEnd);
-    run();
-    cleanups.push(() => track?.removeEventListener("transitionend", onLoopEnd));
+    const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void };
+    if (w.requestIdleCallback) {
+      const id = w.requestIdleCallback(start, { timeout: 1500 });
+      cleanups.push(() => w.cancelIdleCallback?.(id));
+    } else {
+      const id = window.setTimeout(start, 300);
+      cleanups.push(() => window.clearTimeout(id));
+    }
 
     return () => cleanups.forEach((c) => c());
   }, []);

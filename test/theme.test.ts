@@ -105,7 +105,7 @@ describe("light theme", () => {
       expect(LIGHT_TOKENS[k], k).not.toBe(BRAND.yellow);
     }
     // The CSS never uses the fill colour for text, borders or outlines.
-    const css = readFileSync(join(root, "app", "globals.css"), "utf8");
+    const css = ["globals.css", "landing.css"].map((f) => readFileSync(join(root, "app", f), "utf8")).join("\n");
     expect(css).not.toMatch(/(^|[^-])(color|border(-[a-z]+)?|outline|stroke):[^;]*var\(--color-accent\)/m);
   });
 

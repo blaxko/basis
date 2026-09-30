@@ -6,8 +6,10 @@ import { cssVariables, LIGHT_TOKENS, THEME_INIT_SCRIPT, TOKENS } from "../compon
 // Fonts are self-hosted by next/font (downloaded at build time, served from
 // this site) with size-adjusted fallbacks, so text doesn't jump when they
 // load. Inter for UI text; JetBrains Mono for numbers, hashes and the ledger.
-const inter = Inter({ subsets: ["latin"], variable: "--font-ui", display: "swap" });
-const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap" });
+// Both are preloaded; the size-matched fallback shows until they arrive, so
+// the swap doesn't move anything (CLS 0).
+const inter = Inter({ subsets: ["latin"], variable: "--font-ui", display: "swap", preload: true });
+const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap", preload: true });
 
 export const metadata: Metadata = {
   title: "Basis",
