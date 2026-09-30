@@ -2,10 +2,9 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { LANDING, DEMO_VIDEO_URL, GITHUB_URL } from "../components/landing-content";
-import { liveReadingView } from "../components/live-reading-view";
+import { ageLabel, liveReadingView, STALE_AFTER_S } from "../components/live-reading-view";
 import { showWalletChips } from "../components/public-mode";
 import { readOnlyNote } from "../components/read-only-note";
-import type { OpportunitiesResponse } from "../components/api-types";
 
 // The landing page (/) explains; the dashboard (/app) only shows what's
 // live. Landing copy comes only from basis-project-details.md and follows
@@ -29,14 +28,14 @@ describe("routes", () => {
     const config = (await import("../next.config")).default;
     expect(await config.rewrites!()).toEqual([{ source: "/app", destination: "/dashboard" }]);
     expect(await config.redirects!()).toEqual([{ source: "/dashboard", destination: "/app", permanent: false }]);
-    for (const r of ["execution-test", "health", "instruction", "issuers", "issuers/summary", "killswitch", "ledger", "opportunities", "status"]) {
+    for (const r of ["execution-test", "health", "instruction", "issuers", "issuers/summary", "killswitch", "ledger", "opportunities", "reading", "status"]) {
       expect(existsSync(join(ROOT, "app", "api", r, "route.ts")), r).toBe(true);
     }
   });
 
   it("links both ways: the landing page's main button opens /app; the dashboard's wordmark goes home", () => {
     expect(LANDING.hero.primary).toEqual({ label: "Open the dashboard", href: "/app" });
-    expect(read("app/page.tsx")).toContain("LANDING.hero.primary.href");
+    expect(read("app/page.tsx")).toContain("href={hero.primary.href}");
     expect(read("components/header.tsx")).toContain('href="/"');
     // GitHub stays reachable from the landing page's "Read the code" button.
     expect(LANDING.hero.secondary.href).toBe(GITHUB_URL);
@@ -55,27 +54,55 @@ describe("routes", () => {
 });
 
 describe("landing content follows basis-project-details.md", () => {
-  it("the hero: a short claim, one sentence, and the closing section repeats the claim and the button", () => {
+  it("the hero says what Basis is: an identity line, the claim, two sentences; the closing repeats the claim and the button", () => {
+    expect(LANDING.hero.eyebrow).toBe("An arbitrage agent for tokenized stocks on BNB Chain");
     expect(LANDING.hero.title).toBe("A price gap isn't a profit.");
-    expect(LANDING.hero.lede).toBe("Basis watches Microsoft's token in two PancakeSwap pools every 30 seconds and only trades when the gap survives every cost.");
+    expect(LANDING.hero.lede).toHaveLength(2);
+    expect(LANDING.hero.lede[0]).toMatch(/MSFTB.*two PancakeSwap pools.*every cost.*real edge/);
+    expect(LANDING.hero.lede[1]).toBe('Every decision, including "no", is logged.');
     expect(LANDING.closing).toEqual({ title: LANDING.hero.title, cta: LANDING.hero.primary });
-    const page = read("app/page.tsx");
-    expect(page).toContain("{closing.title}");
-    expect(page).toContain("href={closing.cta.href}");
+    const css = read("app/landing.css");
+    const eyebrow = css.slice(css.indexOf(".l-eyebrow {"), css.indexOf("}", css.indexOf(".l-eyebrow {")));
+    expect(eyebrow).not.toMatch(/uppercase/);
   });
 
-  it("scannable: each section is a short claim with at most about 60 words", () => {
-    const words = (v: unknown) => JSON.stringify(v).replace(/"[a-z]+":/gi, " ").split(/\s+/).filter((w) => /[A-Za-z0-9]/.test(w)).length;
-    for (const key of ["problem", "how", "guardrails", "findings"] as const) {
-      const section = LANDING[key];
-      expect(section.title.split(" ").length, key).toBeLessThanOrEqual(8);
-      expect(words(section), key).toBeLessThanOrEqual(70);
+  it("the sections, in order, each with a short claim for a heading", () => {
+    const page = read("app/page.tsx");
+    const order = ["{hero.title}", "{tokenized.title}", "{problem.title}", "{how.title}", "{tryIt.title}", "{guardrails.title}", "{findings.title}", "{builtWith.title}", "{LANDING.faqTitle}", "{closing.title}", "{footer.name}"];
+    const at = order.map((k) => page.indexOf(k));
+    expect(at.every((i) => i > 0), JSON.stringify(at)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    for (const key of ["tokenized", "problem", "how", "tryIt", "guardrails", "findings"] as const) expect(LANDING[key].title.split(" ").length, key).toBeLessThanOrEqual(7);
+    expect(page).not.toMatch(/FactTicker|l-ticker|<table/);
+  });
+
+  it("every card is one full sentence", () => {
+    const cards = [...LANDING.problem.cards, ...LANDING.how.steps, ...LANDING.tryIt.cards, ...LANDING.guardrails.cards, ...LANDING.findings.cards];
+    for (const c of cards) {
+      expect(c.body, c.title).toMatch(/^[A-Z].*\.$/);
+      expect(c.body.split(/[.!?](\s|$)/).filter((s) => s.trim().length > 1).length, c.title).toBe(1);
     }
-    expect(LANDING.problem.cards).toHaveLength(3);
+  });
+
+  it("roughly 500-700 words in total", () => {
+    const { ...content } = LANDING;
+    const words = JSON.stringify(content)
+      .replace(/"[a-zA-Z]+":/g, " ")
+      .replace(/"\/app[^"]*"|"https?:[^"]*"/g, " ")
+      .split(/\s+/)
+      .filter((w) => /[A-Za-z0-9]/.test(w)).length;
+    expect(words).toBeGreaterThanOrEqual(500);
+    expect(words).toBeLessThanOrEqual(720);
+  });
+
+  it("problem, how it works and the four dashboard cards, each linking to its section of /app", () => {
+    expect(LANDING.problem.cards.map((c) => c.title)).toEqual(["The gap", "The costs", "Basis counts every cost first"]);
+    expect(LANDING.problem.cards[1]!.body).toContain("1.25%");
     expect(LANDING.how.steps.map((s) => s.title)).toEqual(["Read", "Count", "Guard"]);
     expect(LANDING.how.formula).toBe("net edge = gap − fees − slippage − gas");
-    expect(LANDING.findings.cards).toHaveLength(3);
-    expect(read("app/page.tsx")).not.toMatch(/<table/);
+    expect(LANDING.tryIt.cards.map((c) => c.href)).toEqual(["/app#spread", "/app#instruction", "/app#gate", "/app#ledger"]);
+    const dashboard = ["app/dashboard/page.tsx", "components/pool-spread-monitor.tsx", "components/instruction-box.tsx", "components/guardrail-checklist.tsx", "components/audit-ledger.tsx"].map((f) => read(f)).join("\n");
+    for (const c of LANDING.tryIt.cards) expect(dashboard, c.href).toContain(`id="${c.href.split("#")[1]}"`);
   });
 
   it.each([
@@ -94,15 +121,15 @@ describe("landing content follows basis-project-details.md", () => {
     expect(landingText).not.toContain("!");
   });
 
-  it("six guardrail cards with their real limits (lib/guardrails/config.ts), no table", () => {
-    expect(LANDING.guardrails.cards.map((g) => [g.title, g.limit])).toEqual([
-      ["Per-trade cap", "$500 per trade"],
-      ["Daily cap", "$2,000 per UTC day"],
-      ["Reference price", "Within 2% of Binance's quote"],
-      ["Market status", "Paused, limited or unknown blocks; closed doesn't"],
-      ["Price sanity and liquidity", "Sane prices, $1,000+ in each pool"],
-      ["Dry-run floor", "98% simulation floor"],
-    ]);
+  it("six guardrail cards, each one plain sentence with the real limit (lib/guardrails/config.ts)", () => {
+    const g = Object.fromEntries(LANDING.guardrails.cards.map((c) => [c.title, c.body]));
+    expect(Object.keys(g)).toEqual(["Per-trade cap", "Daily cap", "Reference price", "Market status", "Price sanity and liquidity", "Dry-run floor"]);
+    expect(g["Per-trade cap"]).toContain("$500");
+    expect(g["Daily cap"]).toMatch(/\$2,000.*UTC day/);
+    expect(g["Reference price"]).toContain("within 2% of Binance's own quote");
+    expect(g["Market status"]).toMatch(/paused, limited or unknown; a closed market doesn't stop it/);
+    expect(g["Price sanity and liquidity"]).toContain("$1,000");
+    expect(g["Dry-run floor"]).toContain("98%");
     const config = read("lib/guardrails/config.ts");
     for (const real of ["perTradeCapUsd: 500,", "perDayCapUsd: 2000,", "maxReferenceDivergencePct: 0.02,", "minDryRunOutputRatio: 0.98,", "minLiquidityDepthUsd: 1000,"]) {
       expect(config, real).toContain(real);
@@ -110,28 +137,30 @@ describe("landing content follows basis-project-details.md", () => {
     for (const wrong of [/truncat/i, /24-hour/i, /must report active/i, /confirms trading hours/i, /net realized/i, /\+41 bps/]) expect(landingText).not.toMatch(wrong);
   });
 
-  it("findings: three real numbers, each with its date or data period", () => {
+  it("findings: clear statements with their dates", () => {
     const [roundTrips, dividend, weekend] = LANDING.findings.cards;
     // Recounted from the recorder's export on 2026-09-30: 114 fresh valid
     // round trips, 26–29 Sep 2026, none cleared, best −0.013%.
-    expect(roundTrips).toMatchObject({ value: "114", period: "26–29 Sep 2026" });
-    expect(roundTrips!.body).toContain("None cleared costs");
+    expect(roundTrips!.title).toBe("114 fresh round trips between bStocks and Ondo: none cleared costs");
+    expect(roundTrips!.period).toBe("26–29 Sep 2026");
     expect(roundTrips!.body).toContain("−0.013%");
-    expect(dividend!.period).toBe("20 Aug 2026");
-    expect(weekend!.period).toBe("18–21 Sep 2026");
-    expect(landingText).toContain("Monitor only");
+    expect(dividend).toMatchObject({ title: "Dividend timing: tested with real prices, rejected", period: "20 Aug 2026" });
+    expect(weekend).toMatchObject({ title: "Weekend gaps: tested with real prices, rejected", period: "18–21 Sep 2026" });
   });
 
-  it("the FAQ says plainly that Basis doesn't make money", () => {
-    expect(LANDING.faq[0]!.q).toBe("Does Basis make money?");
-    expect(LANDING.faq[0]!.a.startsWith("No.")).toBe(true);
+  it("built with, as text only", () => {
+    expect(LANDING.builtWith.items).toEqual(["BNB Chain", "PancakeSwap V3", "Binance Web3 API (Trading, Transaction and RWA Data modules)", "Groq, for reading typed instructions"]);
+  });
+
+  it("the FAQ keeps the four answers, adds what Basis is for, and says plainly that Basis doesn't make money", () => {
+    expect(LANDING.faq.map((f) => f.q)).toEqual(["What is Basis for?", "Does Basis make money?", "Can I trade on the demo?", "Is the AI making trading decisions?", "Why only Microsoft?"]);
+    expect(LANDING.faq[1]!.a.startsWith("No.")).toBe(true);
   });
 
   it("the demo video: nothing at all until its URL is set, then a 'Watch the demo' link", () => {
     expect(DEMO_VIDEO_URL).toBeNull();
     expect(LANDING.hero.videoLabel).toBe("Watch the demo");
-    const page = read("app/page.tsx");
-    expect(page).toMatch(/\{DEMO_VIDEO_URL && \(/);
+    expect(read("app/page.tsx")).toMatch(/\{DEMO_VIDEO_URL && \(/);
     expect(landingSrc).not.toMatch(/coming soon/i);
   });
 
@@ -139,48 +168,53 @@ describe("landing content follows basis-project-details.md", () => {
     expect(landingSrc).not.toMatch(/webgl|three\.js|<canvas|requestAnimationFrame|cdn\.|tailwind/i);
   });
 
-  it("no uppercase section labels on the landing page", () => {
-    const css = read("app/globals.css");
-    const block = css.slice(css.indexOf("/* --- Landing page"), css.indexOf("/* --- End landing page"));
-    expect(block.length).toBeGreaterThan(100);
-    expect(block).not.toMatch(/text-transform:\s*uppercase/);
+  it("no uppercase section labels on the landing page, and its styles load only on the landing page", () => {
+    const css = read("app/landing.css");
+    expect(css.length).toBeGreaterThan(1000);
+    expect(css).not.toMatch(/text-transform:\s*uppercase/);
+    expect(read("app/page.tsx")).toContain(`import "./landing.css";`);
+    expect(read("app/globals.css")).not.toMatch(/\.l-hero|\.l-tile|\.live-card/);
   });
 });
 
 describe("the landing page's live reading", () => {
-  const point = { timestamp: "2026-09-28T22:56:37.644Z", cheapPoolPriceUsd: 509.0837624859116, cheapPoolFeeUnits: 10000, expensivePoolPriceUsd: 510.7387114316477, expensivePoolFeeUnits: 2500, rawSpread: 0.0032508382071641216, adjustedSpread: -0.009784055122455015 };
-  const costs = { grossGap: 0.0032508382071641216, lines: [], totalCostPct: -0.013034893329619136, netEdge: -0.009784055122455015, tradeSizeUsd: 200, at: "2026-09-28T22:56:37.644Z" };
-  // Real values: /api/opportunities, 2026-09-28 22:56:37 UTC.
-  const data = { history: { MSFT: { source: "live", points: [point], total: 1, costs } } } as unknown as OpportunitiesResponse;
+  // A real reading, 2026-09-28 22:56:37 UTC.
+  const reading = {
+    at: "2026-09-28T22:56:37.644Z",
+    tradeSizeUsd: 200,
+    pools: [
+      { fee: "0.25%", priceUsd: 510.7387114316477 },
+      { fee: "1%", priceUsd: 509.0837624859116 },
+    ],
+    grossGap: 0.0032508382071641216,
+    totalCost: -0.013034893329619136,
+    netEdge: -0.009784055122455015,
+  };
+  const at = Date.parse(reading.at);
 
-  it("shows the API's own numbers: both pools by fee, gross gap, total costs, net edge", () => {
-    expect(liveReadingView(data, null)).toEqual({
-      kind: "ok",
-      at: "2026-09-28T22:56:37.644Z",
-      tradeSizeUsd: 200,
-      pools: [
-        { fee: "0.25%", priceUsd: 510.7387114316477 },
-        { fee: "1%", priceUsd: 509.0837624859116 },
-      ],
-      grossGap: 0.0032508382071641216,
-      totalCost: -0.013034893329619136,
-      netEdge: -0.009784055122455015,
-    });
+  it("shows the latest recorded reading and how old it is", () => {
+    expect(liveReadingView(reading, at + 20_000)).toEqual({ kind: "ok", ageS: 20, ...reading });
+    expect(ageLabel(20)).toBe("updated 20 s ago");
+    expect(ageLabel(150)).toBe("updated 3 min ago");
   });
 
-  it("when the call fails, or there's no live evaluation yet: unavailable, and no number at all", () => {
-    for (const v of [liveReadingView(null, "HTTP 500"), liveReadingView({ history: {} } as unknown as OpportunitiesResponse, null), liveReadingView({ history: { MSFT: { ...data.history.MSFT, source: "historical" } } } as unknown as OpportunitiesResponse, null)]) {
-      expect(v).toEqual({ kind: "unavailable" });
-    }
-    expect(liveReadingView(null, null)).toEqual({ kind: "loading" });
+  it("no reading, or one too old to call live: unavailable, and no number at all", () => {
+    expect(liveReadingView(null, at)).toEqual({ kind: "unavailable" });
+    expect(liveReadingView(reading, at + (STALE_AFTER_S + 1) * 1000)).toEqual({ kind: "unavailable" });
   });
 
-  it("the card says 'Live reading unavailable' with a link to the dashboard, polls every 30 s, and has no animation", () => {
+  it("arrives server-rendered with real values (never a loading state), then refreshes from /api/reading", () => {
+    const page = read("app/page.tsx");
+    expect(page).toContain('import { GET as getReading } from "./api/reading/route";');
+    expect(page).toContain("<LandingLiveReading initial={reading} renderedAt={renderedAt} />");
+    expect(page).toContain('export const dynamic = "force-dynamic";');
     const card = read("components/landing-live-reading.tsx");
-    expect(card).toContain('usePoll<OpportunitiesResponse>("/api/opportunities", POLL_MS)');
+    expect(card).toContain("useState<LiveReading | null>(initial)");
+    expect(card).toContain('fetch("/api/reading"');
     expect(card).toContain("const POLL_MS = 30_000;");
     expect(card).toContain("Live reading unavailable");
     expect(card).toContain('href="/app"');
+    expect(card).not.toMatch(/Loading/);
   });
 });
 
@@ -276,12 +310,23 @@ describe("headers, footers, menu and theme toggle", () => {
     expect(header()).toContain("<ThemeToggle />");
   });
 
-  it("the chart follows the theme and its hover box stays compact enough to fit a phone", () => {
+  it("the chart is plain SVG (no charting library), follows the theme, and its hover box opens on the side with room", () => {
     const chart = read("components/spread-chart.tsx");
-    expect(chart).not.toMatch(/TOKENS\./);
+    expect(chart).not.toMatch(/recharts|TOKENS\./);
+    expect(JSON.parse(read("package.json")).dependencies.recharts).toBeUndefined();
     expect(chart).toContain('"var(--color-chart-gross)"');
-    expect(chart).toContain("TOOLTIP_NAMES");
-    expect(chart).toContain("allowEscapeViewBox={{ x: false, y: false }}");
+    expect(chart).toContain("x(hover) > width / 2 ? { right: width - x(hover) + 10 } : { left: x(hover) + 10 }");
+    // Loaded with the page, into a box of fixed height: no layout shift.
+    expect(read("components/pool-spread-monitor.tsx")).toContain("CHART_BOX_HEIGHT");
+  });
+
+  it("the chart's axis always includes zero, with round steps", async () => {
+    const { axisIncludingZero } = await import("../components/spread-chart");
+    // Real values: gross gap +0.325%, net edge -0.978% (2026-09-28).
+    const a = axisIncludingZero([0.00325, -0.00978]);
+    expect(a.ticks).toContain(0);
+    expect(a.yMin).toBeLessThanOrEqual(-0.00978);
+    expect(a.yMax).toBeGreaterThanOrEqual(0.00325);
   });
 
   it("status chips wrap instead of being clipped", () => {

@@ -1,18 +1,30 @@
+import "./landing.css";
 import { LandingLiveReading } from "../components/landing-live-reading";
 import { DEMO_VIDEO_URL, LANDING } from "../components/landing-content";
+import type { ReadingResponse } from "../components/api-types";
 import { SiteMenu } from "../components/site-menu";
 import { LANDING_SECTIONS } from "../components/site-sections";
 import { ThemeToggle } from "../components/theme-toggle";
 import { LandingMotion, MOTION_BOOT } from "../components/landing-motion";
-import { FactTicker, HeroBackdrop, PageBackdrop, PoolRings } from "../components/landing-visuals";
+import { HeroBackdrop, PageBackdrop, PoolRings } from "../components/landing-visuals";
+import { GET as getReading } from "./api/reading/route";
 
-// The landing page: short claims, a few cards each, and a closing call to
-// action: what Basis is, how it decides, and what it found.
-// Server-rendered; the client code is the live reading in the hero and
-// the decorative motion (components/landing-motion.tsx).
-// Words from components/landing-content.ts (basis-project-details.md).
-export default function Landing() {
-  const { hero, problem, how, guardrails, findings, faq, closing, footer } = LANDING;
+// Rendered per request, so the live reading arrives in the HTML with the
+// latest real values (never an empty loading state); the browser then
+// refreshes it. The reading is a memory read (app/api/reading/route.ts,
+// called in-process here), so this costs nothing measurable.
+export const dynamic = "force-dynamic";
+
+// The landing page: what Basis is, why a gap isn't a profit, how it
+// decides, what a visitor can try, and what it found. Short claims as
+// headings, one full sentence per card. Server-rendered; the client code
+// is the live reading's refresh, the menu, the theme switch and the
+// decorative motion (components/landing-motion.tsx).
+// Words from components/landing-content.ts.
+export default async function Landing() {
+  const { hero, tokenized, problem, how, tryIt, guardrails, findings, builtWith, faq, closing, footer } = LANDING;
+  const { reading } = (await (await getReading()).json()) as ReadingResponse;
+  const renderedAt = Date.now();
 
   return (
     <div className="landing">
@@ -25,8 +37,11 @@ export default function Landing() {
             Basis
           </a>
           <div className="topbar-actions">
-            <a className="btn btn--primary topbar-cta" href={LANDING.hero.primary.href}>
-              {hero.primary.label}
+            <a className="btn btn--primary topbar-cta" href={hero.primary.href}>
+              <span className="cta-long">{hero.primary.label}</span>
+              <span className="cta-short" aria-hidden="true">
+                Dashboard
+              </span>
             </a>
             <ThemeToggle />
             <SiteMenu sections={LANDING_SECTIONS} />
@@ -39,10 +54,15 @@ export default function Landing() {
           <HeroBackdrop />
           <div className="l-wrap l-hero-grid">
             <div className="l-hero-copy" data-hero>
+              <p className="l-eyebrow">{hero.eyebrow}</p>
               <h1 className="l-h1">{hero.title}</h1>
-              <p className="l-lede">{hero.lede}</p>
+              {hero.lede.map((s) => (
+                <p className="l-lede" key={s.slice(0, 16)}>
+                  {s}
+                </p>
+              ))}
               <div className="l-ctas">
-                <a className="btn btn--primary btn--lg" href={LANDING.hero.primary.href}>
+                <a className="btn btn--primary btn--lg" href={hero.primary.href}>
                   {hero.primary.label}
                 </a>
                 <a className="btn btn--outline btn--lg" href={hero.secondary.href}>
@@ -61,10 +81,16 @@ export default function Landing() {
             </div>
             <div className="l-hero-card" data-hero>
               <PoolRings />
-              <LandingLiveReading />
+              <LandingLiveReading initial={reading} renderedAt={renderedAt} />
             </div>
           </div>
-          <FactTicker />
+        </section>
+
+        <section className="l-section l-section--tight" id="tokenized">
+          <div className="l-wrap" data-reveal>
+            <h2 className="l-h2">{tokenized.title}</h2>
+            <p className="l-sub">{tokenized.body}</p>
+          </div>
         </section>
 
         <section className="l-section" id="problem">
@@ -99,14 +125,30 @@ export default function Landing() {
           </div>
         </section>
 
+        <section className="l-section" id="try">
+          <div className="l-wrap">
+            <h2 className="l-h2" data-reveal>{tryIt.title}</h2>
+            <div className="l-grid l-grid--4" data-reveal>
+              {tryIt.cards.map((c, i) => (
+                <a className="l-tile l-tile--link" key={c.title} href={c.href} style={{ "--i": i } as React.CSSProperties}>
+                  <h3 className="l-h3">
+                    {c.title} <span aria-hidden="true">→</span>
+                  </h3>
+                  <p>{c.body}</p>
+                </a>
+              ))}
+            </div>
+          </div>
+        </section>
+
         <section className="l-section" id="guardrails">
           <div className="l-wrap">
             <h2 className="l-h2" data-reveal>{guardrails.title}</h2>
             <div className="l-grid l-grid--3" data-reveal>
               {guardrails.cards.map((g, i) => (
                 <div className="l-tile" key={g.title} style={{ "--i": i } as React.CSSProperties}>
-                  <div className="l-label">{g.title}</div>
-                  <div className="l-limit-value">{g.limit}</div>
+                  <h3 className="l-h3">{g.title}</h3>
+                  <p>{g.body}</p>
                 </div>
               ))}
             </div>
@@ -118,15 +160,24 @@ export default function Landing() {
             <h2 className="l-h2" data-reveal>{findings.title}</h2>
             <div className="l-grid l-grid--3" data-reveal>
               {findings.cards.map((f, i) => (
-                <div className="l-tile" key={f.label} style={{ "--i": i } as React.CSSProperties}>
-                  <div className="l-metric mono">{f.value}</div>
-                  <div className="l-label">
-                    {f.label} · {f.period}
-                  </div>
+                <div className="l-tile" key={f.title} style={{ "--i": i } as React.CSSProperties}>
+                  <div className="l-label">{f.period}</div>
+                  <h3 className="l-h3">{f.title}</h3>
                   <p>{f.body}</p>
                 </div>
               ))}
             </div>
+          </div>
+        </section>
+
+        <section className="l-section l-section--tight" id="built-with">
+          <div className="l-wrap" data-reveal>
+            <h2 className="l-h2 l-h2--minor">{builtWith.title}</h2>
+            <ul className="l-built">
+              {builtWith.items.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
           </div>
         </section>
 
