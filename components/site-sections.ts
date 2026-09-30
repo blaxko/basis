@@ -1,5 +1,7 @@
-// What each page's menu lists: that page's own sections, nothing else.
-// test/landing-and-app.test.ts checks every id exists on its page.
+// What each page's menu lists: short navigation names, never the section
+// headlines. test/landing-and-app.test.ts checks every in-page link lands
+// on a section that exists.
+import { GITHUB_URL } from "./links";
 
 export interface SiteSection {
   href: string;
@@ -7,19 +9,17 @@ export interface SiteSection {
 }
 
 export const LANDING_SECTIONS: readonly SiteSection[] = [
-  { href: "#problem", label: "A price gap isn't a profit" },
-  { href: "#how", label: "The five steps" },
-  { href: "#guardrails", label: "The six guardrails" },
-  { href: "#findings", label: "What was tested" },
-  { href: "#issuers", label: "Across issuers" },
-  { href: "#limits", label: "What it won't do" },
-  { href: "#faq", label: "Questions" },
+  { href: "#how", label: "How it works" },
+  { href: "#guardrails", label: "Guardrails" },
+  { href: "#findings", label: "Findings" },
+  { href: "#faq", label: "FAQ" },
+  { href: GITHUB_URL, label: "GitHub" },
 ];
 
 export const DASHBOARD_SECTIONS: readonly SiteSection[] = [
-  { href: "#spread", label: "Live reading" },
+  { href: "#spread", label: "Live spread" },
   { href: "#instruction", label: "Instruction" },
-  { href: "#gate", label: "Guardrail Gate" },
-  { href: "#ledger", label: "Audit Ledger" },
-  { href: "#issuers", label: "Issuer monitor" },
+  { href: "#gate", label: "Guardrails" },
+  { href: "#ledger", label: "Ledger" },
+  { href: "#issuers", label: "Issuers" },
 ];
