@@ -1,15 +1,25 @@
 "use client";
 
-import { CartesianGrid, Legend, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useEffect, useRef, useState } from "react";
 import type { SpreadSeries } from "./api-types";
 import { CHART_BAND_OPACITY } from "./theme";
 
-// The Pool Spread Monitor's chart. Loaded lazily (next/dynamic, no SSR) into
-// a fixed-height box, so the charting library doesn't hold up first paint
-// and nothing moves when it arrives.
+// The live reading's chart, drawn as plain SVG (no charting library, so the
+// dashboard ships far less JavaScript). Gross gap as a dashed line, net
+// edge as a thicker solid line, on one axis that always includes zero, a
+// labelled break-even line and the below-zero band. Colours are CSS
+// variables (components/theme.ts), so it follows the light/dark theme.
+// Hovering or tapping shows the values at that time in a small box that
+// always stays inside the chart.
 
-// Colours as CSS variables (components/theme.ts), so the chart follows the
-// light/dark theme without re-rendering.
+export const CHART_HEIGHT = 240;
+// The plot plus its one-line legend: the box the dashboard reserves, so
+// nothing moves when the first reading arrives.
+export const LEGEND_HEIGHT = 28;
+export const CHART_BOX_HEIGHT = CHART_HEIGHT + LEGEND_HEIGHT;
+export const GROSS_GAP = "Gross gap";
+export const NET_EDGE = "Net edge after costs";
+
 const C = {
   gross: "var(--color-chart-gross)",
   net: "var(--color-chart-net)",
@@ -18,16 +28,9 @@ const C = {
   grid: "var(--color-chart-grid)",
   axis: "var(--color-chart-axis)",
   text: "var(--color-text)",
-  surface: "var(--color-surface)",
 } as const;
 
-const AXIS_TICK = { fontSize: 10, fill: C.axis, fontFamily: "var(--font-mono)" };
-export const GROSS_GAP = "Gross gap between pools";
-export const NET_EDGE = "Net edge after fees, slippage, gas";
-export const CHART_HEIGHT = 240;
-
-// Short names in the hover box, so it fits beside the pointer on a phone.
-const TOOLTIP_NAMES: Record<string, string> = { [GROSS_GAP]: "Gross gap", [NET_EDGE]: "Net edge" };
+const M = { top: 8, right: 12, bottom: 22, left: 58 };
 
 function signedPct(value: number, digits = 2): string {
   return `${value > 0 ? "+" : ""}${(value * 100).toFixed(digits)}%`;
@@ -40,7 +43,7 @@ function formatTime(iso: string, source: SpreadSeries["source"]): string {
 
 // Round tick steps, always including zero, so the break-even line is on
 // screen and labeled even when every value sits on one side of it.
-function axisIncludingZero(values: number[]): { ticks: number[]; yMin: number; yMax: number } {
+export function axisIncludingZero(values: number[]): { ticks: number[]; yMin: number; yMax: number } {
   const lo = Math.min(0, ...values);
   const hi = Math.max(0, ...values);
   const rough = Math.max(hi - lo, 0.001) / 4;
@@ -54,37 +57,98 @@ function axisIncludingZero(values: number[]): { ticks: number[]; yMin: number; y
 }
 
 export default function SpreadChart({ series }: { series: SpreadSeries }) {
-  const chartData = series.points.map((p) => ({ time: formatTime(p.timestamp, series.source), [GROSS_GAP]: p.rawSpread, [NET_EDGE]: p.adjustedSpread }));
-  const { ticks, yMin, yMax } = axisIncludingZero(series.points.flatMap((p) => [p.rawSpread, p.adjustedSpread]));
+  const box = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  const [hover, setHover] = useState<number | null>(null);
+
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => setWidth(Math.floor(entry!.contentRect.width)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const pts = series.points;
+  const { ticks, yMin, yMax } = axisIncludingZero(pts.flatMap((p) => [p.rawSpread, p.adjustedSpread]));
+  const innerW = Math.max(0, width - M.left - M.right);
+  const innerH = CHART_HEIGHT - M.top - M.bottom;
+  const x = (i: number) => M.left + (pts.length <= 1 ? innerW / 2 : (i / (pts.length - 1)) * innerW);
+  const y = (v: number) => M.top + (1 - (v - yMin) / (yMax - yMin || 1)) * innerH;
+  const line = (key: "rawSpread" | "adjustedSpread") => pts.map((p, i) => `${x(i).toFixed(1)},${y(p[key]).toFixed(1)}`).join(" ");
+  const xTickIdx = pts.length <= 1 ? [0] : [...new Set([0, Math.round((pts.length - 1) / 2), pts.length - 1])];
+
+  const onMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (pts.length === 0 || innerW <= 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const rel = (e.clientX - rect.left - M.left) / innerW;
+    setHover(Math.min(pts.length - 1, Math.max(0, Math.round(rel * (pts.length - 1)))));
+  };
+
+  const latest = pts[pts.length - 1];
+  const label = latest
+    ? `Chart of the last ${pts.length} readings. Latest: gross gap ${signedPct(latest.rawSpread, 3)}, net edge ${signedPct(latest.adjustedSpread, 3)}.`
+    : "Chart: no readings yet.";
+  const h = hover === null ? null : pts[hover];
 
   return (
-    <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
-      <LineChart data={chartData} margin={{ top: 8, right: 28, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke={C.grid} />
-        <ReferenceArea
-          y1={yMin}
-          y2={0}
-          fill={C.band}
-          fillOpacity={CHART_BAND_OPACITY}
-          ifOverflow="hidden"
-          label={{ value: "below zero: doesn't clear costs", position: "center", fontSize: 11, fill: C.band }}
-        />
-        <XAxis dataKey="time" tick={AXIS_TICK} stroke={C.axis} minTickGap={24} />
-        <YAxis domain={[yMin, yMax]} ticks={ticks} tickFormatter={(v: number) => signedPct(v)} tick={AXIS_TICK} stroke={C.axis} width={64} />
-        <ReferenceLine y={0} stroke={C.zero} strokeWidth={1.5} strokeDasharray="3 3" label={{ value: "0 = break-even", position: "insideTopLeft", offset: 6, fontSize: 10, fill: C.text }} />
-        <Tooltip
-          formatter={(value, name) => [signedPct(Number(value), 3), TOOLTIP_NAMES[String(name)] ?? String(name)]}
-          allowEscapeViewBox={{ x: false, y: false }}
-          contentStyle={{ background: C.surface, border: `1px solid ${C.grid}`, color: C.text, fontFamily: "var(--font-mono)", fontSize: 11, padding: "6px 8px", whiteSpace: "nowrap" }}
-          labelStyle={{ color: C.text }}
-          itemStyle={{ padding: 0 }}
-        />
-        <Legend wrapperStyle={{ fontSize: 11 }} />
-        {/* Same axis for both lines on purpose: the distance between them
-            is the real cost of trading, not an artifact of two scales. */}
-        <Line type="monotone" dataKey={GROSS_GAP} stroke={C.gross} strokeWidth={1.75} strokeDasharray="4 3" dot={false} isAnimationActive={false} />
-        <Line type="monotone" dataKey={NET_EDGE} stroke={C.net} strokeWidth={2.25} dot={false} isAnimationActive={false} />
-      </LineChart>
-    </ResponsiveContainer>
+    <div className="chart-wrap">
+      <div className="chart-plot" ref={box} style={{ height: CHART_HEIGHT }}>
+        {width > 0 && (
+          <svg width={width} height={CHART_HEIGHT} role="img" aria-label={label} onPointerMove={onMove} onPointerLeave={() => setHover(null)} onPointerDown={onMove}>
+            {ticks.map((t) => (
+              <g key={t}>
+                <line x1={M.left} x2={M.left + innerW} y1={y(t)} y2={y(t)} stroke={C.grid} strokeDasharray="3 3" />
+                <text x={M.left - 6} y={y(t) + 3.5} textAnchor="end" className="chart-tick">
+                  {signedPct(t)}
+                </text>
+              </g>
+            ))}
+            {xTickIdx.map((i) => (
+              <text key={i} x={x(i)} y={CHART_HEIGHT - 6} textAnchor={i === 0 ? "start" : i === pts.length - 1 ? "end" : "middle"} className="chart-tick">
+                {pts[i] ? formatTime(pts[i]!.timestamp, series.source) : ""}
+              </text>
+            ))}
+            <rect x={M.left} y={y(0)} width={innerW} height={Math.max(0, y(yMin) - y(0))} fill={C.band} opacity={CHART_BAND_OPACITY} />
+            {y(yMin) - y(0) > 40 && (
+              <text x={M.left + innerW / 2} y={(y(0) + y(yMin)) / 2 + 4} textAnchor="middle" fill={C.band} fontSize="11">
+                below zero: doesn't clear costs
+              </text>
+            )}
+            <line x1={M.left} x2={M.left + innerW} y1={y(0)} y2={y(0)} stroke={C.zero} strokeWidth="1.5" strokeDasharray="3 3" />
+            <text x={M.left + 6} y={y(0) + 13} fill={C.text} fontSize="10">
+              0 = break-even
+            </text>
+            <polyline points={line("rawSpread")} fill="none" stroke={C.gross} strokeWidth="1.75" strokeDasharray="4 3" />
+            <polyline points={line("adjustedSpread")} fill="none" stroke={C.net} strokeWidth="2.25" />
+            {h && hover !== null && (
+              <g>
+                <line x1={x(hover)} x2={x(hover)} y1={M.top} y2={M.top + innerH} stroke={C.axis} />
+                <circle cx={x(hover)} cy={y(h.rawSpread)} r="3.5" fill={C.gross} />
+                <circle cx={x(hover)} cy={y(h.adjustedSpread)} r="3.5" fill={C.net} />
+              </g>
+            )}
+          </svg>
+        )}
+        {h && hover !== null && (
+          // Beside the pointer, on whichever side has room: always inside the chart.
+          <div className="chart-tip mono" style={x(hover) > width / 2 ? { right: width - x(hover) + 10 } : { left: x(hover) + 10 }}>
+            <div>{formatTime(h.timestamp, series.source)}</div>
+            <div className="chart-tip-gross">Gross gap: {signedPct(h.rawSpread, 3)}</div>
+            <div>Net edge: {signedPct(h.adjustedSpread, 3)}</div>
+          </div>
+        )}
+      </div>
+      <ul className="chart-legend">
+        <li>
+          <span className="chart-key chart-key--gross" aria-hidden="true" />
+          {GROSS_GAP}
+        </li>
+        <li>
+          <span className="chart-key chart-key--net" aria-hidden="true" />
+          {NET_EDGE}
+        </li>
+      </ul>
+    </div>
   );
 }

@@ -1,17 +1,10 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { usePoll } from "./use-poll";
 import type { CostBreakdown, OpportunitiesResponse, SpreadSeries } from "./api-types";
 import { evaluationsTag } from "./counters";
 import { AdvisoryFeed } from "./advisory-feed";
-import { CHART_HEIGHT } from "./spread-chart";
-
-// The chart library loads after first paint, into a box of fixed height.
-const SpreadChart = dynamic(() => import("./spread-chart"), {
-  ssr: false,
-  loading: () => <div className="chart-box" style={{ height: CHART_HEIGHT }} aria-hidden="true" />,
-});
+import SpreadChart, { CHART_BOX_HEIGHT } from "./spread-chart";
 
 const POLL_MS = 15_000;
 
@@ -63,7 +56,7 @@ export function PoolSpreadMonitor() {
             ))}
             <Metric label="Net edge after costs" value="—" sub={" "} main />
           </div>
-          <div className="chart-box" style={{ height: CHART_HEIGHT }} aria-hidden="true" />
+          <div className="chart-box" style={{ height: CHART_BOX_HEIGHT }} aria-hidden="true" />
         </>
       )}
 
@@ -114,7 +107,7 @@ function TickerBody({ series, threshold }: { series: SpreadSeries; threshold: nu
           main
         />
       </div>
-      <div className="chart-box" style={{ minHeight: CHART_HEIGHT }}>
+      <div className="chart-box" style={{ minHeight: CHART_BOX_HEIGHT }}>
         <SpreadChart series={series} />
       </div>
     </>
