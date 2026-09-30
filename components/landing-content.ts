@@ -75,8 +75,8 @@ export const LANDING = {
     title: "Real data said no.",
     cards: [
       {
-        title: "114 fresh round trips between bStocks and Ondo: none cleared costs",
-        period: "26–29 Sep 2026",
+        title: "115 fresh round trips between bStocks and Ondo: none cleared costs",
+        period: "26–30 Sep 2026",
         body: "Microsoft's token from the two issuers, compared per share with both quotes at most 60 seconds old, never differed by enough to pay for the trade; the best was −0.013%.",
       },
       {

@@ -139,10 +139,10 @@ describe("landing content follows basis-project-details.md", () => {
 
   it("findings: clear statements with their dates", () => {
     const [roundTrips, dividend, weekend] = LANDING.findings.cards;
-    // Recounted from the recorder's export on 2026-09-30: 114 fresh valid
-    // round trips, 26–29 Sep 2026, none cleared, best −0.013%.
-    expect(roundTrips!.title).toBe("114 fresh round trips between bStocks and Ondo: none cleared costs");
-    expect(roundTrips!.period).toBe("26–29 Sep 2026");
+    // Recounted from the recorder's export on 2026-09-30 05:48 UTC: 115 fresh valid
+    // round trips, 26–30 Sep 2026, none cleared, best −0.013%.
+    expect(roundTrips!.title).toBe("115 fresh round trips between bStocks and Ondo: none cleared costs");
+    expect(roundTrips!.period).toBe("26–30 Sep 2026");
     expect(roundTrips!.body).toContain("−0.013%");
     expect(dividend).toMatchObject({ title: "Dividend timing: tested with real prices, rejected", period: "20 Aug 2026" });
     expect(weekend).toMatchObject({ title: "Weekend gaps: tested with real prices, rejected", period: "18–21 Sep 2026" });
