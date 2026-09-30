@@ -1,19 +1,44 @@
 "use client";
 
-import { usePoll } from "./use-poll";
-import type { OpportunitiesResponse } from "./api-types";
-import { liveReadingView } from "./live-reading-view";
+import { useEffect, useState } from "react";
+import type { LiveReading, ReadingResponse } from "./api-types";
+import { ageLabel, liveReadingView } from "./live-reading-view";
 
 const POLL_MS = 30_000;
+const TICK_MS = 5_000;
 const pct = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v * 100).toFixed(3)}%`;
 const usd = (v: number) => `$${v.toFixed(2)}`;
 
-// The landing page's hero card: the dashboard's latest live reading, from
-// our own API, every 30 s. The card keeps its size in every state, so
-// nothing moves when the numbers arrive.
-export function LandingLiveReading() {
-  const poll = usePoll<OpportunitiesResponse>("/api/opportunities", POLL_MS);
-  const view = liveReadingView(poll.data, poll.error);
+// The landing page's hero card. It arrives server-rendered with the latest
+// real reading (app/page.tsx), so there is never a loading state; the
+// browser then refreshes it from /api/reading every 30 s. The card keeps
+// its size in every state, so nothing moves.
+export function LandingLiveReading({ initial, renderedAt }: { initial: LiveReading | null; renderedAt: number }) {
+  const [reading, setReading] = useState<LiveReading | null>(initial);
+  const [now, setNow] = useState(renderedAt);
+
+  useEffect(() => {
+    let alive = true;
+    const refresh = async () => {
+      try {
+        const res = await fetch("/api/reading", { cache: "no-store" });
+        if (res.ok && alive) setReading(((await res.json()) as ReadingResponse).reading);
+      } catch {
+        // Keep the last reading; its age shows how old it is, and it turns
+        // "unavailable" once it's too old to call live.
+      }
+    };
+    const poll = setInterval(refresh, POLL_MS);
+    const tick = setInterval(() => setNow(Date.now()), TICK_MS);
+    setNow(Date.now());
+    return () => {
+      alive = false;
+      clearInterval(poll);
+      clearInterval(tick);
+    };
+  }, []);
+
+  const view = liveReadingView(reading, now);
 
   return (
     <div className="live-card" aria-live="polite">
@@ -22,7 +47,11 @@ export function LandingLiveReading() {
           <span className={"status-dot" + (view.kind === "ok" ? " status-dot--ok" : " status-dot--unknown")} aria-hidden="true" />
           Live reading · MSFTB / USDT
         </span>
-        {view.kind === "ok" && <span className="live-time mono">{view.at.slice(11, 19)} UTC</span>}
+        {view.kind === "ok" && (
+          <span className="live-time" suppressHydrationWarning>
+            {ageLabel(view.ageS)}
+          </span>
+        )}
       </div>
 
       {view.kind === "ok" ? (
@@ -50,18 +79,16 @@ export function LandingLiveReading() {
             </div>
           </dl>
           <p className="live-foot">
-            For a ${view.tradeSizeUsd} trade. {view.netEdge > 0 ? "Above zero: the guardrails decide next." : "Below zero: Basis records \"no opportunity\" and does nothing."} Updates
-            every 30 s.
+            For a ${view.tradeSizeUsd} trade at {view.at.slice(11, 19)} UTC.{" "}
+            {view.netEdge > 0 ? "Above zero: the guardrails decide next." : "Below zero: Basis records \"no opportunity\" and does nothing."}
           </p>
         </>
       ) : (
         <div className="live-empty">
-          <p>{view.kind === "loading" ? "Loading the live reading…" : "Live reading unavailable."}</p>
-          {view.kind === "unavailable" && (
-            <p>
-              <a href="/app">Open the dashboard</a>
-            </p>
-          )}
+          <p>Live reading unavailable.</p>
+          <p>
+            <a href="/app">Open the dashboard</a>
+          </p>
         </div>
       )}
     </div>

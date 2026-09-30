@@ -386,3 +386,18 @@ export interface IssuerPanelSummary {
   };
   excluded: Array<{ symbol: string; issuer: string; reason: string }>;
 }
+
+// /api/reading: the latest recorded evaluation, for the landing page's
+// live reading (server-rendered, then refreshed in the browser).
+export interface LiveReading {
+  at: string;
+  tradeSizeUsd: number;
+  pools: Array<{ fee: string; priceUsd: number }>;
+  grossGap: number;
+  totalCost: number;
+  netEdge: number;
+}
+
+export interface ReadingResponse {
+  reading: LiveReading | null;
+}
