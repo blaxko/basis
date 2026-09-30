@@ -6,12 +6,13 @@ import { ThemeToggle } from "../components/theme-toggle";
 import { LandingMotion, MOTION_BOOT } from "../components/landing-motion";
 import { FactTicker, HeroBackdrop, PageBackdrop, PoolRings } from "../components/landing-visuals";
 
-// The landing page: what Basis is, how it decides, and what it found.
+// The landing page: short claims, a few cards each, and a closing call to
+// action: what Basis is, how it decides, and what it found.
 // Server-rendered; the client code is the live reading in the hero and
 // the decorative motion (components/landing-motion.tsx).
 // Words from components/landing-content.ts (basis-project-details.md).
 export default function Landing() {
-  const { hero, problem, how, findings, issuers, limits, faq, footer } = LANDING;
+  const { hero, problem, how, guardrails, findings, faq, closing, footer } = LANDING;
 
   return (
     <div className="landing">
@@ -49,11 +50,12 @@ export default function Landing() {
                 </a>
               </div>
               <p className="l-micro">
-                {hero.micro}{" "}
-                {DEMO_VIDEO_URL ? (
-                  <a href={DEMO_VIDEO_URL}>{hero.videoLabel}</a>
-                ) : (
-                  <span>{hero.videoPending}.</span>
+                {hero.micro}
+                {DEMO_VIDEO_URL && (
+                  <>
+                    {" "}
+                    <a href={DEMO_VIDEO_URL}>{hero.videoLabel}</a>
+                  </>
                 )}
               </p>
             </div>
@@ -66,20 +68,23 @@ export default function Landing() {
         </section>
 
         <section className="l-section" id="problem">
-          <div className="l-wrap" data-reveal>
-            <h2 className="l-h2">{problem.title}</h2>
-            {problem.body.map((p) => (
-              <p className="l-sub" key={p.slice(0, 24)}>
-                {p}
-              </p>
-            ))}
+          <div className="l-wrap">
+            <h2 className="l-h2" data-reveal>{problem.title}</h2>
+            <div className="l-grid l-grid--3" data-reveal>
+              {problem.cards.map((c, i) => (
+                <div className="l-tile" key={c.title} style={{ "--i": i } as React.CSSProperties}>
+                  <h3 className="l-h3">{c.title}</h3>
+                  <p>{c.body}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
 
         <section className="l-section" id="how">
           <div className="l-wrap">
             <h2 className="l-h2" data-reveal>{how.title}</h2>
-            <ol className="l-steps" data-reveal>
+            <ol className="l-steps l-steps--3" data-reveal>
               {how.steps.map((s, i) => (
                 <li className="l-tile" key={s.title} style={{ "--i": i } as React.CSSProperties}>
                   <span className="l-step mono">0{i + 1}</span>
@@ -88,84 +93,46 @@ export default function Landing() {
                 </li>
               ))}
             </ol>
-            <p className="l-sub">{how.instructions}</p>
+            <p className="l-formula mono" data-reveal>
+              {how.formula}
+            </p>
           </div>
         </section>
 
         <section className="l-section" id="guardrails">
           <div className="l-wrap">
-            <h2 className="l-h2" data-reveal>{LANDING.guardrailsTitle}</h2>
-            <div className="l-glass l-glass--table" data-reveal>
-            <table className="l-table">
-              <thead>
-                <tr>
-                  <th scope="col">Check</th>
-                  <th scope="col">What it does</th>
-                  <th scope="col">Limit</th>
-                </tr>
-              </thead>
-              <tbody>
-                {LANDING.guardrails.map((g) => (
-                  <tr key={g.check}>
-                    <th scope="row">{g.check}</th>
-                    <td>{g.does}</td>
-                    <td className="l-limit mono" data-label="Limit">
-                      {g.limit}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <h2 className="l-h2" data-reveal>{guardrails.title}</h2>
+            <div className="l-grid l-grid--3" data-reveal>
+              {guardrails.cards.map((g, i) => (
+                <div className="l-tile" key={g.title} style={{ "--i": i } as React.CSSProperties}>
+                  <div className="l-label">{g.title}</div>
+                  <div className="l-limit-value">{g.limit}</div>
+                </div>
+              ))}
             </div>
-            <p className="l-sub">{LANDING.guardrailsNote}</p>
           </div>
         </section>
 
         <section className="l-section" id="findings">
           <div className="l-wrap">
             <h2 className="l-h2" data-reveal>{findings.title}</h2>
-            <div className="l-grid l-grid--2" data-reveal>
-              {findings.items.map((f, i) => (
-                <div className="l-tile" key={f.title} style={{ "--i": i } as React.CSSProperties}>
-                  <span className="l-tag">{f.tag}</span>
-                  <h3 className="l-h3">{f.title}</h3>
-                  <p>{f.body}</p>
-                </div>
-              ))}
-            </div>
-
-            <h2 className="l-h2 l-h2--minor" id="issuers">
-              {issuers.title}
-            </h2>
-            <p className="l-sub">{issuers.body}</p>
-            <p className="monitor-only">{issuers.label}</p>
             <div className="l-grid l-grid--3" data-reveal>
-              {issuers.facts.map((f, i) => (
+              {findings.cards.map((f, i) => (
                 <div className="l-tile" key={f.label} style={{ "--i": i } as React.CSSProperties}>
-                  <div className="l-label">{f.label}</div>
                   <div className="l-metric mono">{f.value}</div>
+                  <div className="l-label">
+                    {f.label} · {f.period}
+                  </div>
                   <p>{f.body}</p>
                 </div>
               ))}
             </div>
-          </div>
-        </section>
-
-        <section className="l-section" id="limits">
-          <div className="l-wrap">
-            <h2 className="l-h2" data-reveal>{limits.title}</h2>
-            <ul className="l-list" data-reveal>
-              {limits.items.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-            <p className="l-sub">{limits.next}</p>
           </div>
         </section>
 
         <section className="l-section" id="faq">
           <div className="l-wrap">
-            <h2 className="l-h2" data-reveal>Questions</h2>
+            <h2 className="l-h2" data-reveal>{LANDING.faqTitle}</h2>
             <div className="l-faq l-glass" data-reveal>
               {faq.map((f, i) => (
                 <details key={f.q} open={i === 0}>
@@ -174,6 +141,15 @@ export default function Landing() {
                 </details>
               ))}
             </div>
+          </div>
+        </section>
+
+        <section className="l-section l-closing">
+          <div className="l-wrap" data-reveal>
+            <h2 className="l-h2">{closing.title}</h2>
+            <a className="btn btn--primary btn--lg" href={closing.cta.href}>
+              {closing.cta.label}
+            </a>
           </div>
         </section>
       </main>

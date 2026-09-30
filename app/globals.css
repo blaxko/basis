@@ -1767,6 +1767,36 @@ details.toggles > :not(summary) {
   }
 }
 
+/* The shorter page: three steps, a formula line, guardrail limits as the
+   card's value, and a closing call to action. */
+@media (min-width: 900px) {
+  .l-steps--3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.l-formula {
+  margin-top: 24px;
+  font-size: 15px;
+  color: var(--color-text);
+}
+
+.l-limit-value {
+  margin-top: 6px;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.l-closing {
+  text-align: center;
+}
+
+.l-closing .l-h2 {
+  margin: 0 auto 28px;
+}
+
 /* --- End landing page --- */
 
 /* --- Landing visuals ---

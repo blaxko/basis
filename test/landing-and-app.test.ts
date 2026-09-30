@@ -55,8 +55,27 @@ describe("routes", () => {
 });
 
 describe("landing content follows basis-project-details.md", () => {
-  it("uses the one-liner as its headline", () => {
-    expect(LANDING.hero.title).toBe("An arbitrage agent for tokenized stocks that knows when not to trade.");
+  it("the hero: a short claim, one sentence, and the closing section repeats the claim and the button", () => {
+    expect(LANDING.hero.title).toBe("A price gap isn't a profit.");
+    expect(LANDING.hero.lede).toBe("Basis watches Microsoft's token in two PancakeSwap pools every 30 seconds and only trades when the gap survives every cost.");
+    expect(LANDING.closing).toEqual({ title: LANDING.hero.title, cta: LANDING.hero.primary });
+    const page = read("app/page.tsx");
+    expect(page).toContain("{closing.title}");
+    expect(page).toContain("href={closing.cta.href}");
+  });
+
+  it("scannable: each section is a short claim with at most about 60 words", () => {
+    const words = (v: unknown) => JSON.stringify(v).replace(/"[a-z]+":/gi, " ").split(/\s+/).filter((w) => /[A-Za-z0-9]/.test(w)).length;
+    for (const key of ["problem", "how", "guardrails", "findings"] as const) {
+      const section = LANDING[key];
+      expect(section.title.split(" ").length, key).toBeLessThanOrEqual(8);
+      expect(words(section), key).toBeLessThanOrEqual(70);
+    }
+    expect(LANDING.problem.cards).toHaveLength(3);
+    expect(LANDING.how.steps.map((s) => s.title)).toEqual(["Read", "Count", "Guard"]);
+    expect(LANDING.how.formula).toBe("net edge = gap − fees − slippage − gas");
+    expect(LANDING.findings.cards).toHaveLength(3);
+    expect(read("app/page.tsx")).not.toMatch(/<table/);
   });
 
   it.each([
@@ -75,26 +94,32 @@ describe("landing content follows basis-project-details.md", () => {
     expect(landingText).not.toContain("!");
   });
 
-  it("the six guardrails with their real limits, described as the details file does", () => {
-    expect(LANDING.guardrails.map((g) => [g.check, g.limit])).toEqual([
-      ["Price sanity and liquidity", "Minimum pool liquidity $1,000"],
-      ["Market status", "—"],
-      ["Reference price", "Within 2%"],
-      ["Per-trade cap", "$500"],
-      ["Daily cap", "$2,000"],
-      ["Dry-run floor", "At least 98%"],
+  it("six guardrail cards with their real limits (lib/guardrails/config.ts), no table", () => {
+    expect(LANDING.guardrails.cards.map((g) => [g.title, g.limit])).toEqual([
+      ["Per-trade cap", "$500 per trade"],
+      ["Daily cap", "$2,000 per UTC day"],
+      ["Reference price", "Within 2% of Binance's quote"],
+      ["Market status", "Paused, limited or unknown blocks; closed doesn't"],
+      ["Price sanity and liquidity", "Sane prices, $1,000+ in each pool"],
+      ["Dry-run floor", "98% simulation floor"],
     ]);
-    expect(landingText).toContain('A plain \\"market closed\\" does not block');
-    expect(landingText).toContain("per UTC day");
+    const config = read("lib/guardrails/config.ts");
+    for (const real of ["perTradeCapUsd: 500,", "perDayCapUsd: 2000,", "maxReferenceDivergencePct: 0.02,", "minDryRunOutputRatio: 0.98,", "minLiquidityDepthUsd: 1000,"]) {
+      expect(config, real).toContain(real);
+    }
     for (const wrong of [/truncat/i, /24-hour/i, /must report active/i, /confirms trading hours/i, /net realized/i, /\+41 bps/]) expect(landingText).not.toMatch(wrong);
   });
 
-  it("figures that aren't live carry their date", () => {
-    const issuers = JSON.stringify(LANDING.issuers);
-    expect(issuers).toContain("104");
-    expect(issuers).toContain("28 Sep 2026, 20:15 UTC");
-    expect(issuers).toContain("498 of 5,780");
-    expect(landingText).toContain("Monitor only: Basis doesn't trade across issuers");
+  it("findings: three real numbers, each with its date or data period", () => {
+    const [roundTrips, dividend, weekend] = LANDING.findings.cards;
+    // Recounted from the recorder's export on 2026-09-30: 114 fresh valid
+    // round trips, 26–29 Sep 2026, none cleared, best −0.013%.
+    expect(roundTrips).toMatchObject({ value: "114", period: "26–29 Sep 2026" });
+    expect(roundTrips!.body).toContain("None cleared costs");
+    expect(roundTrips!.body).toContain("−0.013%");
+    expect(dividend!.period).toBe("20 Aug 2026");
+    expect(weekend!.period).toBe("18–21 Sep 2026");
+    expect(landingText).toContain("Monitor only");
   });
 
   it("the FAQ says plainly that Basis doesn't make money", () => {
@@ -102,9 +127,12 @@ describe("landing content follows basis-project-details.md", () => {
     expect(LANDING.faq[0]!.a.startsWith("No.")).toBe(true);
   });
 
-  it("the demo video is a placeholder until its URL is set, never a dead link", () => {
+  it("the demo video: nothing at all until its URL is set, then a 'Watch the demo' link", () => {
     expect(DEMO_VIDEO_URL).toBeNull();
-    expect(read("app/page.tsx")).toContain("DEMO_VIDEO_URL ? (");
+    expect(LANDING.hero.videoLabel).toBe("Watch the demo");
+    const page = read("app/page.tsx");
+    expect(page).toMatch(/\{DEMO_VIDEO_URL && \(/);
+    expect(landingSrc).not.toMatch(/coming soon/i);
   });
 
   it("no shader, canvas, animation loop or CDN scripts", () => {
@@ -212,17 +240,19 @@ describe("headers, footers, menu and theme toggle", () => {
     expect(header()).not.toMatch(/How it works|GITHUB_URL|github\.com/);
   });
 
-  it("each page's menu lists only that page's own sections, all of which exist; never How it works or GitHub", async () => {
+  it("each page's menu uses short names, and every section link lands on a section that exists", async () => {
     const { LANDING_SECTIONS, DASHBOARD_SECTIONS } = await import("../components/site-sections");
+    expect(LANDING_SECTIONS.map((s) => s.label)).toEqual(["How it works", "Guardrails", "Findings", "FAQ", "GitHub"]);
+    expect(LANDING_SECTIONS.at(-1)!.href).toBe(GITHUB_URL);
+    expect(DASHBOARD_SECTIONS.map((s) => s.label)).toEqual(["Live spread", "Instruction", "Guardrails", "Ledger", "Issuers"]);
     for (const [sections, src] of [
       [LANDING_SECTIONS, landing() + read("components/landing-content.ts")],
       [DASHBOARD_SECTIONS, ["app/dashboard/page.tsx", "components/pool-spread-monitor.tsx", "components/instruction-box.tsx", "components/guardrail-checklist.tsx", "components/audit-ledger.tsx", "components/issuer-monitor.tsx"].map((f) => read(f)).join("\n")],
     ] as const) {
-      expect(sections.length).toBeGreaterThan(3);
-      for (const s of sections) {
+      for (const s of sections.filter((x) => x.href.startsWith("#"))) {
         expect(s.href).toMatch(/^#[a-z-]+$/);
         expect(src, s.href).toContain(`id="${s.href.slice(1)}"`);
-        expect(s.label).not.toMatch(/How it works|GitHub/i);
+        expect(s.label.split(" ").length).toBeLessThanOrEqual(3);
       }
     }
     expect(landing()).toContain("<SiteMenu sections={LANDING_SECTIONS} />");
