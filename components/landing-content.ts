@@ -56,7 +56,7 @@ export const LANDING = {
     title: "Try it in the dashboard.",
     cards: [
       { title: "Watch the live spread", href: "/app#spread", body: "See both pool prices, the gap and the net edge update every 30 seconds." },
-      { title: "Give an instruction", href: "/app#instruction", body: "Type an order in plain English, like \"Buy $200 of MSFT\", in any language." },
+      { title: "Give an instruction", href: "/app#instruction", body: "Type an order, like \"Buy $200 of MSFT\", in plain English or other languages." },
       { title: "See the guardrails decide", href: "/app#gate", body: "Watch the six checks run on your order, with what each one measured." },
       { title: "Read the audit ledger", href: "/app#ledger", body: "Every decision is recorded, including each \"no\", and you can export it as CSV." },
     ],
@@ -84,7 +84,7 @@ export const LANDING = {
       {
         title: "Dividend timing: tested with real prices, rejected",
         period: "20 Aug 2026",
-        body: "On Microsoft's ex-dividend day the stock fell, but the bStocks, xStocks and Ondo tokens all rose together, so no issuer lagged to trade against.",
+        body: "On Microsoft's ex-dividend day the stock fell, but the bStocks and Ondo tokens moved together, in the same direction, so no issuer lagged to trade against.",
       },
       {
         title: "Weekend gaps: tested with real prices, rejected",
@@ -110,7 +110,7 @@ export const LANDING = {
     },
     {
       q: "Does Basis make money?",
-      a: "No. In every reading recorded so far, the gap between the pools has been smaller than the cost of trading it. Basis is built to recognise that and not trade.",
+      a: "No. In every reading we have checked, the gap between the pools has been smaller than the cost of trading it. Basis is built to recognise that and not trade.",
     },
     {
       q: "Can I trade on the demo?",
