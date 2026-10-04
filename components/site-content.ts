@@ -225,10 +225,11 @@ export const FINDINGS = {
     },
     {
       title: "The 0.25% and 1% pools start 1.25% behind.",
-      period: "25–30 Sep 2026",
+      period: "25–30 Sep and 3–4 Oct 2026",
       measured:
         "Each pool's price was adjusted for its side of the trade: buying pays that pool's fee and selling nets less by it. Slippage and gas come off after that. An early reading, before the live readings began, put the pools 0.71% apart ($3.56).",
-      showed: "The 1% pool's own fee alone was bigger than that whole gap. Live readings on 25–30 Sep 2026 had a net edge of about −0.8% to −1.3%.",
+      showed:
+        "The 1% pool's own fee alone was bigger than that whole gap. Live readings had a net edge of about −0.5% to −1.3%. On 4 Oct the gap widened to about 0.7–0.8%, still short of the 1.3% it costs.",
       why: "A positive gap with a negative net edge is a trap, not a signal. On this pair, fees alone cost 1.25%.",
       notes: [],
     },
