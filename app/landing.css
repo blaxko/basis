@@ -754,9 +754,8 @@
   margin: 0 0 12px;
 }
 
-/* The small "Read more" link at the end of a landing-page section, and the
-   way back to the overview. 44 px tall to tap. */
-.l-readmore {
+/* The way back to the overview, at the end of each page. 44 px tall to tap. */
+.l-back {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -769,7 +768,7 @@
   text-underline-offset: 3px;
 }
 
-.l-readmore:hover {
+.l-back:hover {
   text-decoration-thickness: 2px;
 }
 

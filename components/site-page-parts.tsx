@@ -15,16 +15,6 @@ export function PageIntro({ title, lede }: { title: string; lede: string }) {
   );
 }
 
-// The small "Read more" link at the end of a landing-page section. Its
-// name says what it opens; the visible words are "Read more".
-export function ReadMore({ href, label }: { href: string; label: string }) {
-  return (
-    <a className="l-readmore" href={href} aria-label={`Read more: ${label}`}>
-      Read more <span aria-hidden="true">→</span>
-    </a>
-  );
-}
-
 // The end of a page: the dashboard, and the way back to the overview.
 export function PageClosing() {
   return (
@@ -35,7 +25,7 @@ export function PageClosing() {
           {LANDING.closing.cta.label}
         </a>
         <p>
-          <a className="l-readmore" href="/">
+          <a className="l-back" href="/">
             <span aria-hidden="true">←</span> Back to the overview
           </a>
         </p>

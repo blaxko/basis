@@ -9,6 +9,7 @@ import { workedExample } from "../components/worked-example";
 import { DEFAULT_GUARDRAIL_CONFIG } from "../lib/guardrails/config";
 import { MARKET_STATUS_PASS_CODES, MARKET_STATUS_BLOCK_CODES } from "../lib/guardrails/check";
 import type { LiveReading } from "../components/api-types";
+import { readOnlyNote } from "../components/read-only-note";
 
 // The landing page's menu items are real pages (/how-it-works, /guardrails,
 // /findings, /faq) that share the landing page's layout and glass style.
@@ -77,12 +78,27 @@ describe("routes and the shared layout", () => {
     for (const k of KEYS) expect(read(`${SITE_DIR}/${k}/page.tsx`), k).not.toMatch(/<footer|<header/);
   });
 
-  it("the landing page no longer carries its own header or footer, and its sections link to their pages", () => {
+  it("the landing page has no header or footer of its own, and no 'Read more' links: the four pages open only from the menu", () => {
     const landing = read(`${SITE_DIR}/page.tsx`);
     expect(landing).not.toMatch(/<header|<footer|SiteMenu|ThemeToggle/);
-    const links = [...landing.matchAll(/<ReadMore href="([^"]+)"/g)].map((m) => m[1]);
-    for (const path of ["/how-it-works", "/guardrails", "/findings", "/faq"]) expect(links, path).toContain(path);
-    expect(links.every((l) => l!.startsWith("/"))).toBe(true);
+    expect(landing).not.toMatch(/ReadMore|Read more/i);
+    // Nothing the landing page shows points at one of the four pages.
+    const words = JSON.stringify(LANDING);
+    for (const path of ["/how-it-works", "/guardrails", "/findings", "/faq"]) {
+      expect(landing, path).not.toContain(`"${path}`);
+      expect(words, path).not.toContain(path);
+    }
+    // No "Read more" anywhere a visitor reads: components, pages, styles, docs.
+    for (const file of ["components/site-page-parts.tsx", "components/site-content.ts", "components/landing-content.ts", "app/landing.css", "README.md", "docs/how-to-use.md", "docs/PRD.md"]) {
+      expect(read(file), file).not.toMatch(/read more|ReadMore|l-readmore/i);
+    }
+  });
+
+  it("the dashboard's 'what that means' link still goes somewhere sensible: the landing page's own FAQ section", () => {
+    expect(readOnlyNote(true)!.linkUrl).toBe("/#faq");
+    expect(read(`${SITE_DIR}/page.tsx`)).toContain('id="faq"');
+    // ...which says what read-only means.
+    expect(LANDING.faq.find((f) => f.q === "Can I trade on the demo?")!.a).toMatch(/read-only by design/);
   });
 });
 
@@ -394,10 +410,10 @@ describe("FAQ page", () => {
 describe("every page works at every width (styles exist for the layouts the pages use)", () => {
   it("the page styles are the landing page's, in one file loaded only by these pages", () => {
     const css = read("app/landing.css");
-    for (const cls of [".l-pagehead", ".l-readmore", ".l-facts", ".l-worked", ".l-detail", ".l-closing"]) expect(css, cls).toContain(cls);
+    for (const cls of [".l-pagehead", ".l-back", ".l-facts", ".l-worked", ".l-detail", ".l-closing"]) expect(css, cls).toContain(cls);
     expect(css).not.toMatch(/text-transform:\s*uppercase/);
     // 44 px tap target for the small links.
-    const rule = css.slice(css.indexOf(".l-readmore {"), css.indexOf("}", css.indexOf(".l-readmore {")));
+    const rule = css.slice(css.indexOf(".l-back {"), css.indexOf("}", css.indexOf(".l-back {")));
     expect(rule).toMatch(/min-height:\s*44px/);
     expect(readdirSync(join(ROOT, "app")).filter((n) => n.endsWith(".css")).sort()).toEqual(["globals.css", "landing.css"]);
   });

@@ -2,7 +2,6 @@ import { LandingLiveReading } from "../../components/landing-live-reading";
 import { DEMO_VIDEO_URL, LANDING } from "../../components/landing-content";
 import type { ReadingResponse } from "../../components/api-types";
 import { HeroBackdrop, PoolRings } from "../../components/landing-visuals";
-import { ReadMore } from "../../components/site-page-parts";
 import { GET as getReading } from "../api/reading/route";
 
 // Rendered per request, so the live reading arrives in the HTML with the
@@ -13,10 +12,11 @@ export const dynamic = "force-dynamic";
 
 // The landing page, the overview: what Basis is, why a gap isn't a profit,
 // how it decides, what a visitor can try, and what it found. Short claims
-// as headings, one full sentence per card, and a small "Read more" link to
-// the page that goes deeper. The header, footer and glass backdrop come
-// from the shared layout (app/(site)/layout.tsx). Server-rendered; the
-// client code here is the live reading's refresh.
+// as headings and one full sentence per card. It has no links to the four
+// pages (How it works, Guardrails, Findings, FAQ): those open only from the
+// menu. The header, footer and glass backdrop come from the shared layout
+// (app/(site)/layout.tsx). Server-rendered; the client code here is the
+// live reading's refresh.
 // Words from components/landing-content.ts.
 export default async function Landing() {
   const { hero, tokenized, problem, how, tryIt, guardrails, findings, builtWith, faq, closing } = LANDING;
@@ -79,7 +79,6 @@ export default async function Landing() {
               </div>
             ))}
           </div>
-          <ReadMore href="/how-it-works#example" label="a worked example of the costs" />
         </div>
       </section>
 
@@ -98,7 +97,6 @@ export default async function Landing() {
           <p className="l-formula mono" data-reveal>
             {how.formula}
           </p>
-          <ReadMore href="/how-it-works" label="how it works" />
         </div>
       </section>
 
@@ -129,7 +127,6 @@ export default async function Landing() {
               </div>
             ))}
           </div>
-          <ReadMore href="/guardrails" label="the six guardrails" />
         </div>
       </section>
 
@@ -145,7 +142,6 @@ export default async function Landing() {
               </div>
             ))}
           </div>
-          <ReadMore href="/findings" label="the findings" />
         </div>
       </section>
 
@@ -157,7 +153,6 @@ export default async function Landing() {
               <li key={item}>{item}</li>
             ))}
           </ul>
-          <ReadMore href="/how-it-works#apis" label="which Binance Web3 API modules are used where" />
         </div>
       </section>
 
@@ -172,7 +167,6 @@ export default async function Landing() {
               </details>
             ))}
           </div>
-          <ReadMore href="/faq" label="all the questions" />
         </div>
       </section>
 
