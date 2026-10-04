@@ -340,15 +340,15 @@ describe("Findings page: real data, with its period, how it was measured and why
   });
 
   it("the recounted round trips (222 fresh, none cleared), dated, and the data quality", () => {
-    // Recounted from the recorder's export on 2026-10-04 11:05 UTC.
+    // Recounted from the recorder's export on 2026-10-04 11:15 UTC.
     expect(FINDING_FACTS.roundTrips).toMatchObject({ count: 222, cleared: 0, best: "−0.013%", median: "−0.21%", period: "26–30 Sep and 2–4 Oct 2026" });
-    expect(FINDING_FACTS.readings).toMatchObject({ total: 13803, valid: 8521, asOf: "4 Oct 2026, 11:05 UTC" });
+    expect(FINDING_FACTS.readings).toMatchObject({ total: 13812, valid: 8530, asOf: "4 Oct 2026, 11:15 UTC" });
     const first = FINDINGS.findings[0]!;
     expect(first.title).toBe("Up to 4 Oct 2026, none of 222 round trips cleared costs");
     expect(first.body).toMatch(/at most 60 seconds/);
     expect(first.body).toContain("−0.013%");
     expect(first.body).toContain("−0.21%");
-    expect(first.note).toContain("8,521 of 13,803 readings were valid, as of 4 Oct 2026, 11:05 UTC");
+    expect(first.note).toContain("8,530 of 13,812 readings were valid, as of 4 Oct 2026, 11:15 UTC");
     expect(first.note).toContain("30 Sep 05:48");
     expect(first.note).toContain("2 Oct 22:52");
   });
@@ -487,6 +487,8 @@ describe("every page works at every width (styles exist for the layouts the page
     const css = read("app/landing.css");
     for (const cls of [".l-pagehead", ".l-back", ".l-note", ".l-worked", ".l-detail", ".l-closing"]) expect(css, cls).toContain(cls);
     expect(css).not.toMatch(/text-transform:\s*uppercase/);
+    // The steps are an ordered list laid out as a grid: no default indent on phones.
+    expect(css).toMatch(/ol\.l-grid \{\s*list-style: none;\s*padding: 0;/);
     // 44 px tap target for the small links.
     const rule = css.slice(css.indexOf(".l-back {"), css.indexOf("}", css.indexOf(".l-back {")));
     expect(rule).toMatch(/min-height:\s*44px/);

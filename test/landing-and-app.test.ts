@@ -139,7 +139,7 @@ describe("landing content follows basis-project-details.md", () => {
 
   it("findings: clear statements with their dates", () => {
     const [roundTrips, dividend, weekend] = LANDING.findings.cards;
-    // Recounted from the recorder's export on 2026-10-04 11:05 UTC. 222 fresh
+    // Recounted from the recorder's export on 2026-10-04 11:15 UTC. 222 fresh
     // valid round trips, none cleared, best −0.013% (components/finding-facts.ts),
     // dated so the claim stays true after the freeze.
     expect(roundTrips!.title).toBe("Up to 4 Oct 2026, none of 222 round trips cleared costs");
