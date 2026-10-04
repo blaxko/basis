@@ -2,7 +2,7 @@
 
 ## For judges: start here
 
-**Live demo: https://basis-production-c229.up.railway.app** (no wallet, deposit or sign-up needed). The landing page explains Basis and shows the live reading; the dashboard is at **https://basis-production-c229.up.railway.app/app**.
+**Live demo: https://basis-production-c229.up.railway.app** (no wallet, deposit or sign-up needed). The landing page explains Basis and shows the live reading, and four pages go deeper (`/how-it-works`, `/guardrails`, `/findings`, `/faq`); the dashboard is at **https://basis-production-c229.up.railway.app/app**.
 
 Basis watches the two PancakeSwap pools where MSFTB (tokenized Microsoft stock) trades on BNB Chain, and would only trade when the price gap between them beats every cost: both pools' fees, slippage and gas. So far, on every reading, the gap has been far smaller than those costs, so Basis correctly says no, and records why.
 
