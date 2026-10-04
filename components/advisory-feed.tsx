@@ -25,7 +25,7 @@ export function AdvisoryFeed({
       <div className="advisory-lines">
         {opportunities.map((opportunity, i) => (
           <p className="advisory-line mono" key={`${opportunity.ticker}-${i}`}>
-            <span className="advisory-when">[{opportunity.ticker}] net edge {(opportunity.order.adjustedSpread * 100).toFixed(2)}%</span> {opportunity.narration}
+            <span className="advisory-when">[opportunity]</span> {opportunity.narration}
           </p>
         ))}
         {observations.map((o) => (

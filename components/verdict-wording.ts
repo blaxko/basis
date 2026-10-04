@@ -30,13 +30,13 @@ function pct(value: number): string {
 export function notSentReason(outcome: string | null, netEdge: number): string {
   switch (outcome) {
     case null:
-      return "preview only";
+      return "preview only, nothing is sent";
     case "no_edge":
       return `no positive edge (net ${pct(netEdge)})`;
     case "simulated":
-      return "simulation mode: checks only";
+      return "simulation mode: checks only, nothing is sent";
     case "dry_run_only":
-      return "dry-run: rehearsed, not sent";
+      return "dry-run: rehearsed, nothing is sent";
     case "two_leg_execution_not_implemented":
       return "live arbitrage is switched off";
     case "spread_closed":

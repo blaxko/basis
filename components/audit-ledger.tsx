@@ -178,6 +178,8 @@ function DetectionSummaryRow({ entries, continuesBeyondShown }: { entries: Detec
 
 const OUTCOME_NOTES: Partial<Record<PipelineLedgerEntry["outcome"], (e: PipelineLedgerEntry) => string>> = {
   no_edge: (e) => `no edge: net ${signedPct(e.verdict.input.adjustedSpread)} is not positive — nothing sent`,
+  simulated: () => "simulation mode: the guardrails ran on this order; no swap was simulated or sent",
+  dry_run_only: () => "dry-run: rehearsed against both pools, nothing sent",
   tolerance_exceeds_edge: (e) =>
     `on-chain slippage tolerance isn't below the net edge (${signedPct(e.freshness?.freshSpread ?? e.verdict.input.adjustedSpread)}) — nothing sent`,
   two_leg_execution_not_implemented: () => "live mode refused: only one leg of the arbitrage is built — nothing approved or sent",

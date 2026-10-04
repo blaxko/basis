@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { LiveReading, ReadingResponse } from "./api-types";
-import { ageLabel, liveReadingView } from "./live-reading-view";
+import { ageLabel, liveReadingView, readingVerdict } from "./live-reading-view";
 
 const POLL_MS = 30_000;
 const TICK_MS = 5_000;
@@ -80,7 +80,7 @@ export function LandingLiveReading({ initial, renderedAt }: { initial: LiveReadi
           </dl>
           <p className="live-foot">
             For a ${view.tradeSizeUsd} trade at {view.at.slice(11, 19)} UTC.{" "}
-            {view.netEdge > 0 ? "Above zero: the guardrails decide next." : "Below zero: Basis records \"no opportunity\" and does nothing."}
+            {readingVerdict(view.netEdge)}
           </p>
         </>
       ) : (

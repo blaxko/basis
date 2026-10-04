@@ -66,7 +66,7 @@ export function PoolSpreadMonitor() {
             Cost breakdown{series?.costs ? ` · $${series.costs.tradeSizeUsd} order · ${signedPct(series.costs.totalCostPct, 3)} in total` : ""}
           </summary>
           {series?.costs && latest ? (
-            <CostTable costs={series.costs} cheapPrice={latest.cheapPoolPriceUsd} dearPrice={latest.expensivePoolPriceUsd} />
+            <CostTable costs={series.costs} cheapPrice={latest.cheapPoolPriceUsd} dearPrice={latest.expensivePoolPriceUsd} threshold={threshold} />
           ) : (
             <p className="state-message">The cost table appears with the first live evaluation.</p>
           )}
@@ -91,7 +91,11 @@ export function PoolSpreadMonitor() {
 function TickerBody({ series, threshold }: { series: SpreadSeries; threshold: number }) {
   const latest = series.points[series.points.length - 1];
   if (!latest) return <p className="state-message">No data yet.</p>;
-  const clears = latest.adjustedSpread > Math.max(0, threshold);
+  const floor = Math.max(0, threshold);
+  const clears = latest.adjustedSpread > floor;
+  // Positive but at or under the threshold: no order is built, and it
+  // isn't drawn red as if it were a loss.
+  const positiveButSmall = latest.adjustedSpread > 0 && !clears;
 
   return (
     <>
@@ -102,11 +106,16 @@ function TickerBody({ series, threshold }: { series: SpreadSeries; threshold: nu
         <Metric
           label="Net edge after costs"
           value={signedPct(latest.adjustedSpread, 3)}
-          tone={clears ? "pos" : "neg"}
-          sub={clears ? "clears threshold" : "no opportunity"}
+          tone={clears ? "pos" : positiveButSmall ? undefined : "neg"}
+          sub={clears ? "clears threshold" : positiveButSmall ? `under the ${signedPct(floor, 2).replace("+", "")} threshold` : "no opportunity"}
           main
         />
       </div>
+      {clears && (
+        <p className="panel-note" role="status">
+          The net edge is above the threshold, so Basis builds an order and runs the guardrails on it. Nothing is sent: this build only simulates.
+        </p>
+      )}
       <div className="chart-box" style={{ minHeight: CHART_BOX_HEIGHT }}>
         <SpreadChart series={series} />
       </div>
@@ -131,7 +140,7 @@ const LINE_LABELS: Record<string, (c: CostBreakdown["lines"][number]) => { label
   gas: () => ({ label: "Gas, both legs", sub: "live estimate, with a safety margin" }),
 };
 
-function CostTable({ costs, cheapPrice, dearPrice }: { costs: CostBreakdown; cheapPrice: number; dearPrice: number }) {
+function CostTable({ costs, cheapPrice, dearPrice, threshold }: { costs: CostBreakdown; cheapPrice: number; dearPrice: number; threshold: number }) {
   const cheapFee = costs.lines.find((l) => l.key === "buyFee")?.feeUnits ?? 0;
   const dearFee = costs.lines.find((l) => l.key === "sellFee")?.feeUnits ?? 0;
   return (
@@ -173,7 +182,7 @@ function CostTable({ costs, cheapPrice, dearPrice }: { costs: CostBreakdown; che
       </table>
       <p className="panel-note">
         Computed with the Basis Model's own functions for the latest evaluation, so it always equals the monitor's net edge. An order
-        is built only when the net edge is above zero.
+        is built only when the net edge is above {signedPct(Math.max(0, threshold), 2).replace("+", "")}.
       </p>
     </>
   );

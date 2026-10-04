@@ -1,5 +1,5 @@
 import type { LiveReading } from "./api-types";
-import { STALE_AFTER_S } from "./live-reading-view";
+import { STALE_AFTER_S, readingVerdict } from "./live-reading-view";
 
 // The How it works page's worked example: the latest recorded reading,
 // laid out as the formula (gap, then each cost, then the net edge) so a
@@ -7,10 +7,6 @@ import { STALE_AFTER_S } from "./live-reading-view";
 // reading's own (/api/reading, the dashboard's cost table); nothing here
 // is computed from anything else. No reading, or one too old to call live:
 // "unavailable", with no numbers.
-
-// An order is built only above this net edge: the agent loop's
-// adjustedSpreadThreshold (lib/orchestration/agent-loop.ts), 0.01%.
-const OPPORTUNITY_THRESHOLD = 0.0001;
 
 export type WorkedExampleView =
   | { kind: "unavailable" }
@@ -44,13 +40,6 @@ export function workedExample(reading: LiveReading | null, nowMs: number): Worke
   const sell = pool(feeLabel(sellFee.feeUnits));
   if (!buy || !sell) return { kind: "unavailable" };
 
-  const verdict =
-    reading.netEdge > OPPORTUNITY_THRESHOLD
-      ? "Above the 0.01% threshold: the guardrails decide next."
-      : reading.netEdge > 0
-        ? 'Positive, but not above the 0.01% threshold: Basis records "no opportunity" and sends nothing.'
-        : 'Below zero: Basis records "no opportunity" and sends nothing.';
-
   return {
     kind: "ok",
     at: reading.at,
@@ -66,7 +55,7 @@ export function workedExample(reading: LiveReading | null, nowMs: number): Worke
       { label: "Gas for both swaps", pct: gas.pct, usd: gas.usd },
     ],
     netEdge: reading.netEdge,
-    verdict,
+    verdict: readingVerdict(reading.netEdge),
   };
 }
 

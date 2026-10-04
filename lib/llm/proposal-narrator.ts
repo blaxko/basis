@@ -11,6 +11,10 @@ export interface BasisOpportunity {
 }
 
 const NO_EDGE_EPSILON = 0.0005;
+// The agent loop builds an order only above this net edge
+// (adjustedSpreadThreshold, 0.01%), so a positive edge between it and
+// NO_EDGE_EPSILON is a built order whose edge is small, not "no edge".
+const ORDER_THRESHOLD = 0.0001;
 
 // adjustedSpread here is the net edge (after both pools' fees, slippage,
 // and gas) — not a raw price diff. Positive means the gap genuinely
@@ -19,6 +23,9 @@ const NO_EDGE_EPSILON = 0.0005;
 // (agent-loop.ts's) job to have already decided before constructing
 // this opportunity in the first place.
 function describeEdge(adjustedSpread: number): string {
+  if (adjustedSpread > ORDER_THRESHOLD && adjustedSpread < NO_EDGE_EPSILON) {
+    return "a small positive net edge remains after costs, too small to protect on-chain";
+  }
   if (Math.abs(adjustedSpread) < NO_EDGE_EPSILON) {
     return "no meaningful net edge after fees, slippage, and gas";
   }
@@ -32,7 +39,9 @@ function describeEdge(adjustedSpread: number): string {
 function describeDecision(verdict: GuardrailVerdict, proposedSizeUsd: number, adjustedSpread: number): string {
   if (verdict.approved) {
     const size = `size $${verdict.approvedSizeUsd ?? proposedSizeUsd}`;
-    return adjustedSpread > 0 ? `guardrails passed (${size})` : `guardrails passed (${size}), not sent: no positive edge`;
+    return adjustedSpread > 0
+      ? `guardrails passed (${size}), but nothing is sent: this demo never sends a trade`
+      : `guardrails passed (${size}), not sent: no positive edge`;
   }
   return `BLOCKED (${verdict.reason})`;
 }

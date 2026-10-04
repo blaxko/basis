@@ -16,6 +16,19 @@ export function liveReadingView(reading: LiveReading | null | undefined, nowMs: 
   return { kind: "ok", ageS, ...reading };
 }
 
+// An order is built only above this net edge: the agent loop's
+// adjustedSpreadThreshold (lib/orchestration/agent-loop.ts), 0.01%.
+export const ORDER_THRESHOLD = 0.0001;
+
+// What a reading's net edge means, in one sentence, for the landing card
+// and the worked example. Above the threshold Basis builds an order and the
+// guardrails run on it, but nothing is ever sent from this build.
+export function readingVerdict(netEdge: number): string {
+  if (netEdge > ORDER_THRESHOLD) return "Above the 0.01% threshold: the guardrails decide next. On this demo nothing is ever sent.";
+  if (netEdge > 0) return 'Positive, but not above the 0.01% threshold: Basis records "no opportunity" and sends nothing.';
+  return 'Below zero: Basis records "no opportunity" and sends nothing.';
+}
+
 // "updated 20 s ago" / "updated 2 min ago"
 export function ageLabel(ageS: number): string {
   return ageS < 90 ? `updated ${ageS} s ago` : `updated ${Math.round(ageS / 60)} min ago`;

@@ -60,8 +60,8 @@ describe("Guardrail Gate badge", () => {
   });
   it("says why it wasn't sent", () => {
     expect(notSentReason("no_edge", -0.0128)).toBe("no positive edge (net -1.28%)");
-    expect(notSentReason("simulated", 0.001)).toBe("simulation mode: checks only");
-    expect(notSentReason(null, 0.001)).toBe("preview only");
+    expect(notSentReason("simulated", 0.001)).toBe("simulation mode: checks only, nothing is sent");
+    expect(notSentReason(null, 0.001)).toBe("preview only, nothing is sent");
   });
   it("the panel uses verdictBadge, not a bare APPROVED", () => {
     const src = readFileSync(join(ROOT, "components/guardrail-checklist.tsx"), "utf8");

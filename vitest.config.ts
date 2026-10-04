@@ -2,6 +2,9 @@ import { defineConfig } from "vitest/config";
 import { resolve } from "node:path";
 
 export default defineConfig({
+  // Components are compiled the way Next compiles them (no `import React`),
+  // so tests can render them (test/positive-edge.test.ts).
+  esbuild: { jsx: "automatic" },
   resolve: {
     alias: {
       // See test/stubs/server-only.ts for why this is aliased under vitest.
