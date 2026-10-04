@@ -4,17 +4,17 @@ import { defaultLedger } from "../../../lib/execution/audit-ledger";
 import { costBreakdown } from "../../../lib/basis-model/cost-breakdown";
 import type { LiveReading } from "../../../components/api-types";
 
-// The landing page's live reading: the latest evaluation the scheduler
-// already recorded (every 30 s), split into its costs with the Basis
-// Model's own functions, the same as the dashboard's cost table. Only a
-// memory read: no live pool read and no Binance call, so it needs no rate
-// limit. The landing page renders it on the server (it calls GET below
-// in-process) and the browser refreshes it from here.
+// The live reading shown on the landing page and in the How it works
+// example: the latest evaluation the scheduler already recorded (every
+// 30 s), split into its costs with the Basis Model's own functions, the
+// same as the dashboard's cost table. Only a memory read: no live pool
+// read and no Binance call, so it needs no rate limit. The pages render it
+// on the server (they call GET below in-process) and the landing page's
+// browser refreshes it from here.
 
 export const dynamic = "force-dynamic";
 
 const feeLabel = (feeUnits: number) => `${feeUnits / 10_000}%`;
-
 
 export async function GET(): Promise<Response> {
   const ticker = DEFAULT_AGENT_LOOP_CONFIG.underlyings[0];
@@ -43,6 +43,7 @@ export async function GET(): Promise<Response> {
     grossGap: costs.grossGap,
     totalCost: costs.totalCostPct,
     netEdge: costs.netEdge,
+    lines: costs.lines.map(({ key, pct, usd, feeUnits }) => ({ key, pct, usd, ...(feeUnits !== undefined ? { feeUnits } : {}) })),
   };
   return NextResponse.json({ reading }, { headers: { "Cache-Control": "no-store" } });
 }

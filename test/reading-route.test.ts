@@ -45,6 +45,11 @@ describe("/api/reading", () => {
     expect(body.reading.netEdge).toBeCloseTo(-0.009784055122455015, 6);
     expect(body.reading.totalCost).toBeCloseTo(body.reading.netEdge - body.reading.grossGap, 12);
     expect(body.reading.tradeSizeUsd).toBe(200);
+    // The cost lines (the dashboard's cost table), which add up to the net edge.
+    expect(body.reading.lines.map((l: { key: string }) => l.key)).toEqual(["buyFee", "sellFee", "slippage", "gas"]);
+    expect(body.reading.lines[0]).toMatchObject({ key: "buyFee", feeUnits: 10000 });
+    expect(body.reading.lines[1]).toMatchObject({ key: "sellFee", feeUnits: 2500 });
+    expect(body.reading.grossGap + body.reading.lines.reduce((s: number, l: { pct: number }) => s + l.pct, 0)).toBeCloseTo(body.reading.netEdge, 12);
     expect(Date.parse(body.reading.at)).toBeGreaterThan(0);
   });
 

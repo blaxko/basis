@@ -396,6 +396,8 @@ export interface LiveReading {
   grossGap: number;
   totalCost: number;
   netEdge: number;
+  // The same costs as the dashboard's cost table, for the worked example.
+  lines: CostLine[];
 }
 
 export interface ReadingResponse {
