@@ -7,7 +7,7 @@
 // test/landing-and-app.test.ts checks those rules.
 
 import { GITHUB_URL } from "./links";
-import { FINDING_FACTS } from "./finding-facts";
+import { CHECKED_UNTIL, FINDING_FACTS, ROUND_TRIPS_TITLE } from "./finding-facts";
 
 export { GITHUB_URL };
 
@@ -23,7 +23,7 @@ export const LANDING = {
     eyebrow: "An arbitrage agent for tokenized stocks on BNB Chain",
     title: "A price gap isn't a profit.",
     lede: [
-      "Basis watches Microsoft's tokenized stock (MSFTB) in two PancakeSwap pools, counts every cost of trading the gap between them, and only trades when a real edge is left.",
+      "Basis watches Microsoft's tokenized stock (MSFTB) in two PancakeSwap pools, counts every cost of trading the gap between them, and only proposes a trade when a real edge is left.",
       "Every decision, including \"no\", is logged.",
     ],
     primary,
@@ -36,7 +36,7 @@ export const LANDING = {
     body: "A tokenized stock is a token whose price follows a real company's share. MSFTB, issued by bStocks, tracks Microsoft and trades around the clock on BNB Chain.",
   },
   problem: {
-    title: "The gap is smaller than the cost.",
+    title: "Costs decide whether a gap pays.",
     cards: [
       { title: "The gap", body: "MSFTB trades in two PancakeSwap V3 pools on BNB Chain, and their prices drift apart." },
       { title: "The costs", body: "Buying in one pool and selling in the other pays 1.25% in pool fees alone, plus slippage and gas." },
@@ -77,9 +77,9 @@ export const LANDING = {
     cards: [
       {
         // The recounted figures, shared with the Findings page.
-        title: `${FINDING_FACTS.roundTrips.count} fresh round trips between bStocks and Ondo: none cleared costs`,
+        title: ROUND_TRIPS_TITLE,
         period: FINDING_FACTS.roundTrips.period,
-        body: `Microsoft's token from the two issuers, compared per share with both quotes at most 60 seconds old, never differed by enough to pay for the trade; the best was ${FINDING_FACTS.roundTrips.best}.`,
+        body: `In that data, Microsoft's token from bStocks and Ondo, compared per share with both quotes at most 60 seconds old, never differed by enough to pay for the trade; the best was ${FINDING_FACTS.roundTrips.best}.`,
       },
       {
         title: "Dividend timing: tested with real prices, rejected",
@@ -110,13 +110,13 @@ export const LANDING = {
     },
     {
       q: "Does Basis make money?",
-      a: "No. In every reading we have checked, the gap between the pools has been smaller than the cost of trading it. Basis is built to recognise that and not trade.",
+      a: `Not so far: in every reading we checked up to ${CHECKED_UNTIL}, the gap between the pools was smaller than the cost of trading it, and Basis is built to recognise that and not trade.`,
     },
     {
       q: "Can I trade on the demo?",
-      a: "No. The public demo is read-only by design. You can watch it work and send instructions to see how the guardrails respond. No wallet, deposit or sign-up needed.",
+      a: "No: the public demo is read-only by design. You can watch it work and send instructions to see how the guardrails respond, with no wallet, deposit or sign-up.",
     },
-    { q: "Is the AI making trading decisions?", a: "No. The AI only turns your typed instruction into a structured order. Fixed rules decide." },
+    { q: "Is the AI making trading decisions?", a: "No. The AI only turns your typed instruction into a structured order, and fixed rules decide." },
     {
       q: "Why only Microsoft?",
       a: "Basis only trades tokens whose pools it has verified on-chain. Adding a stock means finding and verifying its pools first; Basis won't guess.",
