@@ -139,9 +139,10 @@ describe("landing content follows basis-project-details.md", () => {
 
   it("findings: clear statements with their dates", () => {
     const [roundTrips, dividend, weekend] = LANDING.findings.cards;
-    // Recounted from the recorder's export on 2026-10-04 04:20 UTC. 206 fresh
-    // valid round trips, none cleared, best −0.013% (components/finding-facts.ts).
-    expect(roundTrips!.title).toBe("206 fresh round trips between bStocks and Ondo: none cleared costs");
+    // Recounted from the recorder's export on 2026-10-04 11:05 UTC. 222 fresh
+    // valid round trips, none cleared, best −0.013% (components/finding-facts.ts),
+    // dated so the claim stays true after the freeze.
+    expect(roundTrips!.title).toBe("Up to 4 Oct 2026, none of 222 round trips cleared costs");
     expect(roundTrips!.period).toBe("26–30 Sep and 2–4 Oct 2026");
     expect(roundTrips!.body).toContain("−0.013%");
     expect(dividend).toMatchObject({ title: "Dividend timing: tested with real prices, rejected", period: "20 Aug 2026" });
@@ -154,7 +155,9 @@ describe("landing content follows basis-project-details.md", () => {
 
   it("the FAQ keeps the four answers, adds what Basis is for, and says plainly that Basis doesn't make money", () => {
     expect(LANDING.faq.map((f) => f.q)).toEqual(["What is Basis for?", "Does Basis make money?", "Can I trade on the demo?", "Is the AI making trading decisions?", "Why only Microsoft?"]);
-    expect(LANDING.faq[1]!.a.startsWith("No.")).toBe(true);
+    // Plain, and dated: it says what was checked up to a day, not what will hold.
+    expect(LANDING.faq[1]!.a.startsWith("Not so far:")).toBe(true);
+    expect(LANDING.faq[1]!.a).toContain("up to 4 October 2026");
   });
 
   it("the demo video: nothing at all until its URL is set, then a 'Watch the demo' link", () => {

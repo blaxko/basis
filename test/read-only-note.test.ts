@@ -22,7 +22,7 @@ describe("readOnlyNote", () => {
 
   it("the landing page's FAQ answers it", () => {
     expect(readFileSync(join(__dirname, "..", "app", "(site)", "page.tsx"), "utf8")).toContain('id="faq"');
-    expect(readFileSync(join(__dirname, "..", "components", "landing-content.ts"), "utf8")).toContain("The public demo is read-only by design.");
+    expect(readFileSync(join(__dirname, "..", "components", "landing-content.ts"), "utf8")).toContain("the public demo is read-only by design.");
   });
 
   it("the header renders the note and the button tooltip", () => {

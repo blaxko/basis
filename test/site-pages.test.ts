@@ -10,6 +10,8 @@ import { DEFAULT_GUARDRAIL_CONFIG } from "../lib/guardrails/config";
 import { MARKET_STATUS_PASS_CODES, MARKET_STATUS_BLOCK_CODES } from "../lib/guardrails/check";
 import type { LiveReading } from "../components/api-types";
 import { readOnlyNote } from "../components/read-only-note";
+import { ledgerVerdictWord } from "../components/verdict-wording";
+import { CHECKED_UNTIL, ROUND_TRIPS_TITLE } from "../components/finding-facts";
 
 // The landing page's menu items are real pages (/how-it-works, /guardrails,
 // /findings, /faq) that share the landing page's layout and glass style.
@@ -31,6 +33,8 @@ function strings(v: unknown): string[] {
   return [];
 }
 const words = (s: string) => s.split(/\s+/).filter((w) => /[A-Za-z0-9]/.test(w)).length;
+// Sentences: a full stop, question or exclamation mark followed by a space (not the dot in 0.05%).
+const sentences = (s: string) => s.split(/(?<=[.!?])\s+/).filter((x) => x.trim().length > 0).length;
 
 describe("routes and the shared layout", () => {
   it("the landing page and the four pages share one layout (header, footer, glass, motion); the dashboard is outside it", () => {
@@ -172,12 +176,40 @@ describe("wording that was checked against the repo", () => {
     expect(card.body).not.toMatch(/any language/);
   });
 
-  it("'Does Basis make money?' claims only what was checked: no positive net edge in any reading on record, and it is not called a record", () => {
+  it("'Does Basis make money?' claims only what was checked, up to a date, so it stays true after the freeze", () => {
     const a = LANDING.faq.find((f) => f.q === "Does Basis make money?")!.a;
-    expect(a).toBe("No. In every reading we have checked, the gap between the pools has been smaller than the cost of trading it. Basis is built to recognise that and not trade.");
-    expect(a).not.toMatch(/recorded so far/);
+    expect(a).toBe("Not so far: in every reading we checked up to 4 October 2026, the gap between the pools was smaller than the cost of trading it, and Basis is built to recognise that and not trade.");
+    expect(a).not.toMatch(/recorded so far|have checked/);
     // The same words on the FAQ page.
-    expect(FAQ_PAGE.groups.flatMap((g) => g.items).find((x) => x.q === "Does Basis make money?")!.a).toBe(a);
+    expect(FAQ_PAGE.items.find((x) => x.q === "Does Basis make money?")!.a).toBe(a);
+  });
+
+  it("every claim about the readings is dated, on every page and in the README, and the date is the data's last day", () => {
+    // The recorder's data ends on this day (components/finding-facts.ts).
+    expect(CHECKED_UNTIL).toBe("4 October 2026");
+    expect(FINDING_FACTS.readings.asOf).toMatch(/^4 Oct 2026/);
+    expect(FINDING_FACTS.roundTrips.period).toMatch(/2–4 Oct 2026$/);
+    const claims = [
+      LANDING.findings.cards[0]!.title,
+      FINDINGS.findings[0]!.title,
+      LANDING.faq.find((f) => f.q === "Does Basis make money?")!.a,
+    ];
+    for (const c of claims) expect(c, c).toMatch(/up to 4 (October|Oct) 2026/i);
+    expect(ROUND_TRIPS_TITLE).toBe("Up to 4 Oct 2026, none of 222 round trips cleared costs");
+    // The pool-pair claim names the days it holds for.
+    expect(FINDINGS.findings[4]!.body).toContain("on 3–4 Oct");
+    // Nothing says "never", "always", "every" or "none" about the market without a date next to it.
+    const undated = /\b(in every reading|none cleared|never (cleared|exceeded|positive)|always (negative|below)|has been smaller|have been smaller)\b/i;
+    for (const text of [JSON.stringify(LANDING), JSON.stringify({ HOW, GUARDRAILS, FINDINGS, FAQ_PAGE })]) expect(text).not.toMatch(/in every reading we have checked|has been smaller than the cost/);
+    expect(undated.test("in every reading we checked up to 4 October 2026")).toBe(true); // the pattern finds the claim, so the checks below mean something
+    const readme = read("README.md");
+    for (const m of readme.matchAll(new RegExp(undated.source, "gi"))) {
+      const around = readme.slice(Math.max(0, m.index! - 160), m.index! + 200);
+      expect(around, `README: "${m[0]}" needs a date`).toMatch(/up to 4 October 2026|up to 4 Oct 2026|4 Oct 2026|4 October 2026/);
+    }
+    expect(readme).toContain("up to 4 October 2026");
+    // No landing-page heading states the market's behaviour as a fact that could change.
+    expect(LANDING.problem.title).toBe("Costs decide whether a gap pays.");
   });
 
   it("the ex-dividend finding is worded as the PRD records it, on the landing page, the README and the Findings page", () => {
@@ -187,16 +219,16 @@ describe("wording that was checked against the repo", () => {
     const readme = read("README.md");
     expect(readme).toContain("real bStocks and Ondo token prices moved together, in the same direction and by a similar amount, while only the real stock dropped");
     expect(readme).not.toMatch(/xStocks and Ondo tokens all rose/);
-    expect(FINDINGS.findings[1]!.showed).toMatch(/same direction/);
+    expect(FINDINGS.findings[1]!.body).toMatch(/same direction/);
     expect(read("docs/PRD.md")).toMatch(/both moved together, in the same direction, by a similar magnitude/);
   });
 
   it("the pool-pair finding covers the readings of 3–4 Oct 2026, including the wider gap, still short of the cost", () => {
     const f = FINDINGS.findings[4]!;
     expect(f.period).toBe("25–30 Sep and 3–4 Oct 2026");
-    expect(f.showed).toContain("about −0.5% to −1.3%");
-    expect(f.showed).toContain("0.7–0.8%");
-    expect(f.showed).toContain("1.3%");
+    expect(f.body).toContain("about −0.5% to −1.3%");
+    expect(f.body).toContain("0.7–0.8%");
+    expect(f.body).toContain("1.3%");
   });
 });
 
@@ -218,9 +250,30 @@ describe("content rules", () => {
   });
 
   it("scannable: headings are short claims, and no paragraph runs past 60 words", () => {
-    const headings: string[] = [HOW.title, GUARDRAILS.title, FINDINGS.title, FAQ_PAGE.title, ...HOW.steps.map((s) => s.title), ...GUARDRAILS.checks.map((c) => c.title), ...FINDINGS.findings.map((f) => f.title), ...FAQ_PAGE.groups.map((g) => g.title)];
+    const headings: string[] = [HOW.title, GUARDRAILS.title, FINDINGS.title, FAQ_PAGE.title, GUARDRAILS.more.title, GUARDRAILS.failing.title, ...HOW.steps.map((s) => s.title), ...GUARDRAILS.checks.map((c) => c.title), ...FINDINGS.findings.map((f) => f.title)];
     for (const h of headings) expect(words(h), h).toBeLessThanOrEqual(12);
     for (const s of strings({ HOW, GUARDRAILS, FINDINGS, FAQ_PAGE })) expect(words(s), s.slice(0, 40)).toBeLessThanOrEqual(60);
+  });
+
+  it("each page stays within its word budget: explanatory but concise, not a document", () => {
+    // Words a visitor reads: the page's own text, the step numbers, the closing (heading, button, back link)
+    // and, on How it works, the worked example with a live reading in it (67 words; measured).
+    const closing = words(`${LANDING.closing.title} ${LANDING.closing.cta.label} Back to the overview`);
+    const budget = (own: unknown, extra: number) => words(strings(own).join(" ")) + extra + closing;
+    expect(budget(HOW, 3 + 67)).toBeGreaterThanOrEqual(300);
+    expect(budget(HOW, 3 + 67)).toBeLessThanOrEqual(400);
+    expect(budget(GUARDRAILS, 6)).toBeGreaterThanOrEqual(250);
+    expect(budget(GUARDRAILS, 6)).toBeLessThanOrEqual(350);
+    expect(budget(FINDINGS, 0)).toBeGreaterThanOrEqual(300);
+    expect(budget(FINDINGS, 0)).toBeLessThanOrEqual(400);
+    // The FAQ: 8 to 10 of the most useful questions.
+    expect(budget(FAQ_PAGE, 0)).toBeLessThanOrEqual(400);
+    // Every section is a short claim heading and then two or three sentences at most, in cards.
+    for (const s of [...HOW.steps, ...GUARDRAILS.checks]) expect(sentences(s.body), s.title).toBeLessThanOrEqual(2);
+    for (const k of KEYS) {
+      const page = read(`${SITE_DIR}/${k}/page.tsx`);
+      expect(page, k).not.toMatch(/l-facts|l-prose p|<dl/);
+    }
   });
 
   it("server-rendered, with no JavaScript of their own: none of the four pages or their parts is a client component", () => {
@@ -233,57 +286,71 @@ describe("content rules", () => {
 });
 
 describe("Guardrails page: every limit is the config's", () => {
-  const byTitle = (re: RegExp) => GUARDRAILS.checks.find((c) => re.test(c.name))!;
+  const byName = (re: RegExp) => GUARDRAILS.checks.find((c) => re.test(c.name))!;
   const c = DEFAULT_GUARDRAIL_CONFIG;
   const usd = (n: number) => `$${n.toLocaleString("en-US")}`;
 
-  it("six checks, each with what it measures, its limit and what happens when it fails", () => {
+  it("six checks, each said in one or two sentences: what it does, its limit, what happens when it fails", () => {
     expect(GUARDRAILS.checks.map((x) => x.name)).toEqual(["Per-trade cap", "Daily cap", "Reference price", "Market status", "Price sanity and liquidity", "Dry-run floor"]);
     for (const x of GUARDRAILS.checks) {
-      expect(x.measures.length, x.name).toBeGreaterThan(20);
-      expect(x.limit.length, x.name).toBeGreaterThan(5);
-      expect(x.fails.length, x.name).toBeGreaterThan(20);
+      expect(sentences(x.body), x.name).toBeLessThanOrEqual(2);
+      expect(words(x.body), x.name).toBeLessThanOrEqual(45);
+      // Every card says what happens on a failure: a block, a "warming up" or a "pending".
+      expect(x.body, x.name).toMatch(/block|warming up|pending|refus/);
     }
   });
 
   it("the numbers equal lib/guardrails/config.ts", () => {
-    expect(byTitle(/Per-trade/).limit).toContain(`${usd(c.perTradeCapUsd)} per trade`);
-    expect(byTitle(/Daily/).limit).toContain(`${usd(c.perDayCapUsd)} per UTC day`);
-    expect(byTitle(/Reference/).limit).toContain(`within ${c.maxReferenceDivergencePct * 100}%`);
-    expect(byTitle(/Dry-run/).limit).toContain(`${c.minDryRunOutputRatio * 100}%`);
-    const sanity = byTitle(/sanity/).limit;
+    expect(byName(/Per-trade/).body).toContain(`${usd(c.perTradeCapUsd)}`);
+    expect(byName(/Per-trade/).title).toContain(usd(c.perTradeCapUsd));
+    expect(byName(/Daily/).body).toContain(usd(c.perDayCapUsd));
+    expect(byName(/Reference/).body).toContain(`within ${c.maxReferenceDivergencePct * 100}%`);
+    expect(byName(/Dry-run/).body).toContain(`at least ${c.minDryRunOutputRatio * 100}%`);
+    const sanity = byName(/sanity/).body;
     expect(sanity).toContain(`within ${c.maxPriceDeviationPct * 100}%`);
     expect(sanity).toContain(`at least ${usd(c.minLiquidityDepthUsd)}`);
-    expect(sanity).toContain(`${c.minPriceHistoryReadings} readings`);
-    expect(byTitle(/sanity/).fails).toContain(`fewer than ${c.minPriceHistoryReadings} readings`);
+    expect(sanity).toContain(`at least ${c.minPriceHistoryReadings} readings`);
+    expect(sanity).toContain(`fewer than ${c.minPriceHistoryReadings} readings`);
     const more = JSON.stringify(GUARDRAILS.more);
     expect(more).toContain(`${c.minSpreadRetentionRatio * 100}%`.replace("50%", "half"));
     expect(more).toContain(`${c.sendSlippageTolerance * 100}%`);
   });
 
   it("market status lists exactly the codes the check passes and blocks on", () => {
-    const m = byTitle(/Market status/).limit;
+    const m = byName(/Market status/).body;
     for (const code of [...MARKET_STATUS_PASS_CODES, ...MARKET_STATUS_BLOCK_CODES]) expect(m, code).toContain(code);
-    expect(byTitle(/Market status/).fails).toMatch(/can't be fetched|unrecognised/);
+    expect(m).toMatch(/closed stock market doesn't stop it/);
+    expect(m).toMatch(/unknown or can't be fetched/);
+  });
+
+  it("failures are logged, and nothing can be sent on the public site", () => {
+    expect(GUARDRAILS.failing.body).toMatch(/audit ledger/);
+    expect(GUARDRAILS.failing.body).toMatch(/no wallet key and refuses live mode/);
   });
 });
 
-describe("Findings page: real data, with its period, how it was measured and why it led to rejection", () => {
-  it("every finding has a data period, a method, what it showed and why", () => {
+describe("Findings page: real data, with its period, how it was measured and why it matters", () => {
+  it("every finding is a claim, a data period, and a sentence or two on how it was measured and why it matters", () => {
     expect(FINDINGS.findings.map((f) => f.period)).toEqual([FINDING_FACTS.roundTrips.period, "20 Aug 2026", "18–21 Sep 2026", "25 Sep 2026", "25–30 Sep and 3–4 Oct 2026"]);
     for (const f of FINDINGS.findings) {
-      for (const field of [f.period, f.measured, f.showed, f.why]) expect(field.length, f.title).toBeGreaterThan(10);
+      expect(f.title.length, f.title).toBeGreaterThan(10);
+      expect(sentences(f.body), f.title).toBeLessThanOrEqual(2);
+      expect(words(f.body), f.title).toBeLessThanOrEqual(55);
     }
   });
 
-  it("the recounted round trips (206 fresh, none cleared) and the data quality, dated", () => {
-    // Recounted from the recorder's export on 2026-10-04 04:20 UTC.
-    expect(FINDING_FACTS.roundTrips).toMatchObject({ count: 206, cleared: 0, best: "−0.013%", median: "−0.21%", period: "26–30 Sep and 2–4 Oct 2026" });
-    expect(FINDING_FACTS.readings).toMatchObject({ total: 12999, valid: 7717, asOf: "4 Oct 2026, 04:20 UTC" });
-    expect(FINDINGS.findings[0]!.title).toBe("206 fresh round trips between bStocks and Ondo: none cleared costs");
-    expect(FINDINGS.findings[0]!.measured).toMatch(/at most 60 seconds/);
-    expect(JSON.stringify(FINDINGS.findings[0])).toContain("30 Sep 05:48");
-    expect(JSON.stringify(FINDINGS.findings[0])).toContain("2 Oct 22:52");
+  it("the recounted round trips (222 fresh, none cleared), dated, and the data quality", () => {
+    // Recounted from the recorder's export on 2026-10-04 11:05 UTC.
+    expect(FINDING_FACTS.roundTrips).toMatchObject({ count: 222, cleared: 0, best: "−0.013%", median: "−0.21%", period: "26–30 Sep and 2–4 Oct 2026" });
+    expect(FINDING_FACTS.readings).toMatchObject({ total: 13803, valid: 8521, asOf: "4 Oct 2026, 11:05 UTC" });
+    const first = FINDINGS.findings[0]!;
+    expect(first.title).toBe("Up to 4 Oct 2026, none of 222 round trips cleared costs");
+    expect(first.body).toMatch(/at most 60 seconds/);
+    expect(first.body).toContain("−0.013%");
+    expect(first.body).toContain("−0.21%");
+    expect(first.note).toContain("8,521 of 13,803 readings were valid, as of 4 Oct 2026, 11:05 UTC");
+    expect(first.note).toContain("30 Sep 05:48");
+    expect(first.note).toContain("2 Oct 22:52");
   });
 
   it("the landing page's round-trip card is the same recount", () => {
@@ -295,10 +362,10 @@ describe("Findings page: real data, with its period, how it was measured and why
 
   it("dividend timing and weekend gaps are described as the PRD records them", () => {
     const [, dividend, weekend] = FINDINGS.findings;
-    expect(dividend!.title).toBe("Dividend timing: tested with real prices, rejected");
-    expect(dividend!.showed).toMatch(/same direction/);
-    expect(weekend!.title).toBe("Weekend gaps: tested with real prices, rejected");
-    expect(weekend!.showed).toMatch(/no gap and no freeze/);
+    expect(dividend!.title).toBe("Dividend timing: the tokens moved together.");
+    expect(dividend!.body).toMatch(/same direction/);
+    expect(weekend!.title).toBe("Weekend gaps: there was no gap to trade.");
+    expect(weekend!.body).toMatch(/no gap and no freeze/);
     const prd = read("docs/PRD.md");
     expect(prd).toContain("2026-08-20 ex-dividend");
     expect(prd).toContain("Friday-to-Monday window");
@@ -306,7 +373,7 @@ describe("Findings page: real data, with its period, how it was measured and why
 });
 
 describe("How it works page", () => {
-  it("three steps in detail (Read, Count, Guard), the formula, and which Binance Web3 API modules are used where", () => {
+  it("three steps (Read, Count, Guard), the formula, and which Binance Web3 API modules are used where", () => {
     expect(HOW.steps.map((s) => s.name)).toEqual(["Read", "Count", "Guard"]);
     expect(HOW.formula).toBe(LANDING.how.formula);
     const apis = JSON.stringify(HOW.apis);
@@ -314,11 +381,12 @@ describe("How it works page", () => {
       expect(apis, part).toContain(part);
     }
     // The public site never reaches the Transaction API.
-    expect(HOW.apis.find((a) => /Transaction/.test(a.title))!.body).toMatch(/public site never reaches/);
+    expect(HOW.apis.find((a) => /Transaction/.test(a.title))!.body).toMatch(/public site never reaches it/);
+    for (const s of HOW.steps) expect(sentences(s.body), s.name).toBeLessThanOrEqual(2);
   });
 
   it("the stated numbers are the code's: 30 s, 0.05% slippage, gas ×2, 0.01% threshold", () => {
-    const text = JSON.stringify(HOW.steps);
+    const text = JSON.stringify({ title: HOW.title, steps: HOW.steps });
     const loop = read("lib/orchestration/agent-loop.ts");
     expect(loop).toMatch(/slippagePctEstimate: 0\.0005/);
     expect(loop).toMatch(/gasSafetyMultiplier: 2/);
@@ -383,34 +451,41 @@ describe("the worked example, from the live reading", () => {
 });
 
 describe("FAQ page", () => {
-  it("has every current question, in full, plus more the repo can answer", () => {
-    const all = FAQ_PAGE.groups.flatMap((g) => g.items);
+  const all = FAQ_PAGE.items;
+
+  it("ten of the most useful questions, each answered in one or two sentences; every landing question is here, word for word", () => {
+    expect(all.length).toBeGreaterThanOrEqual(8);
+    expect(all.length).toBeLessThanOrEqual(10);
     for (const f of LANDING.faq) expect(all.find((x) => x.q === f.q)?.a, f.q).toBe(f.a);
-    expect(all.length).toBeGreaterThanOrEqual(LANDING.faq.length + 8);
     expect(new Set(all.map((x) => x.q)).size).toBe(all.length);
+    for (const f of all) expect(sentences(f.a), f.q).toBeLessThanOrEqual(2);
   });
 
-  it("the new answers match the code and docs", () => {
-    const a = (q: RegExp) => FAQ_PAGE.groups.flatMap((g) => g.items).find((x) => q.test(x.q))!.a;
-    expect(a(/Which AI/)).toContain("openai/gpt-oss-120b");
-    expect(read("lib/llm/groq-client.ts")).toContain('DEFAULT_MODEL = "openai/gpt-oss-120b"');
-    expect(a(/change the mode/)).toContain("5 minutes");
-    expect(read("lib/orchestration/killswitch.ts")).toContain("PUBLIC_MODE_RESET_MS = 5 * 60_000");
+  it("the answers match the code and docs", () => {
+    const a = (q: RegExp) => all.find((x) => q.test(x.q))!.a;
     expect(a(/net edge/i)).toContain("0.01%");
-    expect(a(/sell orders/i)).toMatch(/aren't supported/);
-    expect(a(/no valid quote/i)).toMatch(/40367/);
-    expect(read("docs/how-to-use.md")).toContain("code 40367");
     expect(a(/kept/i)).toMatch(/memory/);
-    expect(a(/closed stock market/i)).toMatch(/paused, limited, unsupported/);
     expect(read("LICENSE")).toMatch(/^MIT License/);
     expect(a(/code/i)).toContain("MIT");
+    expect(a(/tokenized stock/i)).toBe(LANDING.tokenized.body);
+  });
+
+  it("'what if the net edge turns positive?' says what the code does: a $200 order, six checks, simulated, not sent", () => {
+    const a = all.find((x) => /turns positive/.test(x.q))!.a;
+    expect(a).toContain("$200 order");
+    expect(a).toContain("six guardrails");
+    expect(a).toContain("nothing is sent");
+    // The ledger's own words for it (what test/positive-edge.test.ts shows on the dashboard).
+    expect(a).toContain(ledgerVerdictWord({ approved: true, status: "approved", checks: [] }, "simulated"));
+    expect(read("lib/orchestration/agent-loop.ts")).toMatch(/orderSizeUsd: 200/);
+    expect(read("lib/execution/pipeline.ts")).toMatch(/if \(mode === "simulation"\) \{\s*return record\(\{ mode, outcome: "simulated"/);
   });
 });
 
 describe("every page works at every width (styles exist for the layouts the pages use)", () => {
   it("the page styles are the landing page's, in one file loaded only by these pages", () => {
     const css = read("app/landing.css");
-    for (const cls of [".l-pagehead", ".l-back", ".l-facts", ".l-worked", ".l-detail", ".l-closing"]) expect(css, cls).toContain(cls);
+    for (const cls of [".l-pagehead", ".l-back", ".l-note", ".l-worked", ".l-detail", ".l-closing"]) expect(css, cls).toContain(cls);
     expect(css).not.toMatch(/text-transform:\s*uppercase/);
     // 44 px tap target for the small links.
     const rule = css.slice(css.indexOf(".l-back {"), css.indexOf("}", css.indexOf(".l-back {")));
