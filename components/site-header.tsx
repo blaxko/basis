@@ -15,9 +15,10 @@ export function SiteHeader() {
           Basis
         </a>
         <div className="topbar-actions">
-          {/* The full label, or "Dashboard" on the narrowest phones; the
-              link's name is the full label either way. */}
-          <a className="btn btn--primary topbar-cta" href={LANDING.hero.primary.href} aria-label={LANDING.hero.primary.label}>
+          {/* The full label, or "Dashboard" on the narrowest phones. The one
+              not shown is display:none (landing.css), so screen readers get
+              only the visible label: no aria-label, no aria-hidden. */}
+          <a className="btn btn--primary topbar-cta" href={LANDING.hero.primary.href}>
             <span className="cta-long">{LANDING.hero.primary.label}</span>
             <span className="cta-short">Dashboard</span>
           </a>

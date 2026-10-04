@@ -23,6 +23,7 @@
 
 .topbar-cta {
   margin-left: auto;
+  min-height: 44px;
 }
 
 .l-wrap {
