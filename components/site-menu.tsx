@@ -1,19 +1,26 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import type { SiteSection } from "./site-sections";
 
-// The header's menu, on both pages at every width: the page's own
-// sections. Tapping one scrolls there (smooth unless reduced motion is
-// asked for; see globals.css) and closes the menu. Escape or a tap outside
-// also closes it; focus goes to the first item on open and back to the
-// button on Escape.
-export function SiteMenu({ sections }: { sections: readonly SiteSection[] }) {
+// The header's menu, at every width. On the landing page and its four
+// pages it lists the pages (the current one is marked, and GitHub opens the
+// repo in a new tab and says so); on the dashboard it lists the
+// dashboard's own panels and scrolls to them. Escape or a tap outside
+// closes it; focus goes to the current (or first) item on open and back to
+// the button on Escape.
+export function SiteMenu({ sections, label = "Sections on this page" }: { sections: readonly SiteSection[]; label?: string }) {
   const [open, setOpen] = useState(false);
   const id = useId();
+  const pathname = usePathname();
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const firstItem = useRef<HTMLAnchorElement>(null);
+
+  const isActive = (s: SiteSection) => !s.external && s.href === pathname;
+  const current = sections.findIndex(isActive);
+  const focusIndex = current >= 0 ? current : 0;
 
   useEffect(() => {
     if (!open) return;
@@ -54,15 +61,32 @@ export function SiteMenu({ sections }: { sections: readonly SiteSection[] }) {
           )}
         </svg>
       </button>
-      <nav id={id} className="site-menu-panel" hidden={!open} aria-label="Sections on this page">
+      <nav id={id} className="site-menu-panel" hidden={!open} aria-label={label}>
         <ul>
-          {sections.map((s, i) => (
-            <li key={s.href}>
-              <a href={s.href} ref={i === 0 ? firstItem : undefined} onClick={() => setOpen(false)}>
-                {s.label}
-              </a>
-            </li>
-          ))}
+          {sections.map((s, i) => {
+            const active = isActive(s);
+            return (
+              <li key={s.href}>
+                <a
+                  href={s.href}
+                  ref={i === focusIndex ? firstItem : undefined}
+                  aria-current={active ? "page" : undefined}
+                  {...(s.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                  onClick={() => setOpen(false)}
+                >
+                  {s.label}
+                  {s.external && (
+                    <>
+                      <svg className="ext-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                        <path d="M7 17L17 7M8 7h9v9" />
+                      </svg>
+                      <span className="sr-only"> (opens in a new tab)</span>
+                    </>
+                  )}
+                </a>
+              </li>
+            );
+          })}
         </ul>
       </nav>
     </div>
