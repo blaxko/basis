@@ -31,7 +31,7 @@ Built for the BNB Chain Tokenized Stocks hackathon on the **Binance Web3 API**:
 The landing page keeps these short; the detail is here.
 
 **Tested and rejected**
-- **Dividend timing.** On Microsoft's ex-dividend day (20 Aug 2026) the real stock fell, but the bStocks, xStocks and Ondo tokens all rose together by a similar amount. No issuer behaved differently to trade against.
+- **Dividend timing.** On Microsoft's ex-dividend day (20 Aug 2026), real bStocks and Ondo token prices moved together, in the same direction and by a similar amount, while only the real stock dropped. No issuer lagged to trade against.
 - **Weekend gaps.** Over the weekend of 18–21 Sep 2026, Ondo's and bStocks' Microsoft tokens kept moving together, day by day.
 - **The aggregator erases the gap.** Binance's aggregator routes each trade to the best price, which erases the gap between pools. So Basis reads the pools directly.
 - **The pool pair starts 1.25% behind** (the 0.25% and 1% fees) before slippage and gas; no reading so far has cleared it.
