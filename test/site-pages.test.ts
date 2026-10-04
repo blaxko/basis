@@ -54,6 +54,21 @@ describe("routes and the shared layout", () => {
     expect(LANDING.hero.primary.href).toBe("/app");
   });
 
+  it("the header button exposes only its visible label to screen readers: no aria-label, and the hidden variant is display:none, not aria-hidden", () => {
+    const header = read("components/site-header.tsx");
+    const link = header.slice(header.indexOf('<a className="btn btn--primary topbar-cta"'), header.indexOf("</a>", header.indexOf("topbar-cta")));
+    expect(link).not.toMatch(/aria-label|aria-hidden|title=/);
+    expect(link).toContain('<span className="cta-long">{LANDING.hero.primary.label}</span>');
+    expect(link).toContain('<span className="cta-short">Dashboard</span>');
+    // display:none removes the hidden label from the accessible name.
+    const css = read("app/landing.css");
+    expect(css).toMatch(/\.cta-short \{\n  display: none;/);
+    expect(css).toMatch(/@media \(max-width: 400px\) \{\n  \.cta-long \{\n    display: none;/);
+    // 44 px tap target.
+    expect(css).toMatch(/\.topbar-cta \{[^}]*min-height: 44px/);
+    expect(read("app/globals.css")).toMatch(/max-width: 480px\) \{[^@]*\.topbar-actions \.topbar-cta \{\s*min-height: 44px/);
+  });
+
   it("the footer is only 'Basis · Built on BNB Chain', on every page", () => {
     const footer = read("components/site-footer.tsx");
     expect(footer).toContain("{LANDING.footer.name}");
@@ -134,6 +149,41 @@ describe("each page has its own title and description", () => {
   });
 });
 
+describe("wording that was checked against the repo", () => {
+  it('the instruction card says "in plain English or other languages"', () => {
+    const card = LANDING.tryIt.cards.find((c) => c.title === "Give an instruction")!;
+    expect(card.body).toBe('Type an order, like "Buy $200 of MSFT", in plain English or other languages.');
+    expect(card.body).not.toMatch(/any language/);
+  });
+
+  it("'Does Basis make money?' claims only what was checked: no positive net edge in any reading on record, and it is not called a record", () => {
+    const a = LANDING.faq.find((f) => f.q === "Does Basis make money?")!.a;
+    expect(a).toBe("No. In every reading we have checked, the gap between the pools has been smaller than the cost of trading it. Basis is built to recognise that and not trade.");
+    expect(a).not.toMatch(/recorded so far/);
+    // The same words on the FAQ page.
+    expect(FAQ_PAGE.groups.flatMap((g) => g.items).find((x) => x.q === "Does Basis make money?")!.a).toBe(a);
+  });
+
+  it("the ex-dividend finding is worded as the PRD records it, on the landing page, the README and the Findings page", () => {
+    const body = LANDING.findings.cards.find((c) => c.title.startsWith("Dividend timing"))!.body;
+    expect(body).toBe("On Microsoft's ex-dividend day the stock fell, but the bStocks and Ondo tokens moved together, in the same direction, so no issuer lagged to trade against.");
+    expect(body).not.toMatch(/xStocks|rose/);
+    const readme = read("README.md");
+    expect(readme).toContain("real bStocks and Ondo token prices moved together, in the same direction and by a similar amount, while only the real stock dropped");
+    expect(readme).not.toMatch(/xStocks and Ondo tokens all rose/);
+    expect(FINDINGS.findings[1]!.showed).toMatch(/same direction/);
+    expect(read("docs/PRD.md")).toMatch(/both moved together, in the same direction, by a similar magnitude/);
+  });
+
+  it("the pool-pair finding covers the readings of 3–4 Oct 2026, including the wider gap, still short of the cost", () => {
+    const f = FINDINGS.findings[4]!;
+    expect(f.period).toBe("25–30 Sep and 3–4 Oct 2026");
+    expect(f.showed).toContain("about −0.5% to −1.3%");
+    expect(f.showed).toContain("0.7–0.8%");
+    expect(f.showed).toContain("1.3%");
+  });
+});
+
 describe("content rules", () => {
   it.each([
     "revolutionary", "game-changing", "cutting-edge", "seamless", "unlock", "unleash", "empower", "supercharge", "next-generation",
@@ -204,17 +254,17 @@ describe("Guardrails page: every limit is the config's", () => {
 
 describe("Findings page: real data, with its period, how it was measured and why it led to rejection", () => {
   it("every finding has a data period, a method, what it showed and why", () => {
-    expect(FINDINGS.findings.map((f) => f.period)).toEqual([FINDING_FACTS.roundTrips.period, "20 Aug 2026", "18–21 Sep 2026", "25 Sep 2026", "25–30 Sep 2026"]);
+    expect(FINDINGS.findings.map((f) => f.period)).toEqual([FINDING_FACTS.roundTrips.period, "20 Aug 2026", "18–21 Sep 2026", "25 Sep 2026", "25–30 Sep and 3–4 Oct 2026"]);
     for (const f of FINDINGS.findings) {
       for (const field of [f.period, f.measured, f.showed, f.why]) expect(field.length, f.title).toBeGreaterThan(10);
     }
   });
 
-  it("the recounted round trips (196 fresh, none cleared) and the data quality, dated", () => {
-    // Recounted from the recorder's export on 2026-10-03 23:58 UTC.
-    expect(FINDING_FACTS.roundTrips).toMatchObject({ count: 196, cleared: 0, best: "−0.013%", median: "−0.21%", period: "26–30 Sep and 2–3 Oct 2026" });
-    expect(FINDING_FACTS.readings).toMatchObject({ total: 12479, valid: 7197, asOf: "3 Oct 2026, 23:58 UTC" });
-    expect(FINDINGS.findings[0]!.title).toBe("196 fresh round trips between bStocks and Ondo: none cleared costs");
+  it("the recounted round trips (206 fresh, none cleared) and the data quality, dated", () => {
+    // Recounted from the recorder's export on 2026-10-04 04:20 UTC.
+    expect(FINDING_FACTS.roundTrips).toMatchObject({ count: 206, cleared: 0, best: "−0.013%", median: "−0.21%", period: "26–30 Sep and 2–4 Oct 2026" });
+    expect(FINDING_FACTS.readings).toMatchObject({ total: 12999, valid: 7717, asOf: "4 Oct 2026, 04:20 UTC" });
+    expect(FINDINGS.findings[0]!.title).toBe("206 fresh round trips between bStocks and Ondo: none cleared costs");
     expect(FINDINGS.findings[0]!.measured).toMatch(/at most 60 seconds/);
     expect(JSON.stringify(FINDINGS.findings[0])).toContain("30 Sep 05:48");
     expect(JSON.stringify(FINDINGS.findings[0])).toContain("2 Oct 22:52");
