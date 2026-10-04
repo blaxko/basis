@@ -237,6 +237,12 @@
   gap: 12px;
 }
 
+/* A grid that is an ordered list (How it works' steps): no bullets, no indent. */
+ol.l-grid {
+  list-style: none;
+  padding: 0;
+}
+
 .l-tile {
   background: var(--color-surface);
   border: 1px solid var(--color-line);
