@@ -39,7 +39,7 @@ The landing page keeps these short; the detail is here.
 **Across issuers (monitor only: Basis doesn't trade across issuers)**
 - Basis compares Microsoft's token from bStocks (MSFTB) and Ondo (MSFTon) per share, using each token's share multiplier (1.0013140 and 1.0057309, matching each issuer's published figures).
 - Up to 4 October 2026: 222 round trips on fresh quotes (both quotes at most 60 s old), recorded 26–30 Sep and 2–4 Oct 2026, and none cleared costs (best −0.013%, median −0.21%).
-- 8,521 of 13,803 readings were fully valid, as of 4 Oct 2026, 11:05 UTC: Binance's Ondo quote often returned an implausible price (about $1.03 billion per token) or failed when the market was closed (Binance error 40367). Basis shows "no valid quote" with the reason instead of using it.
+- 8,530 of 13,812 readings were fully valid, as of 4 Oct 2026, 11:15 UTC: Binance's Ondo quote often returned an implausible price (about $1.03 billion per token) or failed when the market was closed (Binance error 40367). Basis shows "no valid quote" with the reason instead of using it.
 - Not recorded: 29 Sep 20:09–21:54 UTC and 30 Sep 05:48–2 Oct 22:52 UTC. The recorder keeps only the last 24 hours, in memory, and those stretches were lost before an export.
 - xStocks is excluded: Binance's RWA Data API returns its MSFT token with no platform and a price stamped 8 September.
 

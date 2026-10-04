@@ -1,7 +1,7 @@
 // The time-sensitive figures the landing page and the Findings page quote,
 // in one place, so the two never disagree. Recounted from the cross-issuer
 // recorder's export (basis-assessment/issuer-data, outside the repo) on
-// 2026-10-04 11:05 UTC: fresh round trips are valid readings whose buy and
+// 2026-10-04 11:15 UTC: fresh round trips are valid readings whose buy and
 // sell quotes were both at most 60 s old. Recount before every deploy that
 // shows them; test/site-pages.test.ts pins them.
 //
@@ -23,9 +23,9 @@ export const FINDING_FACTS = {
     period: "26–30 Sep and 2–4 Oct 2026",
   },
   readings: {
-    total: 13803,
-    valid: 8521,
-    asOf: "4 Oct 2026, 11:05 UTC",
+    total: 13812,
+    valid: 8530,
+    asOf: "4 Oct 2026, 11:15 UTC",
   },
   // The recorder keeps the last 24 hours in memory and was exported in
   // between, so these stretches are missing from the record.
