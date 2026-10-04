@@ -7,6 +7,7 @@
 // test/landing-and-app.test.ts checks those rules.
 
 import { GITHUB_URL } from "./links";
+import { FINDING_FACTS } from "./finding-facts";
 
 export { GITHUB_URL };
 
@@ -75,9 +76,10 @@ export const LANDING = {
     title: "Real data said no.",
     cards: [
       {
-        title: "115 fresh round trips between bStocks and Ondo: none cleared costs",
-        period: "26–30 Sep 2026",
-        body: "Microsoft's token from the two issuers, compared per share with both quotes at most 60 seconds old, never differed by enough to pay for the trade; the best was −0.013%.",
+        // The recounted figures, shared with the Findings page.
+        title: `${FINDING_FACTS.roundTrips.count} fresh round trips between bStocks and Ondo: none cleared costs`,
+        period: FINDING_FACTS.roundTrips.period,
+        body: `Microsoft's token from the two issuers, compared per share with both quotes at most 60 seconds old, never differed by enough to pay for the trade; the best was ${FINDING_FACTS.roundTrips.best}.`,
       },
       {
         title: "Dividend timing: tested with real prices, rejected",

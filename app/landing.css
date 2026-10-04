@@ -602,6 +602,181 @@
 }
 
 
+/* The pages behind the menu (How it works, Guardrails, Findings, FAQ):
+   the same glass cards and type as the landing page, laid out for longer
+   text. Fluid type, one column on phones, and text never wider than about
+   70 characters. */
+.l-pagehead {
+  padding: clamp(36px, 6vw, 88px) 0 clamp(4px, 1.5vw, 16px);
+}
+
+.l-h1--page {
+  max-width: 760px;
+  font-size: clamp(30px, 3.4vw + 14px, 52px);
+  line-height: 1.1;
+}
+
+.l-pagehead .l-lede {
+  margin-top: 16px;
+  max-width: 640px;
+}
+
+.l-stack {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 16px;
+}
+
+.l-detail {
+  padding: clamp(20px, 2.4vw, 28px);
+}
+
+.l-detail p {
+  margin-top: 10px;
+  max-width: 70ch;
+  font-size: 15px;
+  line-height: 24px;
+}
+
+.l-h3--lg {
+  margin-top: 10px;
+  font-size: clamp(19px, 0.8vw + 16px, 24px);
+  line-height: 1.25;
+}
+
+/* Measures / Limit / If it fails, or How it was measured / What it
+   showed / Why it was rejected. */
+.l-facts {
+  margin: 16px 0 0;
+  display: grid;
+  gap: 14px;
+}
+
+.l-facts > div {
+  display: grid;
+  gap: 4px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-hairline);
+}
+
+.l-facts dt {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-muted);
+}
+
+.l-facts dd {
+  margin: 0;
+  font-size: 15px;
+  line-height: 24px;
+  color: var(--color-body);
+}
+
+/* Wide single-column cards: the label beside its text. */
+@media (min-width: 768px) {
+  .l-stack .l-facts > div {
+    grid-template-columns: 160px minmax(0, 1fr);
+    gap: 16px;
+  }
+}
+
+.l-notes {
+  margin: 18px 0 0;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--color-hairline);
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.l-notes li {
+  position: relative;
+  padding-left: 16px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--color-muted);
+}
+
+.l-notes li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 11px;
+  width: 8px;
+  height: 1px;
+  background: var(--color-accent-ink);
+}
+
+.l-prose p {
+  margin-top: 14px;
+  max-width: 720px;
+  font-size: clamp(16px, 0.3vw + 15px, 18px);
+  line-height: 1.6;
+}
+
+/* The worked example: the live reading laid out as the formula. */
+.l-worked {
+  margin-top: 24px;
+  max-width: 720px;
+  padding: clamp(16px, 2vw, 24px);
+}
+
+.l-worked-head {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--color-muted);
+}
+
+.l-worked-buy {
+  margin-top: 10px;
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--color-text);
+}
+
+.l-worked .live-rows {
+  margin-top: 14px;
+}
+
+.l-worked-usd {
+  font-weight: 400;
+  color: var(--color-muted);
+}
+
+.l-faq-group + .l-faq-group {
+  margin-top: 40px;
+}
+
+.l-faq-group > .l-h3--lg {
+  margin: 0 0 12px;
+}
+
+/* The small "Read more" link at the end of a landing-page section, and the
+   way back to the overview. 44 px tall to tap. */
+.l-readmore {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin-top: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-link);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.l-readmore:hover {
+  text-decoration-thickness: 2px;
+}
+
+.l-closing p {
+  margin-top: 8px;
+}
+
+
 /* A lighter glass where blur costs most or isn't wanted: phones, and
    visitors who prefer reduced motion or reduced transparency. No
    backdrop blur, solid fills, and the light blobs stay still and

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { cssVariables, LIGHT_TOKENS, THEME_INIT_SCRIPT, TOKENS } from "../components/theme";
+import { SITE_URL } from "../components/links";
 
 // Fonts are self-hosted by next/font (downloaded at build time, served from
 // this site) with size-adjusted fallbacks, so text doesn't jump when they
@@ -12,6 +13,8 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-ui", display: "swap"
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap", preload: true });
 
 export const metadata: Metadata = {
+  // Makes each page's canonical address and link-preview URL absolute.
+  metadataBase: new URL(SITE_URL),
   title: "Basis",
   description: "An arbitrage agent for tokenized stocks that knows when not to trade.",
 };

@@ -194,6 +194,31 @@ pre {
   background: var(--color-interactive);
 }
 
+/* The current page, in the pages menu. */
+.site-menu-panel a[aria-current="page"] {
+  background: var(--color-interactive);
+  font-weight: 700;
+  box-shadow: inset 2px 0 0 var(--color-accent-ink);
+}
+
+/* GitHub: an arrow after the name; the new-tab notice is for screen readers. */
+.ext-icon {
+  margin-left: 6px;
+  flex: 0 0 auto;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* Phones: the landing page's dashboard button, the theme switch and the
    menu fit at 375 px beside the wordmark. */
 @media (max-width: 480px) {

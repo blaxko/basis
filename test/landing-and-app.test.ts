@@ -12,13 +12,13 @@ import { readOnlyNote } from "../components/read-only-note";
 
 const ROOT = join(__dirname, "..");
 const read = (...p: string[]) => readFileSync(join(ROOT, ...p), "utf8");
-const LANDING_FILES = ["app/page.tsx", "components/landing-content.ts", "components/landing-live-reading.tsx", "components/live-reading-view.ts", "components/landing-visuals.tsx", "components/landing-motion.tsx"];
+const LANDING_FILES = ["app/(site)/page.tsx", "app/(site)/layout.tsx", "components/site-header.tsx", "components/site-footer.tsx", "components/landing-content.ts", "components/landing-live-reading.tsx", "components/live-reading-view.ts", "components/landing-visuals.tsx", "components/landing-motion.tsx"];
 const landingSrc = LANDING_FILES.map((f) => read(f)).join("\n");
 const landingText = JSON.stringify(LANDING);
 
 describe("routes", () => {
   it("the landing page is at /, the dashboard at /app, and every API route is unchanged", async () => {
-    expect(existsSync(join(ROOT, "app", "page.tsx"))).toBe(true);
+    expect(existsSync(join(ROOT, "app", "(site)", "page.tsx"))).toBe(true);
     // The dashboard's file is app/dashboard/page.tsx, served at /app by a
     // rewrite. A route folder named "app" breaks Next's build when the
     // project root is itself /app (Railway's container): / rendered the
@@ -35,12 +35,12 @@ describe("routes", () => {
 
   it("links both ways: the landing page's main button opens /app; the dashboard's wordmark goes home", () => {
     expect(LANDING.hero.primary).toEqual({ label: "Open the dashboard", href: "/app" });
-    expect(read("app/page.tsx")).toContain("href={hero.primary.href}");
+    expect(read("app/(site)/page.tsx")).toContain("href={hero.primary.href}");
     expect(read("components/header.tsx")).toContain('href="/"');
     // GitHub stays reachable from the landing page's "Read the code" button.
     expect(LANDING.hero.secondary.href).toBe(GITHUB_URL);
     expect(GITHUB_URL).toBe("https://github.com/blaxko/basis");
-    for (const id of ["how", "guardrails", "findings", "faq"]) expect(read("app/page.tsx")).toContain(`id="${id}"`);
+    for (const id of ["how", "guardrails", "findings", "faq"]) expect(read("app/(site)/page.tsx")).toContain(`id="${id}"`);
   });
 
   it("the README's first section gives both URLs and the $1000 safety-block example", () => {
@@ -67,8 +67,8 @@ describe("landing content follows basis-project-details.md", () => {
   });
 
   it("the sections, in order, each with a short claim for a heading", () => {
-    const page = read("app/page.tsx");
-    const order = ["{hero.title}", "{tokenized.title}", "{problem.title}", "{how.title}", "{tryIt.title}", "{guardrails.title}", "{findings.title}", "{builtWith.title}", "{LANDING.faqTitle}", "{closing.title}", "{footer.name}"];
+    const page = read("app/(site)/page.tsx");
+    const order = ["{hero.title}", "{tokenized.title}", "{problem.title}", "{how.title}", "{tryIt.title}", "{guardrails.title}", "{findings.title}", "{builtWith.title}", "{LANDING.faqTitle}", "{closing.title}"];
     const at = order.map((k) => page.indexOf(k));
     expect(at.every((i) => i > 0), JSON.stringify(at)).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
@@ -139,10 +139,10 @@ describe("landing content follows basis-project-details.md", () => {
 
   it("findings: clear statements with their dates", () => {
     const [roundTrips, dividend, weekend] = LANDING.findings.cards;
-    // Recounted from the recorder's export on 2026-09-30 05:48 UTC: 115 fresh valid
-    // round trips, 26–30 Sep 2026, none cleared, best −0.013%.
-    expect(roundTrips!.title).toBe("115 fresh round trips between bStocks and Ondo: none cleared costs");
-    expect(roundTrips!.period).toBe("26–30 Sep 2026");
+    // Recounted from the recorder's export on 2026-10-03 23:58 UTC. 196 fresh
+    // valid round trips, none cleared, best −0.013% (components/finding-facts.ts).
+    expect(roundTrips!.title).toBe("196 fresh round trips between bStocks and Ondo: none cleared costs");
+    expect(roundTrips!.period).toBe("26–30 Sep and 2–3 Oct 2026");
     expect(roundTrips!.body).toContain("−0.013%");
     expect(dividend).toMatchObject({ title: "Dividend timing: tested with real prices, rejected", period: "20 Aug 2026" });
     expect(weekend).toMatchObject({ title: "Weekend gaps: tested with real prices, rejected", period: "18–21 Sep 2026" });
@@ -160,7 +160,7 @@ describe("landing content follows basis-project-details.md", () => {
   it("the demo video: nothing at all until its URL is set, then a 'Watch the demo' link", () => {
     expect(DEMO_VIDEO_URL).toBeNull();
     expect(LANDING.hero.videoLabel).toBe("Watch the demo");
-    expect(read("app/page.tsx")).toMatch(/\{DEMO_VIDEO_URL && \(/);
+    expect(read("app/(site)/page.tsx")).toMatch(/\{DEMO_VIDEO_URL && \(/);
     expect(landingSrc).not.toMatch(/coming soon/i);
   });
 
@@ -172,7 +172,7 @@ describe("landing content follows basis-project-details.md", () => {
     const css = read("app/landing.css");
     expect(css.length).toBeGreaterThan(1000);
     expect(css).not.toMatch(/text-transform:\s*uppercase/);
-    expect(read("app/page.tsx")).toContain(`import "./landing.css";`);
+    expect(read("app/(site)/layout.tsx")).toContain(`import "../landing.css";`);
     expect(read("app/globals.css")).not.toMatch(/\.l-hero|\.l-tile|\.live-card/);
   });
 });
@@ -189,6 +189,12 @@ describe("the landing page's live reading", () => {
     grossGap: 0.0032508382071641216,
     totalCost: -0.013034893329619136,
     netEdge: -0.009784055122455015,
+    lines: [
+      { key: "buyFee" as const, pct: -0.009933176615912469, usd: 1.9866353231824938, feeUnits: 10000 },
+      { key: "sellFee" as const, pct: -0.0024832941539781163, usd: 0.4966588307956233, feeUnits: 2500 },
+      { key: "slippage" as const, pct: -0.0005, usd: 0.1 },
+      { key: "gas" as const, pct: -0.00011842255972855192, usd: 0.023684511945710383 },
+    ],
   };
   const at = Date.parse(reading.at);
 
@@ -204,8 +210,8 @@ describe("the landing page's live reading", () => {
   });
 
   it("arrives server-rendered with real values (never a loading state), then refreshes from /api/reading", () => {
-    const page = read("app/page.tsx");
-    expect(page).toContain('import { GET as getReading } from "./api/reading/route";');
+    const page = read("app/(site)/page.tsx");
+    expect(page).toContain('import { GET as getReading } from "../api/reading/route";');
     expect(page).toContain("<LandingLiveReading initial={reading} renderedAt={renderedAt} />");
     expect(page).toContain('export const dynamic = "force-dynamic";');
     const card = read("components/landing-live-reading.tsx");
@@ -257,14 +263,13 @@ describe("the dashboard shows only what's live", () => {
 });
 
 describe("headers, footers, menu and theme toggle", () => {
-  const landing = () => read("app/page.tsx");
   const dashboard = () => read("app/dashboard/page.tsx");
   const header = () => read("components/header.tsx");
 
   it("both footers say only 'Basis · Built on BNB Chain'", () => {
     expect(LANDING.footer).toEqual({ name: "Basis · Built on BNB Chain" });
-    const footer = landing().slice(landing().indexOf("<footer"), landing().indexOf("</footer>"));
-    expect(footer).toContain("{footer.name}");
+    const footer = read("components/site-footer.tsx");
+    expect(footer).toContain("{LANDING.footer.name}");
     expect(footer).not.toMatch(/href=|risk|Not financial advice/);
     expect(dashboard()).toContain('<footer className="footer">Basis · Built on BNB Chain</footer>');
   });
@@ -274,24 +279,16 @@ describe("headers, footers, menu and theme toggle", () => {
     expect(header()).not.toMatch(/How it works|GITHUB_URL|github\.com/);
   });
 
-  it("each page's menu uses short names, and every section link lands on a section that exists", async () => {
-    const { LANDING_SECTIONS, DASHBOARD_SECTIONS } = await import("../components/site-sections");
-    expect(LANDING_SECTIONS.map((s) => s.label)).toEqual(["How it works", "Guardrails", "Findings", "FAQ", "GitHub"]);
-    expect(LANDING_SECTIONS.at(-1)!.href).toBe(GITHUB_URL);
+  it("the dashboard's menu uses short names, and every link lands on a panel that exists", async () => {
+    const { DASHBOARD_SECTIONS } = await import("../components/site-sections");
     expect(DASHBOARD_SECTIONS.map((s) => s.label)).toEqual(["Live spread", "Instruction", "Guardrails", "Ledger", "Issuers"]);
-    for (const [sections, src] of [
-      [LANDING_SECTIONS, landing() + read("components/landing-content.ts")],
-      [DASHBOARD_SECTIONS, ["app/dashboard/page.tsx", "components/pool-spread-monitor.tsx", "components/instruction-box.tsx", "components/guardrail-checklist.tsx", "components/audit-ledger.tsx", "components/issuer-monitor.tsx"].map((f) => read(f)).join("\n")],
-    ] as const) {
-      for (const s of sections.filter((x) => x.href.startsWith("#"))) {
-        expect(s.href).toMatch(/^#[a-z-]+$/);
-        expect(src, s.href).toContain(`id="${s.href.slice(1)}"`);
-        expect(s.label.split(" ").length).toBeLessThanOrEqual(3);
-      }
+    const src = ["app/dashboard/page.tsx", "components/pool-spread-monitor.tsx", "components/instruction-box.tsx", "components/guardrail-checklist.tsx", "components/audit-ledger.tsx", "components/issuer-monitor.tsx"].map((f) => read(f)).join("\n");
+    for (const s of DASHBOARD_SECTIONS) {
+      expect(s.href).toMatch(/^#[a-z-]+$/);
+      expect(src, s.href).toContain(`id="${s.href.slice(1)}"`);
+      expect(s.label.split(" ").length).toBeLessThanOrEqual(3);
     }
-    expect(landing()).toContain("<SiteMenu sections={LANDING_SECTIONS} />");
     expect(header()).toContain("<SiteMenu sections={DASHBOARD_SECTIONS} />");
-    expect(landing()).not.toContain("topnav--wide");
   });
 
   it("the menu is accessible: expanded state, controls, labels, Escape, outside tap, focus", () => {
@@ -306,7 +303,7 @@ describe("headers, footers, menu and theme toggle", () => {
     expect(toggle).toContain("THEME_STORAGE_KEY");
     expect(toggle).toContain('setAttribute("data-theme"');
     expect(toggle).toMatch(/aria-label=\{`Switch to \$\{/);
-    expect(landing()).toContain("<ThemeToggle />");
+    expect(read("components/site-header.tsx")).toContain("<ThemeToggle />");
     expect(header()).toContain("<ThemeToggle />");
   });
 
