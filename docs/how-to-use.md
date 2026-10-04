@@ -4,7 +4,7 @@ Plain-language guide to the public demo: the landing page at **https://basis-pro
 
 ## 1. What Basis does
 
-The same token, MSFTB (a token that tracks Microsoft stock), trades in two different pools on PancakeSwap, a crypto exchange on BNB Chain (a *pool* is a pot of two tokens that people swap against). Every 30 seconds Basis reads both pools' prices and asks: if I bought in the cheaper pool and sold in the dearer one, would I make money **after** every cost — both pools' fees, *slippage* (the price moving against you as you trade) and *gas* (the network's transaction fee)? It only proposes a trade when that "net edge" is positive, and even then a set of safety checks (*guardrails*) must all pass. So far it has always decided **not** to trade, because the two pools charge 0.25% and 1% in fees, 1.25% together, and the price gap between them has always been far smaller than that. Every decision, including "no", is written to an audit log (the *Audit Ledger*).
+The same token, MSFTB (a token that tracks Microsoft stock), trades in two different pools on PancakeSwap, a crypto exchange on BNB Chain (a *pool* is a pot of two tokens that people swap against). Every 30 seconds Basis reads both pools' prices and asks: if I bought in the cheaper pool and sold in the dearer one, would I make money **after** every cost — both pools' fees, *slippage* (the price moving against you as you trade) and *gas* (the network's transaction fee)? It only proposes a trade when that "net edge" is positive, and even then a set of safety checks (*guardrails*) must all pass. In every reading we checked up to 4 October 2026 it decided **not** to trade, because the two pools charge 0.25% and 1% in fees, 1.25% together, and the price gap between them was smaller than the roughly 1.3% it costs. Every decision, including "no", is written to an audit log (the *Audit Ledger*).
 
 ## 2. A tour of the site
 
@@ -75,7 +75,7 @@ Short lines generated from fixed templates (a sentence pattern filled with real 
 
 - the **largest gross gap between the pools in the last hour**, with its time, and the best net edge in that hour;
 - the **MSFT underlying market status** from Binance (unchanged since a time, or each change with its time);
-- a line for any opportunity that clears the threshold (none so far).
+- a line for any opportunity that clears the threshold (none up to 4 October 2026).
 
 **Normal:** the two observations and `no opportunities currently clear the threshold.`
 

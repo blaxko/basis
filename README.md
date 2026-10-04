@@ -4,7 +4,7 @@
 
 **Live demo: https://basis-production-c229.up.railway.app** (no wallet, deposit or sign-up needed). The landing page explains Basis and shows the live reading, and four pages go deeper (`/how-it-works`, `/guardrails`, `/findings`, `/faq`); the dashboard is at **https://basis-production-c229.up.railway.app/app**.
 
-Basis watches the two PancakeSwap pools where MSFTB (tokenized Microsoft stock) trades on BNB Chain, and would only trade when the price gap between them beats every cost: both pools' fees, slippage and gas. So far, on every reading, the gap has been far smaller than those costs, so Basis correctly says no, and records why.
+Basis watches the two PancakeSwap pools where MSFTB (tokenized Microsoft stock) trades on BNB Chain, and would only trade when the price gap between them beats every cost: both pools' fees, slippage and gas. In every reading we checked up to 4 October 2026, the gap was smaller than those costs, so Basis said no, and recorded why.
 
 **Try it**
 
@@ -22,7 +22,7 @@ Built for the BNB Chain Tokenized Stocks hackathon on the **Binance Web3 API**:
 
 - **Trading API**: `GET /api/v1/dex/aggregator/quote` on every scheduler tick and every typed instruction, as the cross-check price for the `referencePrice` guardrail (not fully independent: the aggregator can route through the same pools).
 - **Market API, RWA Data**: `GET /api/v1/dex/market/rwa/underlying-market` on every tick and every typed instruction, feeding the `marketStatus` guardrail.
-- **Transaction API**: `pre-transaction/simulate` on our own swap calldata before every send, and `pre-transaction/broadcast-transaction` with MEV protection as the only broadcast path. So far these ran only in the local execution test (the four mainnet transactions under [Status](#status)); dry-run also calls simulate, but only for an order with a positive net edge, and none has had one.
+- **Transaction API**: `pre-transaction/simulate` on our own swap calldata before every send, and `pre-transaction/broadcast-transaction` with MEV protection as the only broadcast path. So far these ran only in the local execution test (the four mainnet transactions under [Status](#status)); dry-run also calls simulate, but only for an order with a positive net edge, and up to 4 October 2026 none had one.
 
 **What runs on the deployed site:** `aggregator/quote` and `rwa/underlying-market`, every 30 seconds and for each typed instruction, plus BSC RPC reads of the two pools. It holds no key, so it never signs or broadcasts; its [`/api/status`](https://basis-production-c229.up.railway.app/api/status) lists every recent Binance call with its status and latency. **Cross-issuer recorder** (Monitor only: Basis doesn't trade across issuers): every 30 s, `aggregator/quote` buy quotes ($200 of USDT) for xStocks MSFTx and Ondo MSFTon (bStocks MSFTB reuses the tick's own quote); every 5 min, one batched `rwa/price` (confirms each token's issuer and gives its `sharesMultiplier`) and a sell quote per token. About 4.8 extra calls a minute. Readings are per share, from memory, at [`/api/issuers`](https://basis-production-c229.up.railway.app/api/issuers).
 
@@ -34,12 +34,13 @@ The landing page keeps these short; the detail is here.
 - **Dividend timing.** On Microsoft's ex-dividend day (20 Aug 2026), real bStocks and Ondo token prices moved together, in the same direction and by a similar amount, while only the real stock dropped. No issuer lagged to trade against.
 - **Weekend gaps.** Over the weekend of 18–21 Sep 2026, Ondo's and bStocks' Microsoft tokens kept moving together, day by day.
 - **The aggregator erases the gap.** Binance's aggregator routes each trade to the best price, which erases the gap between pools. So Basis reads the pools directly.
-- **The pool pair starts 1.25% behind** (the 0.25% and 1% fees) before slippage and gas; no reading so far has cleared it.
+- **The pool pair starts 1.25% behind** (the 0.25% and 1% fees) before slippage and gas. In every reading we checked up to 4 October 2026 (25–30 Sep and 3–4 Oct 2026) the net edge was below zero: about −0.5% to −1.3%. On 3–4 Oct the gap widened to about 0.7–0.8%, still short of the roughly 1.3% it costs. An early reading, before the live readings began, put the pools 0.71% apart ($3.56), which the 1% pool's fee alone exceeded.
 
 **Across issuers (monitor only: Basis doesn't trade across issuers)**
 - Basis compares Microsoft's token from bStocks (MSFTB) and Ondo (MSFTon) per share, using each token's share multiplier (1.0013140 and 1.0057309, matching each issuer's published figures).
-- 115 round trips on fresh quotes (both quotes at most 60 s old), recorded 26–30 Sep 2026: none cleared costs (best −0.013%).
-- Only 498 of 5,780 readings were fully valid (28 Sep 2026): Binance's Ondo quote repeatedly returned an implausible price (about $1.03 billion per token). Basis shows "no valid quote" with the reason instead of using it.
+- Up to 4 October 2026: 222 round trips on fresh quotes (both quotes at most 60 s old), recorded 26–30 Sep and 2–4 Oct 2026, and none cleared costs (best −0.013%, median −0.21%).
+- 8,521 of 13,803 readings were fully valid, as of 4 Oct 2026, 11:05 UTC: Binance's Ondo quote often returned an implausible price (about $1.03 billion per token) or failed when the market was closed (Binance error 40367). Basis shows "no valid quote" with the reason instead of using it.
+- Not recorded: 29 Sep 20:09–21:54 UTC and 30 Sep 05:48–2 Oct 22:52 UTC. The recorder keeps only the last 24 hours, in memory, and those stretches were lost before an export.
 - xStocks is excluded: Binance's RWA Data API returns its MSFT token with no platform and a price stamped 8 September.
 
 **What it won't do**
@@ -49,6 +50,29 @@ The landing page keeps these short; the detail is here.
 - No lasting history: the audit log lives in memory and resets on restart.
 
 Next steps: two-sided execution, more verified tokens and pools, persistence for the audit log, and better handling of issuers whose quotes stop outside US market hours.
+
+## If the net edge turns positive
+
+Up to 4 October 2026 it never did on the live pools, so this is what the code does, and what `test/positive-edge.test.ts` checks end to end on the public, read-only build (real scheduler, guardrail gate, pipeline, ledger and routes; only the pool prices, gas and Binance's replies are replaced; the dashboard's panels are rendered from what the routes return).
+
+1. **Detection** (every 30 s). The net edge is the gap less both pools' fees, slippage and gas. At or below 0.01%, the tick is recorded as `no_opportunity` and no order exists. Above it, but with fewer than 10 price readings per pool (the first ~5 minutes after a restart), it is recorded as `warming_up` and still no order exists.
+2. **The order.** Built by fixed code, never by the AI: a buy of $200 on the cheaper pool (only the buy leg is built), carrying both pools' prices and recent readings, the thinner pool's liquidity, Binance's quote for the same purchase and the underlying market's status.
+3. **The six guardrails** run on it, and a single failure blocks (`blocked`). With all of them passing, the verdict reads "all runnable guardrail checks passed; pending until simulation: dryRunFloor": five checks pass, and the dry-run floor is *pending* (no simulation exists yet), never a pass.
+4. **Two more gates** in the pipeline. An edge below the 0.05% on-chain slippage tolerance stops as `tolerance_exceeds_edge` (an order built and checked, whose edge a swap's minimum-output floor couldn't protect). Otherwise, in **simulation** mode, the default and the only mode that lasts on the public site, it stops as `simulated`: no RPC call, no wallet call.
+5. **Dry-run** (if a visitor switches to it; the public demo returns to simulation after 5 minutes): both pools are read again, the spread must still retain half its edge, allowance is checked from the public address, QuoterV2 and Binance's Transaction API simulate the swap, and it stops as `dry_run_only`. Nothing is signed.
+6. **Live** is refused on the public site by the server (the killswitch throws, `/api/execution-test` answers 403, `send()` refuses, and the trading key is never read). Even on a local, non-public run, live mode refuses every arbitrage order (`two_leg_execution_not_implemented`): the send path is not reachable from the loop.
+7. **What the dashboard shows.** The spread monitor: the net edge in green, "clears threshold", and "Nothing is sent: this build only simulates." The Guardrail Gate: "GUARDRAILS PASSED · NOT SENT" in a neutral colour, five PASS, one PENDING, "preview only, nothing is sent". The Advisory Feed: one line, "…guardrails passed (size $200), but nothing is sent: this demo never sends a trade." The Audit Ledger: a row with `outcome=simulated`, "guardrails passed · not sent" and "no swap was simulated or sent". The landing page's reading: "Above the 0.01% threshold: the guardrails decide next. On this demo nothing is ever sent." Spend is recorded only for an executed trade, so the daily cap is untouched.
+
+## More detail than the pages carry
+
+The four pages (`/how-it-works`, `/guardrails`, `/findings`, `/faq`) are short on purpose. What they leave out is here.
+
+- **Reading.** The last 60 readings of each pool (about 30 minutes) are kept so a sudden jump stands out. The slippage figure is a flat 0.05%, taken from measured $200 trades; gas is a live estimate for both swaps with a 2× safety margin. Every Binance call is signed, and the dashboard's status strip shows how the latest one went.
+- **Closed markets.** MSFTB trades on BNB Chain around the clock, so a closed stock market doesn't stop Basis. Only a status of paused, limited, unsupported or in maintenance, or one it can't read, blocks trading.
+- **The AI.** Groq's `openai/gpt-oss-120b` only turns a typed sentence into a stock, a side and a dollar amount; the guardrails and live data decide. Sell orders are refused: Basis only evaluates buying the cheaper pool for now.
+- **The demo's mode.** Anyone can switch between simulation and dry-run; the change is shared by every visitor and returns to simulation after 5 minutes. Live is locked.
+- **The aggregator finding (25 Sep 2026).** Binance's aggregator was asked for the same $200 purchase every 30 seconds for about five minutes: 12 quotes, 05:06 to 05:11 UTC. It chose between a PancakeSwap V3 route and RFQ routes, and the implied price differed by up to $1.40.
+- **Ondo quotes.** Binance's quote for Ondo's token has often been unusable: the market was closed (error 40367), or the price came back more than 20% from bStocks per share. Basis rejects it and shows the reason.
 
 ## Status
 
