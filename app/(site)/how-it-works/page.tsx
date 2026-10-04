@@ -22,14 +22,12 @@ export default async function HowItWorks() {
 
       <section className="l-section l-section--tight" id="steps">
         <div className="l-wrap">
-          <ol className="l-stack" data-reveal>
+          <ol className="l-grid l-grid--3" data-reveal>
             {HOW.steps.map((s, i) => (
               <li className="l-tile l-detail" key={s.name} style={{ "--i": i } as React.CSSProperties}>
                 <span className="l-step mono">0{i + 1}</span> <span className="l-label">{s.name}</span>
                 <h2 className="l-h3 l-h3--lg">{s.title}</h2>
-                {s.paragraphs.map((p) => (
-                  <p key={p.slice(0, 24)}>{p}</p>
-                ))}
+                <p>{s.body}</p>
               </li>
             ))}
           </ol>
@@ -47,7 +45,7 @@ export default async function HowItWorks() {
         </div>
       </section>
 
-      <section className="l-section" id="apis">
+      <section className="l-section l-section--tight" id="apis">
         <div className="l-wrap">
           <h2 className="l-h2" data-reveal>{HOW.apisTitle}</h2>
           <div className="l-grid l-grid--2" data-reveal>
@@ -58,7 +56,6 @@ export default async function HowItWorks() {
               </div>
             ))}
           </div>
-          <p className="l-sub">{HOW.apisNote}</p>
         </div>
       </section>
 

@@ -12,19 +12,14 @@ export default function Faq() {
 
       <section className="l-section l-section--tight" id="questions">
         <div className="l-wrap">
-          {FAQ_PAGE.groups.map((g, gi) => (
-            <div className="l-faq-group" key={g.title} data-reveal>
-              <h2 className="l-h3 l-h3--lg">{g.title}</h2>
-              <div className="l-faq l-glass">
-                {g.items.map((f, i) => (
-                  <details key={f.q} open={gi === 0 && i === 0}>
-                    <summary>{f.q}</summary>
-                    <p>{f.a}</p>
-                  </details>
-                ))}
-              </div>
-            </div>
-          ))}
+          <div className="l-faq l-glass" data-reveal>
+            {FAQ_PAGE.items.map((f, i) => (
+              <details key={f.q} open={i === 0}>
+                <summary>{f.q}</summary>
+                <p>{f.a}</p>
+              </details>
+            ))}
+          </div>
         </div>
       </section>
 

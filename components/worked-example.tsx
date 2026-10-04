@@ -79,10 +79,10 @@ export function WorkedExample({ reading, nowMs }: { reading: LiveReading | null;
   return (
     <div className="l-worked l-glass">
       <p className="l-worked-head">
-        Recorded at {w.at.slice(11, 19)} UTC, {w.ageS} s before this page loaded, for a ${w.tradeSizeUsd} trade.
+        Recorded at {w.at.slice(11, 19)} UTC, {w.ageS} s before this page loaded.
       </p>
       <p className="l-worked-buy">
-        Buy in the {w.buy.fee} pool at <span className="mono">${w.buy.priceUsd.toFixed(2)}</span>, sell in the {w.sell.fee} pool at{" "}
+        A ${w.tradeSizeUsd} trade: buy in the {w.buy.fee} pool at <span className="mono">${w.buy.priceUsd.toFixed(2)}</span>, sell in the {w.sell.fee} pool at{" "}
         <span className="mono">${w.sell.priceUsd.toFixed(2)}</span>.
       </p>
       <dl className="live-rows">
@@ -100,7 +100,7 @@ export function WorkedExample({ reading, nowMs }: { reading: LiveReading | null;
           <dd className={"mono " + (w.netEdge > 0 ? "pos" : "neg")}>{pct(w.netEdge)}</dd>
         </div>
       </dl>
-      <p className="live-foot">{w.verdict} Figures are rounded to three decimals.</p>
+      <p className="live-foot">{w.verdict}</p>
     </div>
   );
 }

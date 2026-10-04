@@ -14,25 +14,12 @@ export default function Guardrails() {
 
       <section className="l-section l-section--tight" id="checks">
         <div className="l-wrap">
-          <div className="l-grid l-grid--2" data-reveal>
+          <div className="l-grid l-grid--3" data-reveal>
             {checks.map((c, i) => (
               <article className="l-tile l-detail" key={c.name} style={{ "--i": i } as React.CSSProperties}>
                 <span className="l-step mono">0{i + 1}</span> <span className="l-label">{c.name}</span>
                 <h2 className="l-h3 l-h3--lg">{c.title}</h2>
-                <dl className="l-facts">
-                  <div>
-                    <dt>Measures</dt>
-                    <dd>{c.measures}</dd>
-                  </div>
-                  <div>
-                    <dt>Limit</dt>
-                    <dd>{c.limit}</dd>
-                  </div>
-                  <div>
-                    <dt>If it fails</dt>
-                    <dd>{c.fails}</dd>
-                  </div>
-                </dl>
+                <p>{c.body}</p>
               </article>
             ))}
           </div>
@@ -56,9 +43,7 @@ export default function Guardrails() {
       <section className="l-section l-section--tight" id="failing">
         <div className="l-wrap l-prose" data-reveal>
           <h2 className="l-h2">{failing.title}</h2>
-          {failing.paragraphs.map((p) => (
-            <p key={p.slice(0, 24)}>{p}</p>
-          ))}
+          <p>{failing.body}</p>
         </div>
       </section>
 
