@@ -12,7 +12,7 @@ Basis watches the two PancakeSwap pools where MSFTB (tokenized Microsoft stock) 
 2. Watch the **Guardrail Gate** and the **Audit Ledger** update, about 10 seconds later.
 3. Try **Buy $1000 of MSFT** to see a safety block: it's over the $500 per-trade limit.
 
-**This demo can't trade, on purpose. See the real trade:** <!-- demo-video -->demo video (link coming soon)<!-- /demo-video --> and the four transactions of the $5 mainnet round trip, listed under [Status](#status). A plain-language guide to every panel: [`docs/how-to-use.md`](docs/how-to-use.md).
+**This demo can't trade, on purpose. See the real trade:** <!-- demo-video -->[demo video](https://youtu.be/_VUt3IY_GTc)<!-- /demo-video --> and the four transactions of the $5 mainnet round trip, listed under [Status](#status). A plain-language guide to every panel: [`docs/how-to-use.md`](docs/how-to-use.md).
 
 ## What Basis is
 

@@ -14,7 +14,7 @@ export { GITHUB_URL };
 // The demo video. null until it is published: the page then says nothing
 // about a video. `npm run set-demo-video` sets it, and a "Watch the demo"
 // link appears.
-export const DEMO_VIDEO_URL: string | null = null;
+export const DEMO_VIDEO_URL: string | null = "https://youtu.be/_VUt3IY_GTc";
 
 const primary = { label: "Open the dashboard", href: "/app" } as const;
 

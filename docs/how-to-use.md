@@ -1,6 +1,6 @@
 # How to use Basis
 
-Plain-language guide to the public demo: the landing page at **https://basis-production-c229.up.railway.app** explains Basis and shows the live reading; the dashboard is at **https://basis-production-c229.up.railway.app/app**. Values shown were observed on 2026-09-25/26; yours will differ. Watch the <!-- demo-video -->demo video (link coming soon)<!-- /demo-video --> for a four-minute walk-through.
+Plain-language guide to the public demo: the landing page at **https://basis-production-c229.up.railway.app** explains Basis and shows the live reading; the dashboard is at **https://basis-production-c229.up.railway.app/app**. Values shown were observed on 2026-09-25/26; yours will differ. Watch the <!-- demo-video -->[demo video](https://youtu.be/_VUt3IY_GTc)<!-- /demo-video --> for a four-minute walk-through.
 
 ## 1. What Basis does
 
