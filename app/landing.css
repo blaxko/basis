@@ -68,6 +68,17 @@
   color: var(--color-muted);
 }
 
+/* The "Watch the demo" link: on its own line, 44 px tall to tap. */
+.l-micro a {
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  min-height: 44px;
+  color: var(--color-link);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 /* The live reading card keeps one size in every state (no layout shift). */
 .live-card {
   background: var(--color-surface);

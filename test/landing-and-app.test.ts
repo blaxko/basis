@@ -160,8 +160,11 @@ describe("landing content follows basis-project-details.md", () => {
     expect(LANDING.faq[1]!.a).toContain("up to 4 October 2026");
   });
 
-  it("the demo video: nothing at all until its URL is set, then a 'Watch the demo' link", () => {
-    expect(DEMO_VIDEO_URL).toBeNull();
+  it("the demo video: a 'Watch the demo' link to the published video (nothing at all if the URL were ever unset), 44 px to tap", () => {
+    expect(DEMO_VIDEO_URL).toBe("https://youtu.be/_VUt3IY_GTc");
+    expect(read("README.md")).toContain("[demo video](https://youtu.be/_VUt3IY_GTc)");
+    const css = read("app/landing.css");
+    expect(css).toMatch(/.l-micro a {[^}]*min-height: 44px/);
     expect(LANDING.hero.videoLabel).toBe("Watch the demo");
     expect(read("app/(site)/page.tsx")).toMatch(/\{DEMO_VIDEO_URL && \(/);
     expect(landingSrc).not.toMatch(/coming soon/i);
